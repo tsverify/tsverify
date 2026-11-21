@@ -1,0 +1,10 @@
+{
+  "name": "@tsv-examples/orders-app",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@tsv/ir": "workspace:*",
+    "@tsv/spec": "workspace:*"
+  }
+}
