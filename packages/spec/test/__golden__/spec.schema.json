@@ -1,0 +1,372 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "behavior": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Behavior name"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "kind": {
+      "description": "Only `entity` in v1 (default)",
+      "type": "string",
+      "const": "entity"
+    },
+    "entity": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Entity name, e.g. `Order`"
+        },
+        "state": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Code field that holds the state, e.g. `status`"
+        },
+        "states": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Every state the entity can be in (unique)"
+        },
+        "initial": {
+          "type": "string",
+          "minLength": 1,
+          "description": "State of a newly created entity"
+        },
+        "terminal": {
+          "description": "States with no outgoing transitions",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "name",
+        "state",
+        "states",
+        "initial"
+      ],
+      "additionalProperties": false,
+      "description": "The stateful entity this behavior describes"
+    },
+    "actors": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "trust": {
+            "type": "string",
+            "enum": [
+              "untrusted",
+              "authenticated",
+              "signed-webhook",
+              "internal"
+            ]
+          },
+          "requires": {
+            "description": "Guards implied for every transition this actor performs",
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            ]
+          }
+        },
+        "required": [
+          "trust"
+        ],
+        "additionalProperties": false,
+        "description": "Who can trigger transitions"
+      }
+    },
+    "transitions": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            ],
+            "description": "Source state (`\"*\"` = any state), or a list of them"
+          },
+          "to": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Target state"
+          },
+          "by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            ],
+            "description": "Actor allowed to perform the transition, or a list of them"
+          },
+          "requires": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            ],
+            "description": "A guard such as `owner` or `role(admin)`, or a list of them"
+          },
+          "effects": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Effect name; multiplicity defaults to exactly-once"
+                },
+                {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "additionalProperties": {
+                    "type": "string",
+                    "enum": [
+                      "exactly-once",
+                      "at-least-once",
+                      "idempotent"
+                    ]
+                  },
+                  "minProperties": 1,
+                  "maxProperties": 1,
+                  "description": "`{ name: multiplicity }`"
+                }
+              ],
+              "description": "An effect performed by the transition, e.g. `stripe.refund`"
+            }
+          },
+          "atomic": {
+            "description": "The state check and the write are one indivisible step (default false)",
+            "type": "boolean"
+          },
+          "idempotent": {
+            "description": "The triggering event may be delivered more than once (default false)",
+            "type": "boolean"
+          },
+          "after": {
+            "description": "Informational timer, e.g. `30m`",
+            "type": "string",
+            "pattern": "^\\d+[smhd]$"
+          },
+          "impl": {
+            "description": "Implementing symbol: `path/to/file.ts#symbol`",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "by"
+        ],
+        "additionalProperties": false,
+        "description": "A state change"
+      }
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Human-readable rule name (unique)"
+          },
+          "always": {
+            "description": "Expression that holds in every reachable state",
+            "type": "string"
+          },
+          "never": {
+            "description": "Expression that holds in no reachable state",
+            "type": "string"
+          },
+          "eventually": {
+            "description": "From every reachable state, a state satisfying the expression is reachable",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false,
+        "oneOf": [
+          {
+            "required": [
+              "always"
+            ]
+          },
+          {
+            "required": [
+              "never"
+            ]
+          },
+          {
+            "required": [
+              "eventually"
+            ]
+          }
+        ]
+      }
+    },
+    "concurrency": {
+      "type": "object",
+      "properties": {
+        "default": {
+          "description": "Invocations explored per transition (default 2)",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "max_parallel": {
+          "description": "Per-transition override of `default`",
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "additionalProperties": false,
+      "description": "Bounds for the model checker"
+    },
+    "bindings": {
+      "type": "object",
+      "properties": {
+        "persistence": {
+          "description": "Persistence adapter; omitted means auto-detected",
+          "type": "string",
+          "enum": [
+            "assign",
+            "prisma",
+            "drizzle"
+          ]
+        },
+        "clients": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "module": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Module path, e.g. `src/payments/stripe.ts`"
+              },
+              "export": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Exported binding, e.g. `stripe`"
+              }
+            },
+            "required": [
+              "module",
+              "export"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "guards": {
+          "description": "Guard (canonical form) → `path#symbol` or `path#symbol(args)`",
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "effects": {
+          "description": "Effect name → code call path, e.g. `stripe.refunds.create`",
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "description": "Links from spec names to code"
+    }
+  },
+  "required": [
+    "behavior",
+    "entity",
+    "actors",
+    "transitions"
+  ],
+  "additionalProperties": false,
+  "title": "tsv behavior spec (v1)",
+  "description": "A `*.behavior.yaml` file. See docs/behavior-format.md."
+}
