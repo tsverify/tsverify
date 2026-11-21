@@ -9,6 +9,8 @@ import { reachability } from "./properties/reachability";
 import { buildActions } from "./semantics";
 import { buildTrace } from "./trace";
 
+export { toItf } from "./itf";
+
 export interface CheckOptions {
   /** Stop after storing this many distinct states. Default 1_000_000. */
   maxStates?: number;
