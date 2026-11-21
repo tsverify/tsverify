@@ -1,5 +1,6 @@
 import type { BehaviorModel, GuardRef, Transition } from "@tsv/ir";
-import { compare, type FindingCollector, list, suggest } from "./findings";
+import { compareStrings } from "@tsv/ir";
+import { type FindingCollector, list, suggest } from "./findings";
 import type { Normalized } from "./normalize";
 import type { Locator, Path } from "./positions";
 import type { SpecInput } from "./schema";
@@ -96,7 +97,7 @@ class Validator {
 
     this.checkState(t.to, [...base, "to"], label, "to", t.name);
 
-    const actors = Object.keys(this.model.actors).sort(compare);
+    const actors = Object.keys(this.model.actors).sort(compareStrings);
     t.by.forEach((a, i) => {
       if (this.model.actors[a]) return;
       this.out.error(
@@ -134,7 +135,7 @@ class Validator {
   private rules(): void {
     const effects = [
       ...new Set(this.model.transitions.flatMap((t) => t.effects.map((e) => e.name))),
-    ].sort(compare);
+    ].sort(compareStrings);
     const names = new Set<string>();
     for (const rule of this.model.rules) {
       const path = this.normalized.paths.get(rule) ?? ["rules"];

@@ -3,6 +3,7 @@ import {
   type BehaviorModel,
   type Bindings,
   type ClientBinding,
+  compareStrings,
   type EffectDecl,
   type EntityDecl,
   type GuardBinding,
@@ -13,7 +14,7 @@ import {
   type Rule,
   type Transition,
 } from "@tsv/ir";
-import { compare, type FindingCollector } from "./findings";
+import type { FindingCollector } from "./findings";
 import type { Locator, Path } from "./positions";
 import { type NameRef, parseRule } from "./rules/parser";
 import { RULE_KINDS, type RuleInput, type SpecInput, type TransitionInput } from "./schema";
@@ -39,7 +40,7 @@ export function normalize(
   out: FindingCollector,
 ): Normalized {
   const n = new Normalizer(locator, out);
-  const transitionNames = Object.keys(input.transitions).sort(compare);
+  const transitionNames = Object.keys(input.transitions).sort(compareStrings);
   const concurrencyDefault = input.concurrency?.default ?? DEFAULT_CONCURRENCY;
   const maxParallel = input.concurrency?.max_parallel ?? {};
 
@@ -52,7 +53,7 @@ export function normalize(
     entity: n.entity(input.entity),
     actors: Object.fromEntries(
       Object.keys(input.actors)
-        .sort(compare)
+        .sort(compareStrings)
         .map((name) => [name, n.actor(name, input.actors[name] as SpecInput["actors"][string])]),
     ),
     transitions: transitionNames.map((name) =>
@@ -160,7 +161,7 @@ class Normalizer {
 
   bindings(b: SpecInput["bindings"]): Bindings {
     const clients: Record<string, ClientBinding> = {};
-    for (const name of Object.keys(b?.clients ?? {}).sort(compare)) {
+    for (const name of Object.keys(b?.clients ?? {}).sort(compareStrings)) {
       const c = b?.clients?.[name] as { module: string; export: string };
       clients[name] = {
         module: c.module,
@@ -200,10 +201,10 @@ class Normalizer {
       boundAs.set(guard.raw, key);
       guards.push([guard.raw, { ...binding, at: this.locator.entry(path) }]);
     }
-    guards.sort((x, y) => compare(x[0], y[0]));
+    guards.sort((x, y) => compareStrings(x[0], y[0]));
 
     const effects = Object.fromEntries(
-      Object.entries(b?.effects ?? {}).sort((x, y) => compare(x[0], y[0])),
+      Object.entries(b?.effects ?? {}).sort((x, y) => compareStrings(x[0], y[0])),
     );
 
     return {

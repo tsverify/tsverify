@@ -1,8 +1,9 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
 import type { BehaviorModel, Finding } from "@tsv/ir";
+import { compareStrings } from "@tsv/ir";
 import { LineCounter, parseDocument } from "yaml";
-import { compare, FindingCollector } from "./findings";
+import { FindingCollector } from "./findings";
 import { normalize } from "./normalize";
 import { Locator } from "./positions";
 import { specSchema } from "./schema";
@@ -98,5 +99,5 @@ export async function findSpecFiles(root: string): Promise<string[]> {
     }
   };
   await walk(resolve(root), "");
-  return found.sort(compare);
+  return found.sort(compareStrings);
 }

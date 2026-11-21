@@ -1,5 +1,5 @@
 import type { Actor, BehaviorModel, CmpOp, EffectDecl, Expr, Rule, Transition } from "@tsv/ir";
-import { compareStrings } from "./compare";
+import { compareStrings } from "@tsv/ir";
 import { isNonAtomicOnce } from "./mermaid";
 
 /**

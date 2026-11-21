@@ -1,5 +1,10 @@
-import { BUILTIN_PROPERTIES, type Trace, type TraceAction, type TraceStep } from "@tsv/ir";
-import { compareStrings } from "./compare";
+import {
+  BUILTIN_PROPERTIES,
+  compareStrings,
+  type Trace,
+  type TraceAction,
+  type TraceStep,
+} from "@tsv/ir";
 import { assignMermaidIds, escapeMermaidText } from "./mermaid-text";
 
 /**

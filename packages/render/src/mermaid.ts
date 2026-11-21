@@ -1,5 +1,5 @@
 import type { BehaviorModel, EffectDecl, Transition } from "@tsv/ir";
-import { compareStrings } from "./compare";
+import { compareStrings } from "@tsv/ir";
 import { assignMermaidIds, escapeMermaidText } from "./mermaid-text";
 
 /** States and transitions (by name) to emphasise, e.g. the ones a counterexample touches. */
