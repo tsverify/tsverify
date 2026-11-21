@@ -39,6 +39,30 @@ importers:
         specifier: workspace:*
         version: link:../ir
 
+  packages/cli:
+    dependencies:
+      '@tsv/checker':
+        specifier: workspace:*
+        version: link:../checker
+      '@tsv/ir':
+        specifier: workspace:*
+        version: link:../ir
+      '@tsv/render':
+        specifier: workspace:*
+        version: link:../render
+      '@tsv/spec':
+        specifier: workspace:*
+        version: link:../spec
+      cac:
+        specifier: 7.1.1
+        version: 7.1.1
+      picocolors:
+        specifier: 1.1.1
+        version: 1.1.1
+      tsx:
+        specifier: 4.23.15
+        version: 4.23.15
+
   packages/ir: {}
 
   packages/render:
@@ -598,6 +622,10 @@ packages:
   brace-expansion@5.0.13:
     resolution: {integrity: sha512-Vh3dmFbc4wZeox7M9I/0L9GfFd83Su4+yCck/OF9Gi/P/dAHn0RT7X4K9R7gMNMhDck3DvhR6QXsnQdjjgwNvQ==}
     engines: {node: 20 || >=22}
+
+  cac@7.1.1:
+    resolution: {integrity: sha512-8zc+h51HxpodKsA7L4PpBNd+9qlrfuUcyUDE5a793BJfN4NZgwk7v9NmrY3ptZ+Sk0+ToigxSzkb47AsEgyizw==}
+    engines: {node: '>=20.19.0'}
 
   chai@6.3.0:
     resolution: {integrity: sha512-XWAtwJ6OHO+tj0EKCs0Y2UamnyOxseZWltU4x2U2wh8g4AigdjwvtUjvLP2tqkA/avxHEtzxNaqGq/YGNwckKg==}
@@ -1234,6 +1262,8 @@ snapshots:
   brace-expansion@5.0.13:
     dependencies:
       balanced-match: 4.0.4
+
+  cac@7.1.1: {}
 
   chai@6.3.0: {}
 
