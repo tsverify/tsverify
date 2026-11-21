@@ -1,0 +1,13 @@
+{
+  "id": "b3-refund-race",
+  "bug": "refundOrder reads, checks, awaits Stripe, then writes outside a transaction, so two concurrent refunds both pay out.",
+  "expected": [
+    { "category": "non-atomic", "transition": "refund", "file": "src/orders/refund.ts" },
+    {
+      "category": "implementation-property",
+      "transition": "refund",
+      "property": "effect-multiplicity",
+      "subject": "stripe.refund"
+    }
+  ]
+}

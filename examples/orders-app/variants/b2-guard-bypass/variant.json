@@ -1,0 +1,7 @@
+{
+  "id": "b2-guard-bypass",
+  "bug": "refundOrder returns early for ctx.internal and reaches the refund write without requireRole(\"admin\").",
+  "expected": [
+    { "category": "guard-not-dominating", "transition": "refund", "file": "src/orders/refund.ts" }
+  ]
+}
