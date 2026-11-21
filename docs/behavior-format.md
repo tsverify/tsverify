@@ -4,6 +4,11 @@
 executable source of truth; this page is its human reference. Canonical example:
 [`packages/spec/test/fixtures/valid/order.behavior.yaml`](../packages/spec/test/fixtures/valid/order.behavior.yaml).
 
+## Paths
+
+`impl`, `bindings.clients.*.module` and `bindings.guards` paths are relative to the **project root**: the nearest
+directory at or above the behavior file that contains a `tsconfig.json` (overridable with `tsv check --project`).
+
 ## Top level
 
 | Key | Required | Type | IR (`@tsv/ir` `BehaviorModel`) |
