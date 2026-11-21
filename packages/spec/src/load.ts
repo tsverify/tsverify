@@ -1,6 +1,8 @@
+import { readdir, readFile } from "node:fs/promises";
+import { join, relative, resolve, sep } from "node:path";
 import type { BehaviorModel, Finding } from "@tsv/ir";
 import { LineCounter, parseDocument } from "yaml";
-import { FindingCollector } from "./findings";
+import { compare, FindingCollector } from "./findings";
 import { normalize } from "./normalize";
 import { Locator } from "./positions";
 import { specSchema } from "./schema";
@@ -53,4 +55,48 @@ export function parseSpec(text: string, file: string): SpecResult {
   validate(parsed.data, normalized, locator, out);
   const findings = out.finish();
   return out.hasErrors() ? { findings } : { model: normalized.model, findings };
+}
+
+/**
+ * Reads and parses one behavior file. `path` is resolved against `root` (default: the current
+ * directory), and `model.file` and every location are relative to `root`, with `/` separators.
+ * An unreadable file is reported as an `invalid-spec` finding, not thrown.
+ */
+export async function loadSpec(path: string, options: { root?: string } = {}): Promise<SpecResult> {
+  const root = resolve(options.root ?? process.cwd());
+  const absolute = resolve(root, path);
+  const file = relative(root, absolute).split(sep).join("/");
+  let text: string;
+  try {
+    text = await readFile(absolute, "utf8");
+  } catch (e) {
+    const out = new FindingCollector(file);
+    const reason =
+      (e as NodeJS.ErrnoException).code ?? (e instanceof Error ? e.message : String(e));
+    out.error({ file, line: 1, column: 1 }, `cannot read behavior file "${file}" (${reason})`);
+    return { findings: out.finish() };
+  }
+  return parseSpec(text, file);
+}
+
+const SKIPPED_DIRS: ReadonlySet<string> = new Set(["node_modules", ".git", ".tsv", "dist"]);
+
+/**
+ * Every `**\/*.behavior.yaml` under `root`, skipping node_modules, .git, .tsv and dist (symlinks
+ * are not followed). Sorted, relative to `root`, with `/` separators.
+ */
+export async function findSpecFiles(root: string): Promise<string[]> {
+  const found: string[] = [];
+  const walk = async (dir: string, prefix: string): Promise<void> => {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const rel = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+      if (entry.isDirectory()) {
+        if (!SKIPPED_DIRS.has(entry.name)) await walk(join(dir, entry.name), rel);
+      } else if (entry.isFile() && entry.name.endsWith(".behavior.yaml")) {
+        found.push(rel);
+      }
+    }
+  };
+  await walk(resolve(root), "");
+  return found.sort(compare);
 }
