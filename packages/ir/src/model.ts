@@ -34,12 +34,81 @@ export interface EffectDecl {
   at?: SourceLocation;
 }
 
-/** Code call sites recovered by the extractor (only present when `origin: "code"`). */
+/**
+ * A call on a bound client (see `Bindings.clients`), e.g. `tx.orders.get(id)` on client `db`.
+ * `gate` is the label replay uses to pause a worker at this call.
+ */
+export interface CallSite {
+  at: SourceLocation;
+  /** Client binding name, e.g. `db`, `stripe`. */
+  client: string;
+  /** Member path below the client export, e.g. `orders.get`, `refunds.create`. */
+  path: string;
+  /** `${client}.${path}`, e.g. `db.orders.get`. */
+  gate: string;
+  /** 0-based occurrence of `gate` within one invocation of the impl (repeated calls). */
+  occurrence: number;
+}
+
+/** The construct that makes a transition's state check and write indivisible. */
+export interface AtomicScope {
+  kind: "transaction" | "conditional-update" | "lock";
+  at: SourceLocation;
+  /** Gate of the call that opens the scope, e.g. `db.transaction`. */
+  gate?: string;
+}
+
+/** Where an invocation argument comes from: parameter index plus an optional property path. */
+export interface ArgPath {
+  param: number;
+  /** e.g. `["orderId"]` for `event.orderId`, `["actor"]` for `ctx.actor`. Empty = the parameter itself. */
+  path: string[];
+}
+
+/** How generated tests call an impl (derived from the impl's signature and data flow). */
+export interface InvocationShape {
+  impl: SymbolRef;
+  /** Which argument carries the entity id. */
+  entityId: ArgPath;
+  /** Which argument carries the actor, when the impl takes one. */
+  actor?: ArgPath;
+}
+
+/** Narrowed from-state at the write, as computed by the type checker. */
+export interface FromState {
+  /** Literal states the entity can be in just before the write, or `"*"` when unknown. */
+  values: string[] | "*";
+  /** true when the narrowed type is the full declared union (no guard constrains the write). */
+  unconstrained: boolean;
+  /** Present when `values` is `"*"` or unconstrained, e.g. `status is typed string`. */
+  reason?: string;
+}
+
+/**
+ * Code facts for one extracted transition (only present when `origin: "code"`).
+ * One `Transition` in a code model corresponds to one state write in the code.
+ */
 export interface CodeSites {
-  read?: SourceLocation;
-  write?: SourceLocation;
-  guards?: { guard: string; at: SourceLocation }[];
-  effects?: { effect: string; at: SourceLocation }[];
+  persistence: PersistenceKind;
+  /** The state write itself (assignment, spread property, or update call). */
+  write: SourceLocation;
+  /** Function containing the write (may be a helper called by the impl). */
+  function: { file: string; name: string; at: SourceLocation };
+  /** Name of the spec transition whose `impl` reaches this write; absent for unlinked writes. */
+  specTransition?: string;
+  fromState: FromState;
+  /** The read that produced the entity the write checks (e.g. `db.orders.get`). */
+  read?: CallSite;
+  /** The persistence call that commits the write (e.g. `db.orders.save`). */
+  commit?: CallSite;
+  atomic?: AtomicScope;
+  /** Bound guards called on some path to the write; `dominates` = called on every path. */
+  guards: { guard: string; at: SourceLocation; dominates: boolean }[];
+  /** Effect calls attributed to this transition. `effect` is the spec effect name, or the gate when unmapped. */
+  effects: (CallSite & { effect: string })[];
+  invocation?: InvocationShape;
+  /** Where the entity is stored, for seeding and reading back in generated tests. */
+  storage?: { client: string; collection: string; key: string };
 }
 
 export interface Transition {
@@ -98,6 +167,18 @@ export interface Bindings {
   effects: Record<string, string>;
 }
 
+/**
+ * - `spec`: parsed from a behavior file.
+ * - `code`: the as-implemented model built by the extractor. It copies the spec's name, entity, actors,
+ *   rules, bindings and file; only `transitions` (one per state write, with `sites`) and `concurrency`
+ *   come from the code. Conventions:
+ *   - a write reached from spec transition `t`'s impl is named `t` when it writes `t.to`, otherwise
+ *     `t->to`; an unlinked write is named after its function; collisions get `~2`, `~3`, …
+ *   - `by`, `idempotent` come from the linked spec transition (`[]` / `false` when unlinked)
+ *   - `requires` = bound guards that dominate the write; `atomic` = read and write share one scope
+ *   - effect multiplicity comes from the spec declaration of that effect (`at-least-once` if undeclared)
+ *   - `concurrency` copies the linked spec transition's bound (2 when unlinked)
+ */
 export type ModelOrigin = "spec" | "code";
 
 export interface BehaviorModel {

@@ -190,7 +190,24 @@ describe("code-origin duplicate webhook (B4 analogue)", () => {
     const ps = transition(m, "payment_succeeded");
     ps.from = "*";
     const at = { file: "src/payments/webhook.ts", line: 12, column: 3 };
-    ps.sites = { effects: [{ effect: "email.receipt", at }] };
+    ps.sites = {
+      persistence: "assign",
+      write: { file: "src/payments/webhook.ts", line: 9, column: 5 },
+      function: { file: "src/payments/webhook.ts", name: "onPaymentSucceeded", at },
+      specTransition: "payment_succeeded",
+      fromState: { values: "*", unconstrained: true },
+      guards: [],
+      effects: [
+        {
+          effect: "email.receipt",
+          at,
+          client: "email",
+          path: "send",
+          gate: "email.send",
+          occurrence: 0,
+        },
+      ],
+    };
     expect(check(m).findings.find((f) => f.id === RECEIPT_ID)?.codeAt).toEqual(at);
   });
 });
