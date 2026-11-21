@@ -21,6 +21,7 @@ transitions:
     to: pending_payment
     by: customer
     requires: [owner]
+    atomic: true
     impl: src/orders/checkout.ts#checkout
 
   payment_succeeded:

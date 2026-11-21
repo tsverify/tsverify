@@ -1,5 +1,10 @@
-import { BUILTIN_PROPERTIES, type Trace, type TraceAction, type TraceStep } from "@tsv/ir";
-import { compareStrings } from "./compare";
+import {
+  BUILTIN_PROPERTIES,
+  compareStrings,
+  type Trace,
+  type TraceAction,
+  type TraceStep,
+} from "@tsv/ir";
 import { assignMermaidIds, escapeMermaidText } from "./mermaid-text";
 
 /**
@@ -53,7 +58,7 @@ export function traceToSequenceDiagram(trace: Trace, options: SequenceDiagramOpt
       id(w) === w ? `  participant ${w}` : `  participant ${id(w)} as ${escapeMermaidText(w)}`,
     );
   }
-  const entity = options.entity ?? ENTITY_ID;
+  const entity = options.entity ?? trace.entity;
   lines.push(
     entity === ENTITY_ID
       ? `  participant ${ENTITY_ID}`

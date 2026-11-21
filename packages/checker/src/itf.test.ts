@@ -4,6 +4,7 @@ import { toItf } from "./itf";
 
 const trace: Trace = {
   behavior: "B",
+  entity: "E",
   model: "code",
   property: "effect-multiplicity",
   kind: "invariant",

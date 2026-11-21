@@ -50,6 +50,7 @@ export function b6DoubleRefundTrace(): Trace {
 
   return {
     behavior: "Order lifecycle",
+    entity: "Order",
     model: "spec",
     property: "effect-multiplicity",
     kind: "invariant",

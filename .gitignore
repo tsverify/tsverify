@@ -4,3 +4,4 @@ coverage/
 .tsv/
 *.log
 .DS_Store
+.claude/worktrees/

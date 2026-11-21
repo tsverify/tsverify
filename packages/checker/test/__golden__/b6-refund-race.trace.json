@@ -1,5 +1,6 @@
 {
   "behavior": "Order lifecycle",
+  "entity": "Order",
   "model": "spec",
   "property": "rule:Refund issued at most once per order",
   "kind": "invariant",

@@ -32,7 +32,12 @@ export const INPUT_ERROR_CATEGORIES: ReadonlySet<FindingCategory> = new Set([
 ]);
 
 export interface Finding {
-  /** Stable id for dedup and SARIF, e.g. `spec-property:Order lifecycle:refund`. */
+  /**
+   * Stable id for dedup and SARIF: `<category>:<behavior>:<property>[:<subject>]`, where the
+   * subject disambiguates properties that can fire more than once (an effect, a state, a
+   * transition), e.g. `spec-property:Order lifecycle:effect-multiplicity:stripe.refund`.
+   * Input errors use `invalid-spec:<file>:<line>:<col>`.
+   */
   id: string;
   category: FindingCategory;
   severity: Severity;

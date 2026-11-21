@@ -1,4 +1,5 @@
 import type { Finding, SourceLocation } from "@tsv/ir";
+import { compareStrings } from "@tsv/ir";
 
 export interface SpecIssue {
   severity: "error" | "warning";
@@ -35,8 +36,8 @@ export class FindingCollector {
       (a, b) =>
         a.at.line - b.at.line ||
         a.at.column - b.at.column ||
-        compare(a.severity, b.severity) ||
-        compare(a.message, b.message),
+        compareStrings(a.severity, b.severity) ||
+        compareStrings(a.message, b.message),
     );
     const seen = new Map<string, number>();
     return sorted.map((issue) => {
@@ -56,11 +57,6 @@ export class FindingCollector {
       return finding;
     });
   }
-}
-
-/** Locale-independent string comparison, for deterministic ordering. */
-export function compare(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
 }
 
 /** `"refundd"` → `"refunded"` when a candidate is within a small edit distance. */
