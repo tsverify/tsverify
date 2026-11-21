@@ -1,0 +1,24 @@
+{
+  "name": "@tsv/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "tsv": "./bin/tsv.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/main.ts",
+      "default": "./src/main.ts"
+    }
+  },
+  "dependencies": {
+    "@tsv/checker": "workspace:*",
+    "@tsv/ir": "workspace:*",
+    "@tsv/render": "workspace:*",
+    "@tsv/spec": "workspace:*",
+    "cac": "7.1.1",
+    "picocolors": "1.1.1",
+    "tsx": "4.23.15"
+  }
+}
