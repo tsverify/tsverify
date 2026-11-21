@@ -71,5 +71,12 @@ export function buildTrace(
     steps.push({ index: steps.length, action: traceAction, state });
   }
 
-  return { behavior: model.name, model: model.origin, property, kind, steps };
+  return {
+    behavior: model.name,
+    entity: model.entity.name,
+    model: model.origin,
+    property,
+    kind,
+    steps,
+  };
 }

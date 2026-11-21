@@ -16,6 +16,7 @@ describe("traceToText", () => {
   it("shows rejected and duplicate actions, and workers that do not name their transition", () => {
     const trace: Trace = {
       behavior: "Order lifecycle",
+      entity: "Order",
       model: "code",
       property: "rule:Refund issued at most once per order",
       kind: "invariant",
@@ -61,5 +62,10 @@ describe("traceToSequenceDiagram", () => {
     expect(out).toContain("  participant Entity as Order\n");
     expect(out).toContain("  participant refund_1 as refund#35;1\n");
     await expect(out).toMatchFileSnapshot("__golden__/b6-double-refund.mmd");
+  });
+
+  it("labels the entity from the trace by default", () => {
+    const trace = b6DoubleRefundTrace();
+    expect(traceToSequenceDiagram(trace)).toBe(traceToSequenceDiagram(trace, { entity: "Order" }));
   });
 });

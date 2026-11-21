@@ -47,6 +47,8 @@ export interface TraceStep {
 /** A counterexample: the shortest found sequence of steps that violates a property. */
 export interface Trace {
   behavior: string;
+  /** Entity name, e.g. `Order` (for labelling diagrams without the model at hand). */
+  entity: string;
   model: ModelOrigin;
   /** Built-in property id or `rule:<rule name>`. */
   property: string;
