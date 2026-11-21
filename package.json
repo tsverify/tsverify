@@ -4,7 +4,7 @@
   "type": "module",
   "packageManager": "pnpm@9.15.0",
   "engines": {
-    "node": ">=20.19"
+    "node": ">=22.12"
   },
   "scripts": {
     "lint": "biome check .",
@@ -17,9 +17,9 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.8",
-    "@types/node": "^20.19.0",
+    "@types/node": "^22.12.0",
     "tsx": "4.23.15",
     "typescript": "7.0.2",
-    "vitest": "4.1.12"
+    "vitest": "5.1.1"
   }
 }
