@@ -56,6 +56,12 @@ importers:
         specifier: 28.0.0
         version: 28.0.0
 
+  spikes/x2-gating:
+    devDependencies:
+      '@tsv/ir':
+        specifier: workspace:*
+        version: link:../../packages/ir
+
 packages:
 
   '@biomejs/biome@2.6.8':
