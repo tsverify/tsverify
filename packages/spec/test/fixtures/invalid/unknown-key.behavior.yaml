@@ -1,0 +1,15 @@
+# Typo in a transition key: `idempotnet` instead of `idempotent`.
+behavior: Mini
+entity:
+  name: Order
+  state: status
+  states: [draft, paid]
+  initial: draft
+actors:
+  stripe: { trust: signed-webhook }
+transitions:
+  pay:
+    from: draft
+    to: paid
+    by: stripe
+    idempotnet: true

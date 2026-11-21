@@ -167,6 +167,7 @@ describe("syntax errors", () => {
     ["", "empty expression", 0],
     ["   ", "empty expression", 0],
     ["status = paid", 'unexpected character "=" (did you mean "=="?)', 7],
+    ["count(effect x) =< 1", 'unexpected character "=" (did you mean "<="?)', 16],
     ["status == a && status == b", 'unexpected character "&" (use "and")', 12],
     ["status == a || true", 'unexpected character "|" (use "or")', 12],
     ["!true", 'unexpected character "!"', 0],

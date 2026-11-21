@@ -135,7 +135,7 @@ class Normalizer {
 
   rule(r: RuleInput, index: number): Rule[] {
     const kind = RULE_KINDS.find((k) => r[k] !== undefined) ?? "always";
-    const source = r[kind] ?? "";
+    const source = String(r[kind] ?? "");
     const path = ["rules", index, kind];
     const parsed = parseRule(source);
     if ("error" in parsed) {

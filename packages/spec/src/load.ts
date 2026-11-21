@@ -5,6 +5,7 @@ import { normalize } from "./normalize";
 import { Locator } from "./positions";
 import { specSchema } from "./schema";
 import { reportSchemaIssues } from "./schema-issues";
+import { validate } from "./validate";
 
 export interface SpecResult {
   /** Absent if any finding has severity `error`. */
@@ -49,6 +50,7 @@ export function parseSpec(text: string, file: string): SpecResult {
   }
 
   const normalized = normalize(parsed.data, file, locator, out);
+  validate(parsed.data, normalized, locator, out);
   const findings = out.finish();
   return out.hasErrors() ? { findings } : { model: normalized.model, findings };
 }

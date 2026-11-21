@@ -1,0 +1,14 @@
+# `to` names a state that is not declared.
+behavior: Mini
+entity:
+  name: Order
+  state: status
+  states: [draft, pending_payment, paid, refunded]
+  initial: draft
+actors:
+  admin: { trust: internal }
+transitions:
+  refund:
+    from: paid
+    to: refundd
+    by: admin

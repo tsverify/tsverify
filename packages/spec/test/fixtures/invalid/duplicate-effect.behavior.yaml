@@ -1,0 +1,18 @@
+# The same effect is declared twice on one transition.
+behavior: Mini
+entity:
+  name: Order
+  state: status
+  states: [paid, refunded]
+  initial: paid
+actors:
+  admin: { trust: internal }
+transitions:
+  refund:
+    from: paid
+    to: refunded
+    by: admin
+    effects:
+      - stripe.refund
+      - email.receipt: at-least-once
+      - stripe.refund: idempotent

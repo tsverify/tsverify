@@ -18,9 +18,25 @@ export function reportSchemaIssues(
   locator: Locator,
   out: FindingCollector,
 ): void {
-  for (const { issue, path } of flatten(issues, [])) {
+  const leaves = flatten(issues, []);
+  // A misspelt required key is reported once, as the unknown key, not also as a missing one.
+  const misspelt = new Set<string>();
+  for (const { issue, path } of leaves) {
+    if (issue.code !== "unrecognized_keys") continue;
+    const allowed = keysAt(path);
+    for (const key of issue.keys) {
+      const guess = suggest(key, allowed);
+      if (guess) misspelt.add(JSON.stringify([...path, guess]));
+    }
+  }
+  for (const { issue, path } of leaves) {
+    if (isMissing(issue) && misspelt.has(JSON.stringify(path))) continue;
     report(issue, path, raw, locator, out);
   }
+}
+
+function isMissing(issue: Issue): boolean {
+  return issue.code === "invalid_type" && issue.input === undefined;
 }
 
 function report(
@@ -44,7 +60,7 @@ function report(
     return;
   }
 
-  if (issue.code === "invalid_type" && issue.input === undefined && path.length > 0) {
+  if (isMissing(issue) && path.length > 0) {
     const { ctx, rest, transition } = context(path.slice(0, -1), raw);
     const key = field([...rest, path[path.length - 1] as string | number]);
     out.error(locator.value(path), `${ctx}: missing required key "${key}"`, { transition });

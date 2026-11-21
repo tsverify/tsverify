@@ -1,0 +1,14 @@
+# `initial` is not one of `states`.
+behavior: Mini
+entity:
+  name: Order
+  state: status
+  states: [draft, paid]
+  initial: drafts
+actors:
+  system: { trust: internal }
+transitions:
+  pay:
+    from: draft
+    to: paid
+    by: system

@@ -72,13 +72,15 @@ const transition = z
   })
   .describe("A state change");
 
+/** YAML reads a bare `true` / `false` as a boolean; both are valid expressions. */
+const ruleExpr = z.union([z.string(), z.boolean()]);
+
 const rule = z
   .strictObject({
     name: name.describe("Human-readable rule name (unique)"),
-    always: z.string().optional().describe("Expression that holds in every reachable state"),
-    never: z.string().optional().describe("Expression that holds in no reachable state"),
-    eventually: z
-      .string()
+    always: ruleExpr.optional().describe("Expression that holds in every reachable state"),
+    never: ruleExpr.optional().describe("Expression that holds in no reachable state"),
+    eventually: ruleExpr
       .optional()
       .describe("From every reachable state, a state satisfying the expression is reachable"),
   })

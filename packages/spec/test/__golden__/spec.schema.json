@@ -234,15 +234,24 @@
           },
           "always": {
             "description": "Expression that holds in every reachable state",
-            "type": "string"
+            "type": [
+              "string",
+              "boolean"
+            ]
           },
           "never": {
             "description": "Expression that holds in no reachable state",
-            "type": "string"
+            "type": [
+              "string",
+              "boolean"
+            ]
           },
           "eventually": {
             "description": "From every reachable state, a state satisfying the expression is reachable",
-            "type": "string"
+            "type": [
+              "string",
+              "boolean"
+            ]
           }
         },
         "required": [

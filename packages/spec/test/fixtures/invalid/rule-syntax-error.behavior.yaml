@@ -1,0 +1,18 @@
+# `=<` is not an operator (the rule meant `<=`).
+behavior: Mini
+entity:
+  name: Order
+  state: status
+  states: [paid, refunded]
+  initial: paid
+actors:
+  admin: { trust: internal }
+transitions:
+  refund:
+    from: paid
+    to: refunded
+    by: admin
+    effects: [stripe.refund]
+rules:
+  - name: Refund once
+    always: count(effect stripe.refund) =< 1

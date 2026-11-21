@@ -77,7 +77,8 @@ export function lex(text: string): LexResult {
       i++;
       continue;
     }
-    const hint = MISSPELLED_OPS[ch];
+    const swapped = ch === "=" && (text[i + 1] === "<" || text[i + 1] === ">");
+    const hint = swapped ? `did you mean "${text[i + 1]}="?` : MISSPELLED_OPS[ch];
     return {
       error: { message: `unexpected character "${ch}"${hint ? ` (${hint})` : ""}`, offset: i },
     };
