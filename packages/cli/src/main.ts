@@ -3,6 +3,7 @@ import { type CAC, type Command, cac } from "cac";
 import pkg from "../package.json" with { type: "json" };
 import { camelCaseBooleanFlags } from "./argv";
 import { type CheckCommandOptions, checkCommand } from "./commands/check";
+import { type RenderCommandOptions, renderCommand } from "./commands/render";
 import { schemaCommand } from "./commands/schema";
 import { type ValidateCommandOptions, validateCommand } from "./commands/validate";
 import { ExitCode, UsageError } from "./exit-codes";
@@ -76,6 +77,13 @@ function program(io: Io): CAC {
     })
     .option("--spec-only", "Check the specs only (the only mode until code extraction lands)")
     .action((paths: string[], options: CheckCommandOptions) => checkCommand(io, paths, options));
+
+  cli
+    .command("render <spec>", "Render one spec (default: --mermaid)")
+    .option("--mermaid", "Mermaid stateDiagram-v2")
+    .option("--matrix", "Markdown actor × transition permission matrix")
+    .option("--summary", "Plain-English Markdown summary")
+    .action((spec: string, options: RenderCommandOptions) => renderCommand(io, spec, options));
 
   cli.command("schema", "Print the JSON Schema of *.behavior.yaml").action(() => schemaCommand(io));
 
