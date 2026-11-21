@@ -3,7 +3,9 @@ import { buildLayout, initialState } from "./encode";
 import { explore } from "./explore";
 import { checkContext, type PropertyChecker } from "./properties/context";
 import { invariants } from "./properties/invariants";
+import { lint } from "./properties/lint";
 import { liveness } from "./properties/liveness";
+import { reachability } from "./properties/reachability";
 import { buildActions } from "./semantics";
 import { buildTrace } from "./trace";
 
@@ -32,12 +34,12 @@ export interface CheckResult {
 export const DEFAULT_MAX_STATES = 1_000_000;
 
 /**
- * Model-checks one entity model: a BFS over every reachable state that evaluates rules and
- * built-in properties. Works the same on spec and code models; only the
+ * Model-checks one entity model: structural lints, then a BFS over every reachable state that
+ * evaluates rules and built-in properties. Works the same on spec and code models; only the
  * finding category (and which built-ins apply) differs. Semantics: see `semantics.ts`.
  *
- * Findings are ordered: invariants (rules in model order, then effects by name), liveness,
- * analysis limits.
+ * Findings are ordered: lints, invariants (rules in model order, then effects by name), liveness,
+ * reachability, analysis limits.
  */
 export function check(model: BehaviorModel, options: CheckOptions = {}): CheckResult {
   const started = performance.now();
@@ -47,7 +49,7 @@ export function check(model: BehaviorModel, options: CheckOptions = {}): CheckRe
   const ctx = checkContext(model, layout);
 
   const live = liveness(ctx);
-  const checkers: PropertyChecker[] = [invariants(ctx), live];
+  const checkers: PropertyChecker[] = [invariants(ctx), live, reachability(ctx)];
   const onState = checkers.flatMap((c) => (c.onState ? [c.onState.bind(c)] : []));
   const onDeadlock = checkers.flatMap((c) => (c.onDeadlock ? [c.onDeadlock.bind(c)] : []));
 
@@ -65,7 +67,7 @@ export function check(model: BehaviorModel, options: CheckOptions = {}): CheckRe
     trace: (stateId: number, property: string, kind: "invariant" | "liveness") =>
       buildTrace(ctx, actions, result.store, stateId, property, kind),
   };
-  const findings: Finding[] = checkers.flatMap((c) => c.findings(input));
+  const findings: Finding[] = [...lint(ctx), ...checkers.flatMap((c) => c.findings(input))];
   if (!result.complete) {
     findings.push({
       id: `unanalyzable:${model.name}:state-limit`,
