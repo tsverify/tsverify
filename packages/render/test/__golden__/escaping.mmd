@@ -1,0 +1,11 @@
+stateDiagram-v2
+  open
+  state "on-hold" as on_hold_2
+  on_hold
+  state "end" as s_end
+  [*] --> open
+  open --> s_end: close · agent
+  on_hold_2 --> s_end: close · agent
+  open --> on_hold_2: hold#58; see #35;42 · agent (team(a#59;b)) · notify#60;ops#62; ×n
+  on_hold_2 --> on_hold: page · ops#58;pager · ⟳ idempotent · pager#123;duty#125; ⟳
+  s_end --> [*]

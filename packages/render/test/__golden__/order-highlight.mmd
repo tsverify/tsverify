@@ -1,0 +1,18 @@
+stateDiagram-v2
+  draft
+  pending_payment
+  paid
+  shipped
+  refunded
+  cancelled
+  [*] --> draft
+  draft --> pending_payment: checkout · customer (owner)
+  pending_payment --> cancelled: expire · system · after 30m
+  pending_payment --> paid: payment_succeeded · stripe · ⟳ idempotent · email.receipt ×1
+  paid --> refunded: ▶ refund · admin · stripe.refund ×1
+  paid --> shipped: ship · admin
+  shipped --> [*]
+  refunded --> [*]
+  cancelled --> [*]
+  classDef highlight fill:#fef3c7,stroke:#d97706,stroke-width:3px
+  class paid,refunded highlight
