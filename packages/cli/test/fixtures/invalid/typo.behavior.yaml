@@ -1,0 +1,19 @@
+# `ship.to` names an undeclared state (typo for `shipped`).
+behavior: Typo
+entity:
+  name: Order
+  state: status
+  states: [draft, paid, shipped]
+  initial: draft
+  terminal: [shipped]
+actors:
+  admin: { trust: internal }
+transitions:
+  pay:
+    from: draft
+    to: paid
+    by: admin
+  ship:
+    from: paid
+    to: shiped
+    by: admin

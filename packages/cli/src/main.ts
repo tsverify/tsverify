@@ -1,6 +1,7 @@
 import { type CAC, type Command, cac } from "cac";
 import pkg from "../package.json" with { type: "json" };
 import { schemaCommand } from "./commands/schema";
+import { validateCommand } from "./commands/validate";
 import { ExitCode, UsageError } from "./exit-codes";
 import { helpText } from "./help";
 import type { Io } from "./io";
@@ -54,6 +55,10 @@ function program(io: Io): CAC {
   // console themselves.
   cli.option("-h, --help", "Display this message");
   cli.option("-v, --version", "Display version number");
+
+  cli
+    .command("validate [...paths]", "Parse and validate behavior specs (files or directories)")
+    .action((paths: string[]) => validateCommand(io, paths));
 
   cli.command("schema", "Print the JSON Schema of *.behavior.yaml").action(() => schemaCommand(io));
 
