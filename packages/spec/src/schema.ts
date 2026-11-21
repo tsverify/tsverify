@@ -91,7 +91,7 @@ const rule = z
       ctx.addIssue({
         code: "custom",
         path: [extra],
-        message: `has both "${kinds[0]}" and "${extra}"; a rule must have exactly one of always, never, eventually`,
+        message: `is not allowed together with "${kinds[0]}" (a rule has exactly one of always, never, eventually)`,
       });
     }
   })
