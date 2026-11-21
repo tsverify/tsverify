@@ -28,7 +28,11 @@ importers:
 
   packages/ir: {}
 
-  packages/render: {}
+  packages/render:
+    dependencies:
+      '@tsv/ir':
+        specifier: workspace:*
+        version: link:../ir
 
   packages/spec: {}
 
