@@ -1,8 +1,6 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { CANONICAL_DIR, CANONICAL_SPEC, REPO_ROOT, tsv } from "./run";
-
-const INVALID = "packages/cli/test/fixtures/invalid/typo.behavior.yaml";
+import { CANONICAL_DIR, CANONICAL_SPEC, INVALID_SPEC, REPO_ROOT, tsv } from "./run";
 
 describe("validate", () => {
   it("accepts the canonical spec directory", async () => {
@@ -19,9 +17,9 @@ describe("validate", () => {
   });
 
   it("rejects an invalid spec with exit 2 and a cwd-relative location", async () => {
-    const r = await tsv(["validate", INVALID]);
+    const r = await tsv(["validate", INVALID_SPEC]);
     expect(r.code).toBe(2);
-    expect(r.stdout).toContain(`✗ invalid-spec  ${INVALID}:18:9`);
+    expect(r.stdout).toContain(`✗ invalid-spec  ${INVALID_SPEC}:18:9`);
     expect(r.stdout).toContain('unknown state "shiped"');
     expect(r.stdout).toContain("✗ 1 spec, 1 error, 0 warnings\n");
   });
@@ -35,7 +33,7 @@ describe("validate", () => {
   });
 
   it("validates files and directories together, each file once", async () => {
-    const r = await tsv(["validate", INVALID, CANONICAL_SPEC, "packages/cli/test/fixtures"]);
+    const r = await tsv(["validate", INVALID_SPEC, CANONICAL_SPEC, "packages/cli/test/fixtures"]);
     expect(r.code).toBe(2);
     expect(r.stdout).toContain("✗ 2 specs, 1 error, 0 warnings");
   });
@@ -59,24 +57,24 @@ describe("colors", () => {
   const ANSI = new RegExp(`${String.fromCharCode(27)}\\[\\d+m`);
 
   it("are on for a TTY with NO_COLOR unset", async () => {
-    const r = await tsv(["validate", INVALID], { isTTY: true, env: {} });
+    const r = await tsv(["validate", INVALID_SPEC], { isTTY: true, env: {} });
     expect(r.stdout).toMatch(ANSI);
   });
 
   it("are off when NO_COLOR is set", async () => {
-    const r = await tsv(["validate", INVALID], { isTTY: true, env: { NO_COLOR: "1" } });
+    const r = await tsv(["validate", INVALID_SPEC], { isTTY: true, env: { NO_COLOR: "1" } });
     expect(r.stdout).not.toMatch(ANSI);
   });
 
   it("are off when stdout is not a TTY", async () => {
-    const r = await tsv(["validate", INVALID], { isTTY: false, env: {} });
+    const r = await tsv(["validate", INVALID_SPEC], { isTTY: false, env: {} });
     expect(r.stdout).not.toMatch(ANSI);
   });
 
   it("follow FORCE_COLOR over the TTY check", async () => {
-    const on = await tsv(["validate", INVALID], { isTTY: false, env: { FORCE_COLOR: "1" } });
+    const on = await tsv(["validate", INVALID_SPEC], { isTTY: false, env: { FORCE_COLOR: "1" } });
     expect(on.stdout).toMatch(ANSI);
-    const off = await tsv(["validate", INVALID], { isTTY: true, env: { FORCE_COLOR: "0" } });
+    const off = await tsv(["validate", INVALID_SPEC], { isTTY: true, env: { FORCE_COLOR: "0" } });
     expect(off.stdout).not.toMatch(ANSI);
   });
 });

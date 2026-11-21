@@ -1,5 +1,8 @@
+import { DEFAULT_MAX_STATES } from "@tsv/checker";
 import { type CAC, type Command, cac } from "cac";
 import pkg from "../package.json" with { type: "json" };
+import { camelCaseBooleanFlags } from "./argv";
+import { type CheckCommandOptions, checkCommand } from "./commands/check";
 import { schemaCommand } from "./commands/schema";
 import { validateCommand } from "./commands/validate";
 import { ExitCode, UsageError } from "./exit-codes";
@@ -25,7 +28,7 @@ export async function main(argv: string[], io: Io): Promise<number> {
 
 async function run(argv: string[], io: Io): Promise<number> {
   const cli = program(io);
-  cli.parse(["node", "tsv", ...argv], { run: false });
+  cli.parse(["node", "tsv", ...camelCaseBooleanFlags(argv, cli)], { run: false });
   const command = cli.matchedCommand;
 
   if (cli.options.help) {
@@ -59,6 +62,14 @@ function program(io: Io): CAC {
   cli
     .command("validate [...paths]", "Parse and validate behavior specs (files or directories)")
     .action((paths: string[]) => validateCommand(io, paths));
+
+  cli
+    .command("check [...paths]", "Validate and model-check behavior specs")
+    .option("--max-states <n>", "Stop exploring a spec after this many states", {
+      default: DEFAULT_MAX_STATES,
+    })
+    .option("--spec-only", "Check the specs only (the only mode until code extraction lands)")
+    .action((paths: string[], options: CheckCommandOptions) => checkCommand(io, paths, options));
 
   cli.command("schema", "Print the JSON Schema of *.behavior.yaml").action(() => schemaCommand(io));
 
