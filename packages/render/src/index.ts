@@ -1,3 +1,5 @@
+export type { FormatFindingsOptions, Formatter } from "./findings";
+export { formatFindings, plainFormatter } from "./findings";
 export type { PermissionCell, PermissionMatrix } from "./matrix";
 export { permissionMatrix, permissionMatrixMarkdown } from "./matrix";
 export type { Highlight, MermaidOptions } from "./mermaid";
