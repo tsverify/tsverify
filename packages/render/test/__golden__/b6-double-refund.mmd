@@ -1,0 +1,19 @@
+sequenceDiagram
+  participant checkout_1 as checkout#35;1
+  participant payment_succeeded_1 as payment_succeeded#35;1
+  participant refund_1 as refund#35;1
+  participant refund_2 as refund#35;2
+  participant Entity as Order
+  Note right of Entity: status=draft
+  checkout_1->>Entity: read → proceed
+  checkout_1->>Entity: write
+  Note right of Entity: status=pending_payment
+  payment_succeeded_1->>Entity: atomic → proceed
+  Note right of Entity: status=paid, email.receipt=1
+  refund_1->>Entity: read → proceed
+  refund_2->>Entity: read → proceed
+  refund_1->>Entity: write
+  Note right of Entity: status=refunded, stripe.refund=1
+  refund_2->>Entity: write
+  Note right of Entity: stripe.refund=2
+  Note over refund_2,Entity: ✗ effect-multiplicity#58; An exactly-once effect fires at most once per entity in every reachable state.

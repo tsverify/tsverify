@@ -1,0 +1,114 @@
+{
+  "actors": [
+    "admin",
+    "customer",
+    "stripe",
+    "system"
+  ],
+  "transitions": [
+    "checkout",
+    "expire",
+    "payment_succeeded",
+    "refund",
+    "ship"
+  ],
+  "cells": {
+    "admin": {
+      "checkout": {
+        "allowed": false,
+        "guards": []
+      },
+      "expire": {
+        "allowed": false,
+        "guards": []
+      },
+      "payment_succeeded": {
+        "allowed": false,
+        "guards": []
+      },
+      "refund": {
+        "allowed": true,
+        "guards": [
+          "role(admin)"
+        ]
+      },
+      "ship": {
+        "allowed": true,
+        "guards": [
+          "role(admin)"
+        ]
+      }
+    },
+    "customer": {
+      "checkout": {
+        "allowed": true,
+        "guards": [
+          "owner"
+        ]
+      },
+      "expire": {
+        "allowed": false,
+        "guards": []
+      },
+      "payment_succeeded": {
+        "allowed": false,
+        "guards": []
+      },
+      "refund": {
+        "allowed": false,
+        "guards": []
+      },
+      "ship": {
+        "allowed": false,
+        "guards": []
+      }
+    },
+    "stripe": {
+      "checkout": {
+        "allowed": false,
+        "guards": []
+      },
+      "expire": {
+        "allowed": false,
+        "guards": []
+      },
+      "payment_succeeded": {
+        "allowed": true,
+        "guards": []
+      },
+      "refund": {
+        "allowed": false,
+        "guards": []
+      },
+      "ship": {
+        "allowed": false,
+        "guards": []
+      }
+    },
+    "system": {
+      "checkout": {
+        "allowed": false,
+        "guards": []
+      },
+      "expire": {
+        "allowed": true,
+        "guards": []
+      },
+      "payment_succeeded": {
+        "allowed": false,
+        "guards": []
+      },
+      "refund": {
+        "allowed": false,
+        "guards": []
+      },
+      "ship": {
+        "allowed": false,
+        "guards": []
+      }
+    }
+  },
+  "untrusted": [
+    "customer"
+  ]
+}

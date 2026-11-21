@@ -1,0 +1,8 @@
+step 0  status=draft
+step 1  checkout#1 read → proceed  status=draft
+step 2  checkout#1 write  status=pending_payment
+step 3  payment_succeeded#1 atomic → proceed  status=paid  email.receipt=1
+step 4  refund#1 read → proceed  status=paid
+step 5  refund#2 read → proceed  status=paid
+step 6  refund#1 write  status=refunded  stripe.refund=1
+step 7  refund#2 write  status=refunded  stripe.refund=2  ✗ effect-multiplicity

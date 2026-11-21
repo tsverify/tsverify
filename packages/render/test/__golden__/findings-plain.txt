@@ -1,0 +1,33 @@
+Inventory
+  ⚠ spec-property  /elsewhere/inventory.behavior.yaml:8:3
+    State 'archived' is not reachable from 'active'.
+
+Order lifecycle
+  ✗ guard-not-dominating  src/orders/order.behavior.yaml:45:5 · src/orders/refund.ts:19:3
+    refund: requireRole('admin') does not dominate the write (early-return branch).
+  ✗ spec-property  src/orders/order.behavior.yaml:52:5
+    Two parallel refunds both pass the paid check, so stripe.refund fires twice.
+    hint: Mark refund atomic: true, or make the
+          stripe.refund call idempotent.
+    trace:
+      step 0  status=draft
+      step 1  checkout#1 read → proceed  status=draft
+      step 2  checkout#1 write  status=pending_payment
+      step 3  payment_succeeded#1 atomic → proceed  status=paid  email.receipt=1
+      step 4  refund#1 read → proceed  status=paid
+      step 5  refund#2 read → proceed  status=paid
+      step 6  refund#1 write  status=refunded  stripe.refund=1
+      step 7  refund#2 write  status=refunded  stripe.refund=2  ✗ effect-multiplicity
+  ⚠ non-atomic  src/orders/order.behavior.yaml:50:5 · src/orders/refund.ts:12:3
+    refund: the status read and the write are separate awaits; the spec says atomic.
+  ⚠ spec-property
+    A warning without any location sorts after located warnings.
+  ℹ unanalyzable  src/orders/legacy.ts:3:1
+    Could not follow a dynamic call; effects of refundLegacy were not analyzed.
+
+(no behavior)
+  ✗ invalid-spec  src/bad.behavior.yaml:3:9
+    Unknown state 'shiped' in transition ship.
+    Did you mean 'shipped'?
+
+3 errors · 3 warnings · 1 info
