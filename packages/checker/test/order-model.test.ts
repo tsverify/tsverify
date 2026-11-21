@@ -18,18 +18,6 @@ function transition(model: BehaviorModel, name: string): Transition {
   return t;
 }
 
-/**
- * The canonical model with `checkout` made atomic. As written, `checkout` is non-atomic with
- * concurrency 2, so a stale second write can move a paid order back to `pending_payment` and
- * re-fire payment and refund (see "canonical model as written"). Variants start from this
- * baseline so that each test's findings come from the change it makes.
- */
-function baseline(): BehaviorModel {
-  const m = orderModel();
-  transition(m, "checkout").atomic = true;
-  return m;
-}
-
 function byProperty(findings: readonly Finding[], property: string): Finding[] {
   return findings.filter((f) => f.property === property);
 }
@@ -91,15 +79,19 @@ function expectConsistent(trace: Trace): void {
 }
 
 describe("canonical Order model", () => {
-  it("baseline (checkout atomic) has no errors and no warnings", () => {
-    const { findings, stats } = check(baseline());
+  it("has no errors and no warnings", () => {
+    const { findings, stats } = check(orderModel());
     expect(findings).toEqual([]);
     expect(stats).toMatchObject({ states: 6, edges: 5, complete: true, boundLimitedDeadlocks: 0 });
     expect(stats.durationMs).toBeGreaterThanOrEqual(0);
   });
 
-  it("as written, finds the checkout lost-update race", () => {
-    const { findings, stats } = check(orderModel());
+  it("with checkout non-atomic, finds the lost-update race", () => {
+    // A stale second checkout write moves a paid order back to pending_payment and re-fires
+    // payment and refund.
+    const m = orderModel();
+    transition(m, "checkout").atomic = false;
+    const { findings, stats } = check(m);
     expect(stats).toMatchObject({ states: 38, complete: true });
     expect(findings.map((f) => f.id)).toEqual([
       `spec-property:Order lifecycle:${REFUND_RULE}`,
@@ -124,7 +116,7 @@ describe("canonical Order model", () => {
 
 describe("B6: refund missing atomic: true", () => {
   function b6(): BehaviorModel {
-    const m = baseline();
+    const m = orderModel();
     transition(m, "refund").atomic = false;
     return m;
   }
@@ -142,16 +134,6 @@ describe("B6: refund missing atomic: true", () => {
       transition: "refund",
       hint: "mark `refund` atomic: true, or make its state write conditional",
     });
-  });
-
-  it("also reports both on the canonical model as written", () => {
-    const m = orderModel();
-    transition(m, "refund").atomic = false;
-    const { findings } = check(m);
-    expect(byProperty(findings, REFUND_RULE)).toHaveLength(1);
-    expect(byProperty(findings, "effect-multiplicity").map((f) => f.id)).toContain(
-      "spec-property:Order lifecycle:effect-multiplicity:stripe.refund",
-    );
   });
 
   it("produces the shortest read, read, write, write counterexample", async () => {
@@ -185,7 +167,7 @@ describe("code-origin duplicate webhook (B4 analogue)", () => {
   const RECEIPT_ID = "implementation-property:Order lifecycle:effect-multiplicity:email.receipt";
 
   it("reports implementation-property effect-multiplicity with a duplicate delivery", () => {
-    const m = baseline();
+    const m = orderModel();
     m.origin = "code";
     transition(m, "payment_succeeded").from = "*";
     const { findings } = check(m);
@@ -203,7 +185,7 @@ describe("code-origin duplicate webhook (B4 analogue)", () => {
   });
 
   it("points codeAt at the effect call site when the extractor recorded one", () => {
-    const m = baseline();
+    const m = orderModel();
     m.origin = "code";
     const ps = transition(m, "payment_succeeded");
     ps.from = "*";
@@ -215,7 +197,7 @@ describe("code-origin duplicate webhook (B4 analogue)", () => {
 
 describe("no-stuck-states", () => {
   it("reports a reachable non-terminal state with no way out", () => {
-    const m = baseline();
+    const m = orderModel();
     m.entity.states.push("on_hold");
     m.transitions.push({
       name: "hold",
@@ -245,7 +227,7 @@ describe("no-stuck-states", () => {
 
 describe("reachable", () => {
   it("warns about a declared state that is never reached", () => {
-    const m = baseline();
+    const m = orderModel();
     m.entity.states.push("archived");
     const { findings } = check(m);
     expect(findings).toHaveLength(1);
@@ -258,7 +240,7 @@ describe("reachable", () => {
   });
 
   it("is not checked on code models", () => {
-    const m = baseline();
+    const m = orderModel();
     m.origin = "code";
     m.entity.states.push("archived");
     expect(check(m).findings).toEqual([]);
@@ -267,7 +249,7 @@ describe("reachable", () => {
 
 describe("structural lints", () => {
   it("untrusted-guarded: an unguarded transition by an untrusted actor", () => {
-    const m = baseline();
+    const m = orderModel();
     const at = { file: "order.behavior.yaml", line: 19, column: 3 };
     Object.assign(transition(m, "checkout"), { requires: [], at });
     const { findings } = check(m);
@@ -283,14 +265,14 @@ describe("structural lints", () => {
   });
 
   it("untrusted-guarded: an actor-level guard is enough", () => {
-    const m = baseline();
+    const m = orderModel();
     transition(m, "checkout").requires = [];
     m.actors.customer?.requires.push({ name: "owner", args: [], raw: "owner" });
     expect(check(m).findings).toEqual([]);
   });
 
   it("webhook-idempotent: a signed-webhook transition that is not idempotent", () => {
-    const m = baseline();
+    const m = orderModel();
     transition(m, "payment_succeeded").idempotent = false;
     const { findings } = check(m);
     expect(findings.map((f) => f.id)).toEqual([
@@ -299,7 +281,7 @@ describe("structural lints", () => {
   });
 
   it("lints only spec models", () => {
-    const m = baseline();
+    const m = orderModel();
     m.origin = "code";
     transition(m, "checkout").requires = [];
     transition(m, "payment_succeeded").idempotent = false;
@@ -309,7 +291,7 @@ describe("structural lints", () => {
 
 describe("eventually (AG EF)", () => {
   it("reports a genuine deadlock where the expression never holds", () => {
-    const m = baseline();
+    const m = orderModel();
     // Without expire and payment_succeeded, pending_payment has no way out.
     m.transitions = m.transitions.filter(
       (t) => t.name !== "expire" && t.name !== "payment_succeeded",
@@ -344,6 +326,7 @@ describe("eventually (AG EF)", () => {
     // expire invocations are used up. Another invocation would make progress, so it's the bound,
     // not the design: counted, never reported.
     const m = orderModel();
+    transition(m, "checkout").atomic = false;
     m.concurrency = { checkout: 3, expire: 1, payment_succeeded: 1, refund: 2, ship: 2 };
     const { findings, stats } = check(m);
     expect(stats.boundLimitedDeadlocks).toBeGreaterThan(0);
@@ -355,6 +338,7 @@ describe("eventually (AG EF)", () => {
 describe("state limit", () => {
   it("stops at maxStates with an unanalyzable warning", () => {
     const m = orderModel();
+    transition(m, "checkout").atomic = false; // 38 states, so a limit of 10 is hit
     const { findings, stats } = check(m, { maxStates: 10 });
     expect(stats).toMatchObject({ states: 10, complete: false });
     const limit = findings.filter((f) => f.category === "unanalyzable");
@@ -372,7 +356,7 @@ describe("state limit", () => {
 
 describe("rule metadata", () => {
   it("carries the rule location and a stable id", () => {
-    const m = baseline();
+    const m = orderModel();
     transition(m, "refund").atomic = false;
     const at = { file: "order.behavior.yaml", line: 60, column: 5 };
     Object.assign(m.rules[0] ?? {}, { at });

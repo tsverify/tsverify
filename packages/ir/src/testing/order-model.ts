@@ -36,7 +36,7 @@ export function orderModel(): BehaviorModel {
         by: ["customer"],
         requires: [{ name: "owner", args: [], raw: "owner" }],
         effects: [],
-        atomic: false,
+        atomic: true,
         idempotent: false,
         impl: { file: "src/orders/checkout.ts", symbol: "checkout" },
       },

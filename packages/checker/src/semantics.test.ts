@@ -4,8 +4,11 @@ import { describe, expect, it } from "vitest";
 import { buildLayout, decodeState, initialState, STATUS } from "./encode";
 import { type Action, applyAction, buildActions, isBudgetLimited, isEnabled } from "./semantics";
 
+/** The canonical model with `checkout` non-atomic, so both action shapes are exercised. */
 function model(): BehaviorModel {
   const m = orderModel();
+  const checkout = m.transitions.find((t) => t.name === "checkout");
+  if (checkout) checkout.atomic = false;
   m.rules.push({
     name: "few receipts",
     kind: "always",
