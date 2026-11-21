@@ -1,0 +1,109 @@
+# Behavior file format (v1)
+
+`*.behavior.yaml` files describe intended behavior. `@tsv/spec` (zod schema in `packages/spec/src/schema.ts`) is the
+executable source of truth; this page is its human reference. Canonical example:
+[`packages/spec/test/fixtures/valid/order.behavior.yaml`](../packages/spec/test/fixtures/valid/order.behavior.yaml).
+
+## Top level
+
+| Key | Required | Type | IR (`@tsv/ir` `BehaviorModel`) |
+|---|---|---|---|
+| `behavior` | yes | string | `name` |
+| `summary` | no | string | `summary` |
+| `kind` | no | `entity` (only value in v1; default) | `kind` |
+| `entity` | yes | object | `entity` |
+| `actors` | yes | map name → actor | `actors` |
+| `transitions` | yes | map name → transition | `transitions` (sorted by name) |
+| `rules` | no | list | `rules` (default `[]`) |
+| `concurrency` | no | object | `concurrency` (resolved per transition) |
+| `bindings` | no | object | `bindings` (defaults: empty maps) |
+
+Unknown keys are an error (`invalid-spec`), so typos never silently pass.
+
+## `entity`
+
+| Key | Required | Notes |
+|---|---|---|
+| `name` | yes | |
+| `state` | yes | code field holding the state → `stateField` |
+| `states` | yes | non-empty, unique |
+| `initial` | yes | must be in `states` |
+| `terminal` | no | each must be in `states`; default `[]` |
+
+## `actors.<name>`
+
+| Key | Required | Notes |
+|---|---|---|
+| `trust` | yes | `untrusted` \| `authenticated` \| `signed-webhook` \| `internal` |
+| `requires` | no | guard or list of guards (see Guards); default `[]` |
+
+## `transitions.<name>`
+
+| Key | Required | Default | Notes |
+|---|---|---|---|
+| `from` | yes | | state, list of states, or `"*"` |
+| `to` | yes | | state |
+| `by` | yes | | actor or list of actors |
+| `requires` | no | `[]` | guard or list of guards |
+| `effects` | no | `[]` | list; each item is `name` (→ `exactly-once`) or `{ name: multiplicity }` with multiplicity `exactly-once` \| `at-least-once` \| `idempotent` |
+| `atomic` | no | `false` | state check + write are one indivisible step |
+| `idempotent` | no | `false` | the event may be delivered more than once |
+| `after` | no | | duration like `30m`, `2h`, `7d` (informational) |
+| `impl` | no | | `path/to/file.ts#symbol` |
+
+## Guards
+
+`name` or `name(arg, …)`, e.g. `owner`, `role(admin)`. Canonical form (`GuardRef.raw`) has no inner spaces
+around the parens and `", "` between args. Bindings are keyed by the canonical form.
+
+## `rules[]`
+
+Each item has `name` plus **exactly one** of `always`, `never`, `eventually`, whose value is an expression:
+
+```
+expr    := implies
+implies := or ( "implies" or )*          (right-associative)
+or      := and ( "or" and )*
+and     := not ( "and" not )*
+not     := "not" not | atom
+atom    := "status" ("==" | "!=") STATE
+         | "status" "in" "[" STATE ("," STATE)* "]"
+         | "count" "(" "effect" EFFECT ")" CMP INT
+         | "true" | "false"
+         | "(" expr ")"
+CMP     := "==" | "!=" | "<" | "<=" | ">" | ">="
+STATE   := identifier (must be a declared state)
+EFFECT  := dotted identifier (must be an effect declared on some transition)
+```
+
+Semantics: `always` holds in every reachable state; `never` holds in none; `eventually` means from every reachable
+state a satisfying state is reachable (AG EF — weaker than LTL with fairness).
+
+## `concurrency`
+
+| Key | Default | Notes |
+|---|---|---|
+| `default` | `2` | invocations explored per transition |
+| `max_parallel` | `{}` | map transition → positive integer, overrides `default` |
+
+## `bindings`
+
+| Key | Notes |
+|---|---|
+| `persistence` | `assign` \| `prisma` \| `drizzle`; omitted → auto-detected |
+| `clients` | map name → `{ module, export }` |
+| `guards` | map canonical guard → `path#symbol` or `path#symbol(args)` |
+| `effects` | map effect name → code call path (`client.member.path`); omitted → name is the path |
+
+## Semantic validation (beyond the schema)
+
+All reported as `invalid-spec` with the YAML location:
+
+- `initial`, `terminal`, every `from`/`to` refer to declared states
+- every `by` refers to a declared actor
+- `max_parallel` keys refer to declared transitions
+- rule `STATE`s are declared; rule `EFFECT`s are declared on some transition
+- effect names are unique within a transition
+- every guard used in `requires` (transition or actor) has a binding **if** `bindings.guards` is non-empty
+  (a spec with no guard bindings at all is allowed — e.g. a design-only spec)
+- terminal states have no outgoing transitions (warning, not error)
