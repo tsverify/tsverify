@@ -87,4 +87,10 @@ export const LIMITS: readonly Expectation[] = [
   { caseId: "limit14_loopContinue", title: "L14 loop + continue", expected: ["paid"] },
   { caseId: "limit15_OrderEntity", title: "L15 this.status", expected: ["paid", "shipped"] },
   { caseId: "limit16_switchTrue", title: "L16 switch (true)", expected: ["paid"] },
+  {
+    caseId: "limit17_mutatedByCall",
+    title: "L17 mutated by a call in between",
+    expected: ["paid"],
+    truth: ["draft"],
+  },
 ];

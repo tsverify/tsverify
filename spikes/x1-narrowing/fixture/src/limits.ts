@@ -146,3 +146,14 @@ export function limit16_switchTrue(order: Order): void {
       throw new NotRefundable(order.status);
   }
 }
+
+// L17. A call between guard and write mutates the order. TS keeps the narrowing (it does
+// not invalidate property narrowings on calls), so the answer is unsound: truth is {draft}.
+function reopen(o: Order): void {
+  o.status = "draft";
+}
+export function limit17_mutatedByCall(order: Order): void {
+  if (order.status !== "paid") throw new NotRefundable(order.status);
+  reopen(order);
+  order.status = "refunded";
+}

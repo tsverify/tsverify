@@ -94,6 +94,7 @@ for (const { id } of TECHNIQUES) {
 
 // --- T2: probe-first (inject before the first checker query) --------------------------------
 const probeTypes = new Map<string, string>();
+let probedDiagnostics: string[] = [];
 {
   const [project, load] = time(() => loadProject());
   const [sites, inject] = time(() => probeFirst(project));
@@ -108,6 +109,7 @@ const probeTypes = new Map<string, string>();
   timings.set("probe", { load: load + inject, first, avgRest: rest / (sites.length - 1) });
   const checker = project.getTypeChecker().compilerObject;
   for (const s of sites) probeTypes.set(s.caseId, checker.typeToString(probeType(project, s)));
+  probedDiagnostics = project.getPreEmitDiagnostics().map((d) => `TS${d.getCode()}`);
 
   // Post-hoc probes must agree with probe-first.
   const pristine = loadProject();
@@ -147,7 +149,7 @@ function table(title: string, rows: readonly Expectation[]) {
     const ok7 = got7 !== undefined && sameSet(got7, e.expected);
     if (ok7) score.set("tsgo", (score.get("tsgo") ?? 0) + 1);
     cells.push(got7 === undefined ? "n/a" : `${ok7 ? "ok" : "**X**"} ${renderSet(got7, domain)}`);
-    const raw = `\`${probeTypes.get(e.caseId)}\``;
+    const raw = `\`${probeTypes.get(e.caseId)?.replaceAll("|", "\\|")}\``;
     console.log(
       `| ${e.title} | ${renderSet(e.expected, domain)}${truth} | ${cells.join(" | ")} | ${raw} |`,
     );
@@ -253,6 +255,9 @@ if (SCALE > 0) {
 // --- sanity -----------------------------------------------------------------------------------
 const diags = loadProject().getPreEmitDiagnostics();
 console.log(`\nFixture diagnostics: ${diags.length} (expected 0)`);
+console.log(
+  `Probed-program diagnostics: ${probedDiagnostics.length} ${probedDiagnostics.join(" ")}`,
+);
 for (const d of diags) {
   console.log(`  ${d.getSourceFile()?.getBaseName()}:${d.getLineNumber()} ${d.getMessageText()}`);
 }

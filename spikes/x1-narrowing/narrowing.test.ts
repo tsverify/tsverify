@@ -14,10 +14,11 @@ import { runTs7 } from "./ts7.ts";
 
 // Recommended technique: probe injection, probe-first (inject before the first check).
 describe("X1 probe injection (probe-first)", () => {
+  let project: Project;
   let answers: Map<string, FromSet>;
 
   beforeAll(() => {
-    const project = loadProject();
+    project = loadProject();
     const sites = probeFirst(project);
     answers = new Map(sites.map((s) => [s.caseId, probeAnswer(project, s)]));
   });
@@ -37,6 +38,10 @@ describe("X1 probe injection (probe-first)", () => {
 
   it.each(LIMITS)("limit: $title", ({ caseId, expected }) => {
     expect(answers.get(caseId)).toEqual(expected);
+  });
+
+  it("probes add no diagnostics to the program", () => {
+    expect(project.getPreEmitDiagnostics()).toHaveLength(0);
   });
 });
 
