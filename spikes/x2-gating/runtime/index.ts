@@ -8,6 +8,13 @@ export {
   type WorkerSnapshot,
 } from "./divergence";
 export {
+  planFromTrace,
+  type ReplayMapping,
+  type ReplayVerdict,
+  replayVerdict,
+  type TraceReplayPlan,
+} from "./from-trace";
+export {
   type EffectsFake,
   type EffectsOptions,
   instrument,
