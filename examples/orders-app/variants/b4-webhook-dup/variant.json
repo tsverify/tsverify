@@ -1,0 +1,17 @@
+{
+  "id": "b4-webhook-dup",
+  "bug": "onPaymentSucceeded sets paid and sends the receipt without checking the current status, so a redelivery sends it twice.",
+  "expected": [
+    {
+      "category": "from-state-unconstrained",
+      "transition": "payment_succeeded",
+      "file": "src/payments/webhook.ts"
+    },
+    {
+      "category": "implementation-property",
+      "transition": "payment_succeeded",
+      "property": "effect-multiplicity",
+      "subject": "email.receipt"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "id": "b5-undeclared-effect",
+  "bug": "expireOrder also calls stripe.refunds.create, an effect the spec does not declare for expire.",
+  "expected": [
+    { "category": "undeclared-effect", "transition": "expire", "file": "src/jobs/expire-orders.ts" }
+  ]
+}

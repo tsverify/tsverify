@@ -24,6 +24,15 @@ importers:
         specifier: 4.1.12
         version: 4.1.12(@types/node@20.19.43)(vite@8.3.8(@types/node@20.19.43)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
+  examples/orders-app:
+    devDependencies:
+      '@tsv/ir':
+        specifier: workspace:*
+        version: link:../../packages/ir
+      '@tsv/spec':
+        specifier: workspace:*
+        version: link:../../packages/spec
+
   packages/checker:
     dependencies:
       '@tsv/ir':

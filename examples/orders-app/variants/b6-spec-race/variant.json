@@ -1,0 +1,13 @@
+{
+  "id": "b6-spec-race",
+  "bug": "The spec marks refund atomic: false while a rule says refunds happen at most once; the code is unchanged and correct.",
+  "expected": [
+    {
+      "category": "spec-property",
+      "transition": "refund",
+      "property": "effect-multiplicity",
+      "subject": "stripe.refund"
+    },
+    { "category": "spec-property", "property": "rule:Refund issued at most once per order" }
+  ]
+}
