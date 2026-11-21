@@ -13,7 +13,8 @@ export const BUILTIN_PROPERTIES = {
   },
   "no-stuck-states": {
     severity: "error",
-    description: "From every reachable state, some terminal state is still reachable.",
+    description:
+      "No reachable non-terminal state is a genuine dead end (no transition leaves it). Dead ends caused only by exhausted invocation bounds are not reported.",
   },
   "effect-multiplicity": {
     severity: "error",

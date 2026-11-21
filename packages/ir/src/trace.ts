@@ -5,7 +5,9 @@ import type { ModelOrigin } from "./model";
  * - idle:     not started
  * - checked:  (non-atomic only) has read a state in `from`, write pending
  * - done:     completed its write
- * - rejected: read a state outside `from`; no effect
+ * - rejected: read a state outside `from`; no effect. Reserved for traces observed from real
+ *             runs (replay): the built-in checker treats failed attempts as no-ops and never
+ *             produces this phase.
  */
 export type WorkerPhase = "idle" | "checked" | "done" | "rejected";
 
@@ -32,7 +34,10 @@ export interface TraceAction {
   worker: string;
   transition: string;
   kind: TraceActionKind;
-  /** For `read` and `atomic`: whether the state check passed. */
+  /**
+   * For `read` and `atomic`: whether the state check passed. The built-in checker only emits
+   * enabled actions, so it never produces `"rejected"`; replayed real runs may.
+   */
   outcome?: "proceed" | "rejected";
   duplicate?: boolean;
 }
