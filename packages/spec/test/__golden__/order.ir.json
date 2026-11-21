@@ -1,0 +1,390 @@
+{
+  "kind": "entity",
+  "name": "Order lifecycle",
+  "summary": "A customer checks out and pays; an admin ships or refunds; unpaid orders expire.",
+  "origin": "spec",
+  "file": "test/fixtures/valid/order.behavior.yaml",
+  "entity": {
+    "name": "Order",
+    "stateField": "status",
+    "states": [
+      "draft",
+      "pending_payment",
+      "paid",
+      "shipped",
+      "refunded",
+      "cancelled"
+    ],
+    "initial": "draft",
+    "terminal": [
+      "shipped",
+      "refunded",
+      "cancelled"
+    ],
+    "at": {
+      "file": "test/fixtures/valid/order.behavior.yaml",
+      "line": 5,
+      "column": 1,
+      "endLine": 10,
+      "endColumn": 43
+    }
+  },
+  "actors": {
+    "admin": {
+      "name": "admin",
+      "trust": "authenticated",
+      "requires": [
+        {
+          "name": "role",
+          "args": [
+            "admin"
+          ],
+          "raw": "role(admin)"
+        }
+      ],
+      "at": {
+        "file": "test/fixtures/valid/order.behavior.yaml",
+        "line": 14,
+        "column": 3,
+        "endLine": 14,
+        "endColumn": 57
+      }
+    },
+    "customer": {
+      "name": "customer",
+      "trust": "untrusted",
+      "requires": [],
+      "at": {
+        "file": "test/fixtures/valid/order.behavior.yaml",
+        "line": 13,
+        "column": 3,
+        "endLine": 13,
+        "endColumn": 33
+      }
+    },
+    "stripe": {
+      "name": "stripe",
+      "trust": "signed-webhook",
+      "requires": [],
+      "at": {
+        "file": "test/fixtures/valid/order.behavior.yaml",
+        "line": 15,
+        "column": 3,
+        "endLine": 15,
+        "endColumn": 36
+      }
+    },
+    "system": {
+      "name": "system",
+      "trust": "internal",
+      "requires": [],
+      "at": {
+        "file": "test/fixtures/valid/order.behavior.yaml",
+        "line": 16,
+        "column": 3,
+        "endLine": 16,
+        "endColumn": 30
+      }
+    }
+  },
+  "transitions": [
+    {
+      "name": "checkout",
+      "from": [
+        "draft"
+      ],
+      "to": "pending_payment",
+      "by": [
+        "customer"
+      ],
+      "requires": [
+        {
+          "name": "owner",
+          "args": [],
+          "raw": "owner"
+        }
+      ],
+      "effects": [],
+      "atomic": false,
+      "idempotent": false,
+      "impl": {
+        "file": "src/orders/checkout.ts",
+        "symbol": "checkout"
+      },
+      "at": {
+        "file": "test/fixtures/valid/order.behavior.yaml",
+        "line": 19,
+        "column": 3,
+        "endLine": 24,
+        "endColumn": 42
+      }
+    },
+    {
+      "name": "expire",
+      "from": [
+        "pending_payment"
+      ],
+      "to": "cancelled",
+      "by": [
+        "system"
+      ],
+      "requires": [],
+      "effects": [],
+      "atomic": true,
+      "idempotent": false,
+      "after": "30m",
+      "impl": {
+        "file": "src/jobs/expire-orders.ts",
+        "symbol": "expireOrder"
+      },
+      "at": {
+        "file": "test/fixtures/valid/order.behavior.yaml",
+        "line": 36,
+        "column": 3,
+        "endLine": 42,
+        "endColumn": 48
+      }
+    },
+    {
+      "name": "payment_succeeded",
+      "from": [
+        "pending_payment"
+      ],
+      "to": "paid",
+      "by": [
+        "stripe"
+      ],
+      "requires": [],
+      "effects": [
+        {
+          "name": "email.receipt",
+          "multiplicity": "exactly-once",
+          "at": {
+            "file": "test/fixtures/valid/order.behavior.yaml",
+            "line": 33,
+            "column": 9,
+            "endLine": 33,
+            "endColumn": 36
+          }
+        }
+      ],
+      "atomic": true,
+      "idempotent": true,
+      "impl": {
+        "file": "src/payments/webhook.ts",
+        "symbol": "onPaymentSucceeded"
+      },
+      "at": {
+        "file": "test/fixtures/valid/order.behavior.yaml",
+        "line": 26,
+        "column": 3,
+        "endLine": 34,
+        "endColumn": 53
+      }
+    },
+    {
+      "name": "refund",
+      "from": [
+        "paid"
+      ],
+      "to": "refunded",
+      "by": [
+        "admin"
+      ],
+      "requires": [],
+      "effects": [
+        {
+          "name": "stripe.refund",
+          "multiplicity": "exactly-once",
+          "at": {
+            "file": "test/fixtures/valid/order.behavior.yaml",
+            "line": 57,
+            "column": 9,
+            "endLine": 57,
+            "endColumn": 36
+          }
+        }
+      ],
+      "atomic": true,
+      "idempotent": false,
+      "impl": {
+        "file": "src/orders/refund.ts",
+        "symbol": "refundOrder"
+      },
+      "at": {
+        "file": "test/fixtures/valid/order.behavior.yaml",
+        "line": 51,
+        "column": 3,
+        "endLine": 58,
+        "endColumn": 43
+      }
+    },
+    {
+      "name": "ship",
+      "from": [
+        "paid"
+      ],
+      "to": "shipped",
+      "by": [
+        "admin"
+      ],
+      "requires": [],
+      "effects": [],
+      "atomic": true,
+      "idempotent": false,
+      "impl": {
+        "file": "src/admin/orders.ts",
+        "symbol": "shipOrder"
+      },
+      "at": {
+        "file": "test/fixtures/valid/order.behavior.yaml",
+        "line": 44,
+        "column": 3,
+        "endLine": 49,
+        "endColumn": 40
+      }
+    }
+  ],
+  "rules": [
+    {
+      "name": "Refund issued at most once per order",
+      "kind": "always",
+      "expr": {
+        "type": "effect-count",
+        "effect": "stripe.refund",
+        "op": "<=",
+        "value": 1
+      },
+      "source": "count(effect stripe.refund) <= 1",
+      "at": {
+        "file": "test/fixtures/valid/order.behavior.yaml",
+        "line": 61,
+        "column": 5,
+        "endLine": 62,
+        "endColumn": 45
+      }
+    },
+    {
+      "name": "Unpaid orders don't linger",
+      "kind": "eventually",
+      "expr": {
+        "type": "status-cmp",
+        "op": "!=",
+        "value": "pending_payment"
+      },
+      "source": "status != pending_payment",
+      "at": {
+        "file": "test/fixtures/valid/order.behavior.yaml",
+        "line": 63,
+        "column": 5,
+        "endLine": 64,
+        "endColumn": 42
+      }
+    },
+    {
+      "name": "Shipped orders are never refunded",
+      "kind": "never",
+      "expr": {
+        "type": "and",
+        "left": {
+          "type": "status-cmp",
+          "op": "==",
+          "value": "shipped"
+        },
+        "right": {
+          "type": "effect-count",
+          "effect": "stripe.refund",
+          "op": ">",
+          "value": 0
+        }
+      },
+      "source": "status == shipped and count(effect stripe.refund) > 0",
+      "at": {
+        "file": "test/fixtures/valid/order.behavior.yaml",
+        "line": 65,
+        "column": 5,
+        "endLine": 66,
+        "endColumn": 65
+      }
+    }
+  ],
+  "concurrency": {
+    "checkout": 2,
+    "expire": 2,
+    "payment_succeeded": 2,
+    "refund": 2,
+    "ship": 2
+  },
+  "bindings": {
+    "persistence": "assign",
+    "clients": {
+      "db": {
+        "module": "src/db.ts",
+        "export": "db",
+        "at": {
+          "file": "test/fixtures/valid/order.behavior.yaml",
+          "line": 76,
+          "column": 5,
+          "endLine": 76,
+          "endColumn": 42
+        }
+      },
+      "email": {
+        "module": "src/notify/email.ts",
+        "export": "email",
+        "at": {
+          "file": "test/fixtures/valid/order.behavior.yaml",
+          "line": 78,
+          "column": 5,
+          "endLine": 78,
+          "endColumn": 58
+        }
+      },
+      "stripe": {
+        "module": "src/payments/stripe.ts",
+        "export": "stripe",
+        "at": {
+          "file": "test/fixtures/valid/order.behavior.yaml",
+          "line": 77,
+          "column": 5,
+          "endLine": 77,
+          "endColumn": 63
+        }
+      }
+    },
+    "guards": {
+      "owner": {
+        "file": "src/auth/guards.ts",
+        "symbol": "requireOwner",
+        "args": [],
+        "raw": "src/auth/guards.ts#requireOwner",
+        "at": {
+          "file": "test/fixtures/valid/order.behavior.yaml",
+          "line": 80,
+          "column": 5,
+          "endLine": 80,
+          "endColumn": 43
+        }
+      },
+      "role(admin)": {
+        "file": "src/auth/guards.ts",
+        "symbol": "requireRole",
+        "args": [
+          "admin"
+        ],
+        "raw": "src/auth/guards.ts#requireRole(\"admin\")",
+        "at": {
+          "file": "test/fixtures/valid/order.behavior.yaml",
+          "line": 81,
+          "column": 5,
+          "endLine": 81,
+          "endColumn": 57
+        }
+      }
+    },
+    "effects": {
+      "email.receipt": "email.send",
+      "stripe.refund": "stripe.refunds.create"
+    }
+  }
+}

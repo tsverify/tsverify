@@ -1,0 +1,19 @@
+# `max_parallel` overrides a transition that does not exist.
+behavior: Mini
+entity:
+  name: Order
+  state: status
+  states: [paid, refunded]
+  initial: paid
+actors:
+  admin: { trust: internal }
+transitions:
+  refund:
+    from: paid
+    to: refunded
+    by: admin
+concurrency:
+  default: 2
+  max_parallel:
+    refund: 3
+    refnd: 3

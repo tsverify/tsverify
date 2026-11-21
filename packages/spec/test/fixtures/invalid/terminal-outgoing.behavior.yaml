@@ -1,0 +1,19 @@
+# A terminal state has an outgoing transition. This is a warning: the model is still returned.
+behavior: Mini
+entity:
+  name: Order
+  state: status
+  states: [paid, shipped, refunded]
+  initial: paid
+  terminal: [shipped, refunded]
+actors:
+  admin: { trust: internal }
+transitions:
+  ship:
+    from: paid
+    to: shipped
+    by: admin
+  refund:
+    from: [paid, shipped]
+    to: refunded
+    by: admin

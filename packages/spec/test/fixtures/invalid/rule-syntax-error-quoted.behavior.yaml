@@ -1,0 +1,16 @@
+# A syntax error inside a double-quoted rule scalar: the expression is incomplete.
+behavior: Mini
+entity:
+  name: Order
+  state: status
+  states: [paid, refunded]
+  initial: paid
+actors:
+  admin: { trust: internal }
+transitions:
+  refund:
+    from: paid
+    to: refunded
+    by: admin
+rules:
+  - { name: Not stuck, eventually: "status in [refunded" }
