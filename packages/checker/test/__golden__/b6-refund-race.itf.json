@@ -1,0 +1,1221 @@
+{
+  "#meta": {
+    "format": "ITF",
+    "format-description": "https://apalache-mc.org/docs/adr/015adr-trace.html",
+    "description": "tsv counterexample: rule:Refund issued at most once per order in Order lifecycle",
+    "behavior": "Order lifecycle",
+    "model": "spec",
+    "property": "rule:Refund issued at most once per order",
+    "kind": "invariant"
+  },
+  "vars": [
+    "status",
+    "effects",
+    "workers",
+    "action"
+  ],
+  "states": [
+    {
+      "#meta": {
+        "index": 0
+      },
+      "status": "draft",
+      "effects": {
+        "#map": [
+          [
+            "email.receipt",
+            {
+              "#bigint": "0"
+            }
+          ],
+          [
+            "stripe.refund",
+            {
+              "#bigint": "0"
+            }
+          ]
+        ]
+      },
+      "workers": {
+        "#map": [
+          [
+            "checkout#1",
+            {
+              "transition": "checkout",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "checkout#2",
+            {
+              "transition": "checkout",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "expire#1",
+            {
+              "transition": "expire",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "expire#2",
+            {
+              "transition": "expire",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "payment_succeeded#1",
+            {
+              "transition": "payment_succeeded",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "payment_succeeded#2",
+            {
+              "transition": "payment_succeeded",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": true
+            }
+          ],
+          [
+            "refund#1",
+            {
+              "transition": "refund",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "refund#2",
+            {
+              "transition": "refund",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "ship#1",
+            {
+              "transition": "ship",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "ship#2",
+            {
+              "transition": "ship",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ]
+        ]
+      },
+      "action": {
+        "tag": "Init",
+        "value": {
+          "#tup": []
+        }
+      }
+    },
+    {
+      "#meta": {
+        "index": 1
+      },
+      "status": "pending_payment",
+      "effects": {
+        "#map": [
+          [
+            "email.receipt",
+            {
+              "#bigint": "0"
+            }
+          ],
+          [
+            "stripe.refund",
+            {
+              "#bigint": "0"
+            }
+          ]
+        ]
+      },
+      "workers": {
+        "#map": [
+          [
+            "checkout#1",
+            {
+              "transition": "checkout",
+              "phase": "done",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "checkout#2",
+            {
+              "transition": "checkout",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "expire#1",
+            {
+              "transition": "expire",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "expire#2",
+            {
+              "transition": "expire",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "payment_succeeded#1",
+            {
+              "transition": "payment_succeeded",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "payment_succeeded#2",
+            {
+              "transition": "payment_succeeded",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": true
+            }
+          ],
+          [
+            "refund#1",
+            {
+              "transition": "refund",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "refund#2",
+            {
+              "transition": "refund",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "ship#1",
+            {
+              "transition": "ship",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "ship#2",
+            {
+              "transition": "ship",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ]
+        ]
+      },
+      "action": {
+        "tag": "Atomic",
+        "value": {
+          "worker": "checkout#1",
+          "transition": "checkout",
+          "duplicate": false
+        }
+      }
+    },
+    {
+      "#meta": {
+        "index": 2
+      },
+      "status": "paid",
+      "effects": {
+        "#map": [
+          [
+            "email.receipt",
+            {
+              "#bigint": "1"
+            }
+          ],
+          [
+            "stripe.refund",
+            {
+              "#bigint": "0"
+            }
+          ]
+        ]
+      },
+      "workers": {
+        "#map": [
+          [
+            "checkout#1",
+            {
+              "transition": "checkout",
+              "phase": "done",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "checkout#2",
+            {
+              "transition": "checkout",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "expire#1",
+            {
+              "transition": "expire",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "expire#2",
+            {
+              "transition": "expire",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "payment_succeeded#1",
+            {
+              "transition": "payment_succeeded",
+              "phase": "done",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "payment_succeeded#2",
+            {
+              "transition": "payment_succeeded",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": true
+            }
+          ],
+          [
+            "refund#1",
+            {
+              "transition": "refund",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "refund#2",
+            {
+              "transition": "refund",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "ship#1",
+            {
+              "transition": "ship",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "ship#2",
+            {
+              "transition": "ship",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ]
+        ]
+      },
+      "action": {
+        "tag": "Atomic",
+        "value": {
+          "worker": "payment_succeeded#1",
+          "transition": "payment_succeeded",
+          "duplicate": false
+        }
+      }
+    },
+    {
+      "#meta": {
+        "index": 3
+      },
+      "status": "paid",
+      "effects": {
+        "#map": [
+          [
+            "email.receipt",
+            {
+              "#bigint": "1"
+            }
+          ],
+          [
+            "stripe.refund",
+            {
+              "#bigint": "0"
+            }
+          ]
+        ]
+      },
+      "workers": {
+        "#map": [
+          [
+            "checkout#1",
+            {
+              "transition": "checkout",
+              "phase": "done",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "checkout#2",
+            {
+              "transition": "checkout",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "expire#1",
+            {
+              "transition": "expire",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "expire#2",
+            {
+              "transition": "expire",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "payment_succeeded#1",
+            {
+              "transition": "payment_succeeded",
+              "phase": "done",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "payment_succeeded#2",
+            {
+              "transition": "payment_succeeded",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": true
+            }
+          ],
+          [
+            "refund#1",
+            {
+              "transition": "refund",
+              "phase": "checked",
+              "observed": {
+                "tag": "Some",
+                "value": "paid"
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "refund#2",
+            {
+              "transition": "refund",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "ship#1",
+            {
+              "transition": "ship",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "ship#2",
+            {
+              "transition": "ship",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ]
+        ]
+      },
+      "action": {
+        "tag": "Read",
+        "value": {
+          "worker": "refund#1",
+          "transition": "refund",
+          "duplicate": false
+        }
+      }
+    },
+    {
+      "#meta": {
+        "index": 4
+      },
+      "status": "paid",
+      "effects": {
+        "#map": [
+          [
+            "email.receipt",
+            {
+              "#bigint": "1"
+            }
+          ],
+          [
+            "stripe.refund",
+            {
+              "#bigint": "0"
+            }
+          ]
+        ]
+      },
+      "workers": {
+        "#map": [
+          [
+            "checkout#1",
+            {
+              "transition": "checkout",
+              "phase": "done",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "checkout#2",
+            {
+              "transition": "checkout",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "expire#1",
+            {
+              "transition": "expire",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "expire#2",
+            {
+              "transition": "expire",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "payment_succeeded#1",
+            {
+              "transition": "payment_succeeded",
+              "phase": "done",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "payment_succeeded#2",
+            {
+              "transition": "payment_succeeded",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": true
+            }
+          ],
+          [
+            "refund#1",
+            {
+              "transition": "refund",
+              "phase": "checked",
+              "observed": {
+                "tag": "Some",
+                "value": "paid"
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "refund#2",
+            {
+              "transition": "refund",
+              "phase": "checked",
+              "observed": {
+                "tag": "Some",
+                "value": "paid"
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "ship#1",
+            {
+              "transition": "ship",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "ship#2",
+            {
+              "transition": "ship",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ]
+        ]
+      },
+      "action": {
+        "tag": "Read",
+        "value": {
+          "worker": "refund#2",
+          "transition": "refund",
+          "duplicate": false
+        }
+      }
+    },
+    {
+      "#meta": {
+        "index": 5
+      },
+      "status": "refunded",
+      "effects": {
+        "#map": [
+          [
+            "email.receipt",
+            {
+              "#bigint": "1"
+            }
+          ],
+          [
+            "stripe.refund",
+            {
+              "#bigint": "1"
+            }
+          ]
+        ]
+      },
+      "workers": {
+        "#map": [
+          [
+            "checkout#1",
+            {
+              "transition": "checkout",
+              "phase": "done",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "checkout#2",
+            {
+              "transition": "checkout",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "expire#1",
+            {
+              "transition": "expire",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "expire#2",
+            {
+              "transition": "expire",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "payment_succeeded#1",
+            {
+              "transition": "payment_succeeded",
+              "phase": "done",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "payment_succeeded#2",
+            {
+              "transition": "payment_succeeded",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": true
+            }
+          ],
+          [
+            "refund#1",
+            {
+              "transition": "refund",
+              "phase": "done",
+              "observed": {
+                "tag": "Some",
+                "value": "paid"
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "refund#2",
+            {
+              "transition": "refund",
+              "phase": "checked",
+              "observed": {
+                "tag": "Some",
+                "value": "paid"
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "ship#1",
+            {
+              "transition": "ship",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "ship#2",
+            {
+              "transition": "ship",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ]
+        ]
+      },
+      "action": {
+        "tag": "Write",
+        "value": {
+          "worker": "refund#1",
+          "transition": "refund",
+          "duplicate": false
+        }
+      }
+    },
+    {
+      "#meta": {
+        "index": 6
+      },
+      "status": "refunded",
+      "effects": {
+        "#map": [
+          [
+            "email.receipt",
+            {
+              "#bigint": "1"
+            }
+          ],
+          [
+            "stripe.refund",
+            {
+              "#bigint": "2"
+            }
+          ]
+        ]
+      },
+      "workers": {
+        "#map": [
+          [
+            "checkout#1",
+            {
+              "transition": "checkout",
+              "phase": "done",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "checkout#2",
+            {
+              "transition": "checkout",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "expire#1",
+            {
+              "transition": "expire",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "expire#2",
+            {
+              "transition": "expire",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "payment_succeeded#1",
+            {
+              "transition": "payment_succeeded",
+              "phase": "done",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "payment_succeeded#2",
+            {
+              "transition": "payment_succeeded",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": true
+            }
+          ],
+          [
+            "refund#1",
+            {
+              "transition": "refund",
+              "phase": "done",
+              "observed": {
+                "tag": "Some",
+                "value": "paid"
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "refund#2",
+            {
+              "transition": "refund",
+              "phase": "done",
+              "observed": {
+                "tag": "Some",
+                "value": "paid"
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "ship#1",
+            {
+              "transition": "ship",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ],
+          [
+            "ship#2",
+            {
+              "transition": "ship",
+              "phase": "idle",
+              "observed": {
+                "tag": "None",
+                "value": {
+                  "#tup": []
+                }
+              },
+              "duplicate": false
+            }
+          ]
+        ]
+      },
+      "action": {
+        "tag": "Write",
+        "value": {
+          "worker": "refund#2",
+          "transition": "refund",
+          "duplicate": false
+        }
+      }
+    }
+  ]
+}
