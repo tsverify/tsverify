@@ -2,10 +2,12 @@ import { check } from "@tsv/checker";
 import { type ExitCode, exitCodeFor, UsageError } from "../exit-codes";
 import { loadSpecs, resolveSpecFiles } from "../inputs";
 import type { Io } from "../io";
-import { formatPretty } from "../output/pretty";
+import { formatReport, parseFormat } from "../output/format";
 import { allFindings, type Report, type SpecReport } from "../report";
 
 export interface CheckCommandOptions {
+  /** Raw from cac; validated by `parseFormat`. */
+  format?: unknown;
   /** Raw from cac: a number, a string, or an array when the flag is repeated. */
   maxStates?: unknown;
   /** Accepted for forward compatibility; every check is spec-only until the extractor lands. */
@@ -23,6 +25,7 @@ export async function checkCommand(
   paths: readonly string[],
   options: CheckCommandOptions,
 ): Promise<ExitCode> {
+  const format = parseFormat(options.format ?? "pretty");
   const maxStates = parseMaxStates(options.maxStates);
   const files = await resolveSpecFiles(paths, io.cwd);
   const specs = await loadSpecs(files, io.cwd);
@@ -34,7 +37,7 @@ export async function checkCommand(
   });
   const report: Report = { specs: reports, notes: [SPEC_ONLY_NOTE] };
 
-  io.stdout(formatPretty(report, io));
+  io.stdout(formatReport(report, format, io));
   return exitCodeFor(allFindings(report));
 }
 

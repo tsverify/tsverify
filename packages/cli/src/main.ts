@@ -4,14 +4,16 @@ import pkg from "../package.json" with { type: "json" };
 import { camelCaseBooleanFlags } from "./argv";
 import { type CheckCommandOptions, checkCommand } from "./commands/check";
 import { schemaCommand } from "./commands/schema";
-import { validateCommand } from "./commands/validate";
+import { type ValidateCommandOptions, validateCommand } from "./commands/validate";
 import { ExitCode, UsageError } from "./exit-codes";
 import { helpText } from "./help";
 import type { Io } from "./io";
+import { OUTPUT_FORMATS } from "./output/format";
 
 export type { Io } from "./io";
 
 const VERSION: string = pkg.version;
+const FORMAT_HELP = `Output format: ${OUTPUT_FORMATS.join(" | ")}`;
 
 /**
  * Runs `tsv` with `argv` (the arguments after the program name) and returns the exit code.
@@ -61,10 +63,14 @@ function program(io: Io): CAC {
 
   cli
     .command("validate [...paths]", "Parse and validate behavior specs (files or directories)")
-    .action((paths: string[]) => validateCommand(io, paths));
+    .option("--format <format>", FORMAT_HELP, { default: "pretty" })
+    .action((paths: string[], options: ValidateCommandOptions) =>
+      validateCommand(io, paths, options),
+    );
 
   cli
     .command("check [...paths]", "Validate and model-check behavior specs")
+    .option("--format <format>", FORMAT_HELP, { default: "pretty" })
     .option("--max-states <n>", "Stop exploring a spec after this many states", {
       default: DEFAULT_MAX_STATES,
     })
