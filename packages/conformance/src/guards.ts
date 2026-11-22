@@ -3,10 +3,9 @@ import {
   compareStrings,
   type Finding,
   type GuardRef,
-  type SourceLocation,
   type Transition,
 } from "@tsv/ir";
-import { type Pairing, pairingFinding } from "./finding";
+import { earliest, type Pairing, pairingFinding } from "./finding";
 
 interface RequiredGuard {
   guard: GuardRef;
@@ -29,10 +28,6 @@ export function requiredGuards(spec: BehaviorModel, t: Transition): RequiredGuar
   return [...byRaw.values()].sort((a, b) => compareStrings(a.guard.raw, b.guard.raw));
 }
 
-function compareLocations(a: SourceLocation, b: SourceLocation): number {
-  return compareStrings(a.file, b.file) || a.line - b.line || a.column - b.column;
-}
-
 /**
  * Every required guard must dominate the write, i.e. appear in the code transition's `requires`
  * (`ModelOrigin`: bound guards that dominate the write). `codeAt` is the earliest call of that
@@ -44,10 +39,9 @@ export function checkGuards(p: Pairing): Finding[] {
   const findings: Finding[] = [];
   for (const { guard, sources } of requiredGuards(spec, t)) {
     if (dominating.has(guard.raw)) continue;
-    const partial = sites.guards
-      .filter((g) => g.guard === guard.raw && !g.dominates)
-      .map((g) => g.at)
-      .sort(compareLocations)[0];
+    const partial = earliest(
+      sites.guards.filter((g) => g.guard === guard.raw && !g.dominates).map((g) => g.at),
+    );
     const binding = spec.bindings.guards[guard.raw];
     const call = binding === undefined ? `the ${guard.raw} guard` : binding.symbol;
     const how = partial === undefined ? "is never called" : "is called on some paths but not all";

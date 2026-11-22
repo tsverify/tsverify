@@ -1,11 +1,12 @@
-import type {
-  BehaviorModel,
-  CodeSites,
-  Finding,
-  FindingCategory,
-  Severity,
-  SourceLocation,
-  Transition,
+import {
+  type BehaviorModel,
+  type CodeSites,
+  compareStrings,
+  type Finding,
+  type FindingCategory,
+  type Severity,
+  type SourceLocation,
+  type Transition,
 } from "@tsv/ir";
 
 /**
@@ -80,4 +81,11 @@ export function formatStates(states: string[] | "*"): string {
   if (states === "*") return "any state";
   if (states.length === 1) return states[0] as string;
   return `{${states.join(", ")}}`;
+}
+
+/** The first location in file, line, column order (for a deterministic `codeAt`). */
+export function earliest(locations: SourceLocation[]): SourceLocation | undefined {
+  return [...locations].sort(
+    (a, b) => compareStrings(a.file, b.file) || a.line - b.line || a.column - b.column,
+  )[0];
 }
