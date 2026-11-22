@@ -16,7 +16,7 @@ function run(writes: Write[]) {
 }
 
 describe("effects", () => {
-  it("reports a mapped effect the spec does not declare at its call site and binding (B5)", () => {
+  it("reports a mapped effect the spec does not declare at its call site and transition (B5)", () => {
     const { spec, code } = VARIANT_CASES["b5-undeclared-effect"]();
     expect(compare(spec, code)).toEqual([
       {
@@ -27,7 +27,7 @@ describe("effects", () => {
           "expire: expireOrder calls stripe.refund (stripe.refunds.create), which the spec does not declare for expire.",
         behavior: "Order lifecycle",
         transition: "expire",
-        specAt: { file: "src/orders/order.behavior.yaml", line: 84, column: 5 },
+        specAt: { file: "src/orders/order.behavior.yaml", line: 37, column: 3 },
         codeAt: { file: "src/jobs/expire-orders.ts", line: 21, column: 11 },
         hint: "Declare stripe.refund under expire.effects, or remove the call.",
       },

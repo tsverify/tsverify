@@ -12,8 +12,8 @@ function uniqueSorted(names: string[]): string[] {
  * Effects on linked writes to other states are not counted: those writes are already
  * `undeclared-transition`.
  *
- * `specAt`: an undeclared effect points at its `bindings.effects` entry (when mapped), a missing
- * one at its declaration under `t.effects`; otherwise both fall back to `t.at`.
+ * `specAt`: a missing effect points at its declaration under `t.effects`. An undeclared one points
+ * at `t.at`, where the fix (declaring it) goes; its `bindings.effects` entry only names the gate.
  */
 export function checkEffects(p: Pairing): Finding[] {
   const { spec, t, code, sites } = p;
@@ -33,7 +33,6 @@ export function checkEffects(p: Pairing): Finding[] {
     const at = earliest(callSites.map((e) => e.at));
     const gate = callSites[0]?.gate ?? gateOf(name);
     const unmapped = !known.has(name);
-    const binding = spec.bindings.effectsAt?.[name];
     findings.push(
       pairingFinding(p, {
         category: "undeclared-effect",
@@ -45,7 +44,6 @@ export function checkEffects(p: Pairing): Finding[] {
         hint: unmapped
           ? `Declare the effect on ${t.name} and map it to ${name} in bindings.effects, or remove the call.`
           : `Declare ${name} under ${t.name}.effects, or remove the call.`,
-        ...(binding === undefined ? {} : { specAt: binding }),
         codeAt: at ?? sites.write,
       }),
     );
