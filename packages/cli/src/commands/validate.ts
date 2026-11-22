@@ -19,7 +19,12 @@ export async function validateCommand(
   const files = await resolveSpecFiles(paths, io.cwd);
   const specs = await loadSpecs(files, io.cwd);
   const report: Report = {
-    specs: specs.map(({ file, behavior, findings }) => ({ file, behavior, findings })),
+    specs: specs.map(({ file, model, behavior, findings }) => ({
+      file,
+      behavior,
+      ...(model?.enforced && { enforced: true }),
+      findings,
+    })),
   };
   io.stdout(formatReport(report, format, io));
   return exitCodeFor(allFindings(report));

@@ -3,8 +3,9 @@ import type { Io } from "../io";
 import type { Report } from "../report";
 import { formatJson } from "./json";
 import { formatPretty } from "./pretty";
+import { formatSarif } from "./sarif";
 
-export const OUTPUT_FORMATS = ["pretty", "json"] as const;
+export const OUTPUT_FORMATS = ["pretty", "json", "sarif"] as const;
 export type OutputFormat = (typeof OUTPUT_FORMATS)[number];
 
 /** Validates a raw `--format` value from cac. */
@@ -18,7 +19,14 @@ export function parseFormat(value: unknown): OutputFormat {
   return format;
 }
 
-/** The whole stdout of `validate` / `check`. */
+/** The whole stdout of `validate` / `check` / `test`. */
 export function formatReport(report: Report, format: OutputFormat, io: Io): string {
-  return format === "json" ? formatJson(report) : formatPretty(report, io);
+  switch (format) {
+    case "json":
+      return formatJson(report);
+    case "sarif":
+      return formatSarif(report, io.cwd);
+    case "pretty":
+      return formatPretty(report, io);
+  }
 }

@@ -101,6 +101,6 @@ describe("--format json", () => {
     const r = await tsv(["check", "--format", "xml", CANONICAL_DIR]);
     expect(r.code).toBe(2);
     expect(r.stdout).toBe("");
-    expect(r.stderr).toContain("--format must be one of pretty, json (got xml)");
+    expect(r.stderr).toContain("--format must be one of pretty, json, sarif (got xml)");
   });
 });

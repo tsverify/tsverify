@@ -32,7 +32,10 @@ export interface BehaviorDiff {
   behavior: string;
   /** `added`: no base model; `removed`: no head model; `unchanged`: every list below is empty. */
   kind: ChangeKind | "unchanged";
-  /** Entity-level fields: name, state field, initial. */
+  /**
+   * Top-level fields, in this order: `behavior` (the behavior name), `enforced` (`"yes"` / `""`),
+   * then the entity's `name`, `state` field and `initial` state.
+   */
   entity: FieldChange[];
   /** Fields: `terminal` (`"yes"` / `""`). */
   states: ItemChange[];
@@ -132,9 +135,17 @@ function stateMap(m: BehaviorModel | undefined): Map<string, boolean> {
   return new Map((m?.entity.states ?? []).map((s) => [s, m?.entity.terminal.includes(s) ?? false]));
 }
 
+const ENTITY_FIELDS = ["behavior", "enforced", "name", "state", "initial"] as const;
+
 function entityFields(m: BehaviorModel | undefined): Fields {
   if (m === undefined) return {};
-  return { name: m.entity.name, state: m.entity.stateField, initial: m.entity.initial };
+  return {
+    behavior: m.name,
+    enforced: flag(m.enforced === true),
+    name: m.entity.name,
+    state: m.entity.stateField,
+    initial: m.entity.initial,
+  };
 }
 
 /**
@@ -153,7 +164,7 @@ export function diffModels(
   const diff: BehaviorDiff = {
     behavior: either.name,
     kind: "unchanged",
-    entity: fieldChanges(entityFields(base), entityFields(head), ["name", "state", "initial"]),
+    entity: fieldChanges(entityFields(base), entityFields(head), ENTITY_FIELDS),
     states: itemChanges(stateMap(base), stateMap(head), (t) => ({ terminal: flag(t) }), [
       "terminal",
     ]),

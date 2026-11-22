@@ -34,21 +34,8 @@ const HIGHLIGHT_STYLE = "fill:#fef3c7,stroke:#d97706,stroke-width:3px";
  */
 export function toMermaid(model: BehaviorModel, options: MermaidOptions = {}): string {
   const { entity } = model;
-  const transitions = [...model.transitions].sort((a, b) => compareStrings(a.name, b.name));
-
-  const extra = new Set<string>();
-  const declared = new Set(entity.states);
-  const noteExtra = (s: string) => {
-    if (!declared.has(s)) extra.add(s);
-  };
-  noteExtra(entity.initial);
-  for (const s of entity.terminal) noteExtra(s);
-  for (const t of transitions) {
-    noteExtra(t.to);
-    if (t.from !== "*") for (const s of t.from) noteExtra(s);
-  }
-  const states = [...entity.states, ...[...extra].sort(compareStrings)];
-  const order = new Map(states.map((s, i) => [s, i]));
+  const transitions = sortedTransitions(model);
+  const states = diagramStates(model);
   const ids = assignMermaidIds(states);
   const id = (s: string) => ids.get(s) ?? s;
 
@@ -62,10 +49,7 @@ export function toMermaid(model: BehaviorModel, options: MermaidOptions = {}): s
   }
   lines.push(`  [*] --> ${id(entity.initial)}`);
   for (const t of transitions) {
-    const sources =
-      t.from === "*"
-        ? states
-        : [...new Set(t.from)].sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
+    const sources = edgeSources(t, states);
     let label = escapeMermaidText(transitionLabel(t));
     if (highlightedTransitions.has(t.name)) label = HIGHLIGHT_MARKER + label;
     for (const from of sources) lines.push(`  ${id(from)} --> ${id(t.to)}: ${label}`);
@@ -81,12 +65,43 @@ export function toMermaid(model: BehaviorModel, options: MermaidOptions = {}): s
   return `${lines.join("\n")}\n`;
 }
 
+export function sortedTransitions(model: BehaviorModel): Transition[] {
+  return [...model.transitions].sort((a, b) => compareStrings(a.name, b.name));
+}
+
+/**
+ * The states a diagram draws, in display order: declared states, then (by name) any state that
+ * is only named as initial, terminal or in a transition.
+ */
+export function diagramStates(model: BehaviorModel): string[] {
+  const { entity } = model;
+  const extra = new Set<string>();
+  const declared = new Set(entity.states);
+  const noteExtra = (s: string) => {
+    if (!declared.has(s)) extra.add(s);
+  };
+  noteExtra(entity.initial);
+  for (const s of entity.terminal) noteExtra(s);
+  for (const t of model.transitions) {
+    noteExtra(t.to);
+    if (t.from !== "*") for (const s of t.from) noteExtra(s);
+  }
+  return [...entity.states, ...[...extra].sort(compareStrings)];
+}
+
+/** The source states of `t`'s edges, in `states` order (`from: "*"` = every state). */
+export function edgeSources(t: Transition, states: readonly string[]): string[] {
+  if (t.from === "*") return [...states];
+  const order = new Map(states.map((s, i) => [s, i]));
+  return [...new Set(t.from)].sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
+}
+
 /**
  * `name · actor[, actor] (guard, …)` followed by markers:
  * `(any state)`, timer, `⟳ idempotent`, one per effect, and `⚠ non-atomic`.
  * Guards are the transition's own `requires`; actor-implied guards are shown in the matrix.
  */
-function transitionLabel(t: Transition): string {
+export function transitionLabel(t: Transition): string {
   let head = t.name;
   if (t.from === "*") head += " (any state)";
   head += ` · ${t.by.join(", ")}`;

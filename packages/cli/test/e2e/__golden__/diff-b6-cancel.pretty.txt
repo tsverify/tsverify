@@ -1,0 +1,6 @@
+src/orders/order.behavior.yaml  Order lifecycle  changed
+  +1 transition, ~1 transition
+  + transition cancel
+  ~ transition refund  atomic: yes → no
+
+1 of 1 behavior file changed (HEAD → working tree)

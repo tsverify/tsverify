@@ -73,9 +73,23 @@ describe("diffModels", () => {
     const added = diffModels(undefined, orderModel());
     expect(added.kind).toBe("added");
     expect(added.transitions.every((t) => t.kind === "added")).toBe(true);
-    expect(added.entity.map((f) => f.field)).toEqual(["name", "state", "initial"]);
+    expect(added.entity.map((f) => f.field)).toEqual(["behavior", "name", "state", "initial"]);
     expect(diffModels(orderModel(), undefined).kind).toBe("removed");
     expect(() => diffModels(undefined, undefined)).toThrow();
+  });
+
+  it("reports a renamed behavior and a changed enforced flag", () => {
+    const head = edited((m) => {
+      m.name = "Orders";
+      m.enforced = true;
+    });
+    const d = diffModels(orderModel(), head);
+    expect(d.behavior).toBe("Orders");
+    expect(d.kind).toBe("changed");
+    expect(d.entity).toEqual([
+      { field: "behavior", base: "Order lifecycle", head: "Orders" },
+      { field: "enforced", base: "", head: "yes" },
+    ]);
   });
 
   it("diffs bindings by key", () => {

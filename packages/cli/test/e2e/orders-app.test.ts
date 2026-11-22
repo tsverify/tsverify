@@ -12,6 +12,8 @@ import {
 } from "../../../../examples/orders-app/test/materialize";
 import { type Io, main } from "../../src/main";
 import type { JsonReport } from "../../src/output/json";
+import type { SarifLog } from "../../src/output/sarif";
+import { SARIF_SUBSET, validate } from "../sarif-schema";
 
 const CLEAN = "clean";
 const VARIANTS = await listVariants();
@@ -81,6 +83,34 @@ describe("tsv check on examples/orders-app", { timeout: 60_000 }, () => {
     await expect(json.stdout).toMatchFileSnapshot(`__golden__/${CLEAN}.json`);
     expect(pretty.code).toBe(0);
     await expect(pretty.stdout).toMatchFileSnapshot(`__golden__/${CLEAN}.pretty.txt`);
+  });
+
+  it("B3 as SARIF: code location first, spec related, causes and trace in properties", async () => {
+    const app = await materialize("b3-refund-race");
+    let sarif: Run;
+    try {
+      sarif = await run(["check", "src", "--format", "sarif"], app.root);
+    } finally {
+      await app.dispose();
+    }
+    expect(sarif.stderr).toBe("");
+    expect(sarif.code).toBe(1);
+    const log = JSON.parse(sarif.stdout) as SarifLog;
+    expect(validate(log, SARIF_SUBSET)).toEqual([]);
+    const [run0] = log.runs;
+    expect(run0.originalUriBaseIds).toEqual({ "%SRCROOT%": { uri: "file://<root>/" } });
+    const nonAtomic = run0.results.find((r) => r.ruleId === "non-atomic");
+    expect(nonAtomic?.locations[0].physicalLocation.artifactLocation.uri).toBe(
+      "src/orders/refund.ts",
+    );
+    expect(nonAtomic?.relatedLocations?.[0]?.physicalLocation.artifactLocation.uri).toBe(
+      "src/orders/order.behavior.yaml",
+    );
+    const consequence = run0.results.find(
+      (r) => r.properties.causedBy?.includes("non-atomic:Order lifecycle:refund") === true,
+    );
+    expect(consequence?.properties.trace?.model).toBe("code");
+    await expect(sarif.stdout).toMatchFileSnapshot("__golden__/b3-refund-race.sarif");
   });
 
   it.each(VARIANTS)("fails %s with its expected findings", async (variant) => {

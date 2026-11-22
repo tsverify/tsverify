@@ -15,6 +15,7 @@ directory at or above the behavior file that contains a `tsconfig.json` (overrid
 |---|---|---|---|
 | `behavior` | yes | string | `name` |
 | `summary` | no | string | `summary` |
+| `enforced` | no | boolean (default `false`) | `enforced` (present only when `true`) |
 | `kind` | no | `entity` (only value in v1; default) | `kind` |
 | `entity` | yes | object | `entity` |
 | `actors` | yes | map name → actor | `actors` |
@@ -25,6 +26,19 @@ directory at or above the behavior file that contains a `tsconfig.json` (overrid
 | `fixtures` | no | object | `fixtures` (absent when omitted) |
 
 Unknown keys are an error (`invalid-spec`), so typos never silently pass.
+
+### `enforced`
+
+`enforced: true` marks a spec as one the team wants CI to block on. `tsv` never acts on it by itself: exit codes
+are the same with or without it. It is reported as `specs[].enforced` in `--format json`, as
+`properties.enforced` on SARIF results, and `--enforced-only` (on `check`, `test` and `diff`) keeps only enforced
+specs. A pipeline can then block on enforced specs and stay advisory for the rest. See
+[`workflows.md`](workflows.md).
+
+```yaml
+behavior: Order lifecycle
+enforced: true
+```
 
 ## `entity`
 
