@@ -1,2 +1,6 @@
 tsverify
 Copyright 2026 The tsverify Authors
+
+The @tsverify/cli package bundles third-party open-source software (among others Mermaid, Preact,
+yaml, zod, cac and picocolors) into its dist/ files. Their copyright notices and license texts are
+listed in dist/THIRD_PARTY_NOTICES.md inside that package.
