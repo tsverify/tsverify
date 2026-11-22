@@ -32,6 +32,7 @@ const CATEGORIES: Record<FindingCategory, true> = {
   "undeclared-effect": true,
   "missing-effect": true,
   "non-atomic": true,
+  "generated-test-failed": true,
   "replay-confirmed": true,
   "replay-disagrees": true,
   unanalyzable: true,
