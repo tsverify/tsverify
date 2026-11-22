@@ -90,6 +90,8 @@ export interface Write {
   /** A `db.transaction` scope around the read and the write. */
   transaction?: Pos;
   guards: { guard: string; at: Pos; dominates: boolean }[];
+  /** `CodeSites.guardSets`: the guard sets the paths to the write pass, when enumerated. */
+  guardSets?: string[][];
   effects: { effect: string; gate: string; at: Pos }[];
   /** Entity id and actor parameters of the impl, as `[param, ...path]`. */
   entityId: [number, ...string[]];
@@ -143,6 +145,7 @@ function buildTransition(spec: BehaviorModel, w: Write): Transition {
       at: loc(w.file, g.at),
       dominates: g.dominates,
     })),
+    ...(w.guardSets === undefined ? {} : { guardSets: w.guardSets }),
     effects: w.effects.map((e) => ({ ...callSite(w.file, e.gate, e.at), effect: e.effect })),
     ...(linked?.impl === undefined
       ? {}
