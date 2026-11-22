@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "base": {
+    "ref": "HEAD",
+    "commit": "<commit>"
+  },
+  "head": "working tree",
+  "specs": [
+    {
+      "file": "src/orders/order.behavior.yaml",
+      "diff": {
+        "behavior": "Order lifecycle",
+        "kind": "changed",
+        "entity": [],
+        "states": [],
+        "transitions": [
+          {
+            "kind": "added",
+            "name": "cancel",
+            "fields": [
+              {
+                "field": "from",
+                "base": "",
+                "head": "pending_payment"
+              },
+              {
+                "field": "to",
+                "base": "",
+                "head": "cancelled"
+              },
+              {
+                "field": "by",
+                "base": "",
+                "head": "customer"
+              },
+              {
+                "field": "requires",
+                "base": "",
+                "head": "owner"
+              },
+              {
+                "field": "atomic",
+                "base": "",
+                "head": "yes"
+              },
+              {
+                "field": "concurrency",
+                "base": "",
+                "head": "2"
+              }
+            ]
+          },
+          {
+            "kind": "changed",
+            "name": "refund",
+            "fields": [
+              {
+                "field": "atomic",
+                "base": "yes",
+                "head": ""
+              }
+            ]
+          }
+        ],
+        "actors": [],
+        "rules": [],
+        "bindings": []
+      }
+    }
+  ],
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "removed": 0,
+    "changed": 1,
+    "unchanged": 0
+  }
+}

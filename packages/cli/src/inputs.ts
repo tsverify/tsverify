@@ -19,17 +19,26 @@ export interface LoadedSpec {
  * Spec files named by `paths` (default: the cwd). Directories are searched for
  * `**\/*.behavior.yaml`; files are taken as given, so a missing file surfaces as an
  * `invalid-spec` finding from `loadSpec`. Deduplicated, sorted, relative to `cwd`.
+ *
+ * `existingOnly` (`tsv diff`, where the other side may have the files): a missing path and a
+ * directory without specs contribute nothing instead of an error.
  */
-export async function resolveSpecFiles(paths: readonly string[], cwd: string): Promise<string[]> {
+export async function resolveSpecFiles(
+  paths: readonly string[],
+  cwd: string,
+  options: { existingOnly?: boolean } = {},
+): Promise<string[]> {
   const files = new Set<string>();
   for (const path of paths.length > 0 ? paths : ["."]) {
     const absolute = resolve(cwd, path);
     if (!(await isDirectory(absolute))) {
-      files.add(toRelative(cwd, absolute));
+      if (!options.existingOnly || (await exists(absolute))) files.add(toRelative(cwd, absolute));
       continue;
     }
     const found = await findSpecFiles(absolute);
-    if (found.length === 0) throw new UsageError(`no *.behavior.yaml files found in ${path}`);
+    if (found.length === 0 && !options.existingOnly) {
+      throw new UsageError(`no *.behavior.yaml files found in ${path}`);
+    }
     for (const file of found) files.add(toRelative(cwd, join(absolute, file)));
   }
   return [...files].sort(compareStrings);
@@ -66,6 +75,16 @@ async function isDirectory(path: string): Promise<boolean> {
   }
 }
 
-function toRelative(cwd: string, absolute: string): string {
+async function exists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** `absolute` relative to `cwd`, with `/` separators. */
+export function toRelative(cwd: string, absolute: string): string {
   return relative(cwd, absolute).split(sep).join("/");
 }

@@ -16,6 +16,8 @@ export interface DiffRenderOptions {
   base: string;
   /** Label of the head side (default `working tree`). */
   head?: string;
+  /** One more line of context under the summary, e.g. what `--enforced-only` left out. */
+  note?: string;
 }
 
 export interface DiffTextOptions extends DiffRenderOptions {
@@ -98,6 +100,7 @@ export function renderDiffMarkdown(
       ? `${code(options.base)} → ${head}: no behavior changes (${files} compared).`
       : `${code(options.base)} → ${head}: ${changed.length} of ${files} changed.`,
   );
+  if (options.note !== undefined) out.push("", options.note);
 
   for (const r of changed) {
     out.push("", `### ${mdText(r.diff.behavior)} · ${r.diff.kind}`, "");
@@ -166,7 +169,8 @@ export function renderDiffText(entries: readonly DiffEntry[], options: DiffTextO
   }
   const changed = rendered.filter((r) => r.diff.kind !== "unchanged").length;
   const head = options.head ?? "working tree";
-  lines.push("");
+  if (lines.length > 0) lines.push("");
+  if (options.note !== undefined) lines.push(options.note);
   lines.push(
     `${changed} of ${rendered.length} behavior file${rendered.length === 1 ? "" : "s"} changed (${options.base} → ${head})`,
   );

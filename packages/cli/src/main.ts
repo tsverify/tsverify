@@ -3,6 +3,7 @@ import { type CAC, type Command, cac } from "cac";
 import pkg from "../package.json" with { type: "json" };
 import { camelCaseBooleanFlags } from "./argv";
 import { type CheckCommandOptions, checkCommand } from "./commands/check";
+import { type DiffCommandOptions, diffCommand } from "./commands/diff";
 import { type RenderCommandOptions, renderCommand } from "./commands/render";
 import { schemaCommand } from "./commands/schema";
 import { type TestCommandOptions, testCommand } from "./commands/test";
@@ -10,6 +11,7 @@ import { type ValidateCommandOptions, validateCommand } from "./commands/validat
 import { ExitCode, UsageError } from "./exit-codes";
 import { helpText } from "./help";
 import type { Io } from "./io";
+import { DIFF_FORMATS } from "./output/diff";
 import { OUTPUT_FORMATS } from "./output/format";
 
 export type { Io } from "./io";
@@ -101,6 +103,18 @@ function program(io: Io): CAC {
     )
     .option("--enforced-only", ENFORCED_ONLY_HELP)
     .action((paths: string[], options: TestCommandOptions) => testCommand(io, paths, options));
+
+  cli
+    .command(
+      "diff [...paths]",
+      "Behavior diff between the specs at a git ref and the working tree (Markdown for a PR comment by default)",
+    )
+    .option("--base <git-ref>", "The git ref to compare with, e.g. origin/main (required)")
+    .option("--format <format>", `Output format: ${DIFF_FORMATS.join(" | ")}`, {
+      default: "markdown",
+    })
+    .option("--enforced-only", "Keep only specs with `enforced: true` on either side")
+    .action((paths: string[], options: DiffCommandOptions) => diffCommand(io, paths, options));
 
   cli
     .command("render <spec>", "Render one spec (default: --mermaid)")
