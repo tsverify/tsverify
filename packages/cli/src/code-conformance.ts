@@ -25,6 +25,15 @@ export interface CodeOutcome {
   extract?: ExtractStats;
   /** Present when the extractor returned a code model and it was model-checked. */
   codeStats?: CheckStats;
+  /** Absolute project root; present when one was found. */
+  root?: string;
+  /**
+   * The spec model as the extractor saw it (locations relative to `root`). Present when the spec
+   * is valid and its project was extracted. `tsv test` generates tests from it and `code`.
+   */
+  spec?: BehaviorModel;
+  /** The as-implemented model (locations relative to `root`), when the extractor built one. */
+  code?: BehaviorModel;
 }
 
 /**
@@ -49,6 +58,7 @@ export async function checkCode(
   const outcomes: CodeOutcome[] = roots.map((root) => ({
     project: root === undefined ? null : rebaseFile(root, cwd, cwd),
     findings: [],
+    ...(root === undefined ? {} : { root }),
   }));
 
   const projects = new Map<string, { index: number; model: BehaviorModel }[]>();
@@ -74,7 +84,9 @@ export async function checkCode(
       const outcome = outcomes[index] as CodeOutcome;
       const findings = [...result.findings];
       outcome.extract = stats;
+      outcome.spec = spec;
       if (result.model) {
+        outcome.code = result.model;
         findings.push(...compare(spec, result.model));
         const checked = check(result.model, { maxStates });
         findings.push(...checked.findings.map((f) => withSpecAt(f, spec)));
