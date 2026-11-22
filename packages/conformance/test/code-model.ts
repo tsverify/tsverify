@@ -381,13 +381,13 @@ export const VARIANT_CASES = {
         };
       }),
     ),
-  /** The status check is gone: the transaction always writes paid. */
+  /** The status check is gone: the transaction always writes paid, from the full union. */
   "b4-webhook-dup": () =>
     codeCase(
       patchWrite(cleanWrites(), "payment_succeeded", (w) => ({
         ...w,
         fromState: {
-          values: "*",
+          values: [...orderModel().entity.states],
           unconstrained: true,
           reason: "no status check before the write",
         },

@@ -23,7 +23,9 @@ function fromItemAt(t: Transition, state?: string): SourceLocation | undefined {
  * unconstrained write conforms to it; a code from-set is then compared with `entity.states`.
  * Extra and missing states can both occur (incomparable sets): each gets its own finding, with
  * the states as the id subject. A mismatch's `specAt` is the `from` item of the first missing
- * state, or the first `from` item for extra states.
+ * state, or the first `from` item for extra states; an unconstrained write's is the first `from`
+ * item. An unknown from-state (`values: "*"`, e.g. a `string`-typed field) gives no finding here:
+ * the extractor reports it once, as `unanalyzable`.
  */
 export function checkFromStates(p: Pairing): Finding[] {
   const { spec, t, code, sites } = p;
@@ -31,10 +33,13 @@ export function checkFromStates(p: Pairing): Finding[] {
   const specFrom = t.from === "*" ? spec.entity.states : t.from;
   const specAllowsAny = spec.entity.states.every((s) => specFrom.includes(s));
 
+  // The extractor already reported this cause (`unanalyzable:<behavior>:from-state:<t>`).
+  if (sites.fromState.values === "*") return [];
   const codeFrom = code.from;
   if (codeFrom === "*" || sites.fromState.unconstrained) {
     if (specAllowsAny) return [];
     const reason = sites.fromState.reason ?? `${field} is not checked before the write`;
+    const specAt = fromItemAt(t);
     return [
       pairingFinding(p, {
         category: "from-state-unconstrained",
@@ -43,6 +48,7 @@ export function checkFromStates(p: Pairing): Finding[] {
           `${t.name}: ${sites.function.name} writes ${t.to} from any state (${reason}); ` +
           `the spec allows only ${formatStates(specFrom)}.`,
         hint: `Check that ${field} ${isIn(specFrom)} before the write, inside the same atomic scope.`,
+        ...(specAt === undefined ? {} : { specAt }),
         codeAt: sites.write,
       }),
     ];

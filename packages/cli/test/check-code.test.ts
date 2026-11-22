@@ -133,9 +133,21 @@ describe("check: code conformance", () => {
     const unconstrained = doc.findings.find((f) => f.category === "from-state-unconstrained");
     expect(unconstrained).toMatchObject({
       transition: "switch_on",
-      specAt: { file: "app/src/light.behavior.yaml", line: 11, column: 3 },
+      // The first `from` item.
+      specAt: { file: "app/src/light.behavior.yaml", line: 12, column: 11 },
       codeAt: { file: "app/src/light.ts", line: 7, column: 3 },
     });
+  });
+
+  it("reports a string-typed state field once, as the extractor's unanalyzable", async () => {
+    const code = UNGUARDED_CODE.replace('status: "off" | "on" | "broken";', "status: string;");
+    const cwd = await tempSpecDir(lightProject("", code));
+    const r = await tsverify(["check", "--format", "json"], { cwd });
+    expect(r.code).toBe(0);
+    const findings = parse(r.stdout).findings.filter((f) => f.transition === "switch_on");
+    expect(findings.map((f) => [f.id, f.severity])).toEqual([
+      ["unanalyzable:Light:from-state:switch_on", "warning"],
+    ]);
   });
 
   it("uses the nearest tsconfig.json", async () => {

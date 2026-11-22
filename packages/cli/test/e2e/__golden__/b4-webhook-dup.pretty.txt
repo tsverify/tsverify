@@ -1,6 +1,6 @@
 src/orders/order.behavior.yaml  project: .
 Order lifecycle
-  ✗ from-state-unconstrained  src/orders/order.behavior.yaml:27:3 · src/payments/webhook.ts:18:5
+  ✗ from-state-unconstrained  src/orders/order.behavior.yaml:28:11 · src/payments/webhook.ts:18:5
     payment_succeeded: onPaymentSucceeded writes paid from any state (nothing narrows order.status before the write: its type there is the full declared union OrderStatus); the spec allows only pending_payment.
     hint: Check that status is 'pending_payment' before the write, inside the same atomic scope.
     ↳ consequence: ✗ implementation-property  src/orders/order.behavior.yaml:27:3 · src/payments/webhook.ts:23:9
