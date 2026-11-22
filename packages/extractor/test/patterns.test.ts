@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { extractAll } from "../src/index";
 import {
+  expectDominanceMatchesSets,
   extractFixture,
   fixtureRoot,
   guardKeys,
@@ -187,6 +188,11 @@ describe("guard dominance", () => {
     "guardSwallowed",
     "guardAfterWrite",
     "guardBypassedByEarlyReturn",
+    "adminOrOwner",
+    "adminAndOwner",
+    "adminThenHelperOwner",
+    "viaEitherWrapper",
+    "guardRethrown",
   ];
   const result = extractFixture(
     "guard-dominance",
@@ -219,9 +225,41 @@ describe("guard dominance", () => {
     expect(facts(name)).toEqual({ requires: [], guards });
   });
 
+  it.each([
+    ["guardBefore", [["role(admin)"]]],
+    ["guardInsideAfterRead", [["owner"]]],
+    ["guardOnBothBranches", [["role(admin)"]]],
+    ["guardViaWrapper", [["role(admin)"]]],
+    ["guardBeforeHelper", [["role(admin)"]]],
+    ["guardOnOneBranch", [[], ["role(admin)"]]],
+    ["guardSwallowed", [[], ["role(admin)"]]],
+    ["guardAfterWrite", [[]]],
+    ["guardBypassedByEarlyReturn", [[], ["role(admin)"]]],
+    ["adminOrOwner", [["owner"], ["role(admin)"]]],
+    ["adminAndOwner", [["owner", "role(admin)"]]],
+    ["adminThenHelperOwner", [["owner"], ["owner", "role(admin)"]]],
+    ["viaEitherWrapper", [["owner"], ["role(admin)"]]],
+    ["guardRethrown", [["role(admin)"]]],
+  ])("%s: guard sets", (name, sets) => {
+    expect(transitionOf(result, name).sites?.guardSets).toEqual(sets);
+  });
+
+  it("alternatives dominate nothing; a key on every path does", () => {
+    expect(facts("adminOrOwner")).toEqual({
+      requires: [],
+      guards: ["role(admin):false", "owner:false"],
+    });
+    expect(guardKeys(transitionOf(result, "adminAndOwner"))).toEqual(["owner", "role(admin)"]);
+    expect(guardKeys(transitionOf(result, "adminThenHelperOwner"))).toEqual(["owner"]);
+  });
+
+  it("a key dominates iff it is in every guard set", () => {
+    for (const t of result.model?.transitions ?? []) expectDominanceMatchesSets(t);
+  });
+
   it("points a wrapper's guard entry at the wrapper call in the impl", () => {
     const g = transitionOf(result, "guardViaWrapper").sites?.guards[0];
-    expect(g?.at).toMatchObject({ file: "src/cases.ts", line: 57 });
+    expect(g?.at).toMatchObject({ file: "src/cases.ts", line: 58 });
   });
 
   it("reads the actor from the guard call", () => {
@@ -234,6 +272,45 @@ describe("guard dominance", () => {
     expect(t.sites?.function.name).toBe("ship");
     expect(t.sites?.specTransition).toBe("guardBypassedByEarlyReturn");
     expect(t.sites?.invocation?.entityId).toEqual({ param: 1, path: [] });
+  });
+});
+
+describe("guard sets cap", () => {
+  const roles = ["a", "b", "c", "d", "e", "f", "g"];
+  const bindings = libBindings();
+  bindings.guards = Object.fromEntries(
+    roles.map((r) => [
+      `role(${r})`,
+      { file: "../_lib/guards.ts", symbol: "requireRole", args: [r], raw: `role(${r})` },
+    ]),
+  );
+  const result = extractFixture(
+    "guard-sets-cap",
+    orderSpec(
+      ["manyOptionalGuards", "sixOptionalGuards"].map((n) => ({
+        name: n,
+        impl: `src/ship.ts#${n}`,
+        to: "shipped",
+      })),
+      bindings,
+    ),
+  );
+
+  it("leaves guardSets absent beyond 64 sets, keeping guards", () => {
+    const t = transitionOf(result, "manyOptionalGuards");
+    expect(t.sites?.guardSets).toBeUndefined();
+    expect(t.sites?.guards.map((g) => `${g.guard}:${g.dominates}`)).toEqual(
+      roles.map((r) => `role(${r}):false`),
+    );
+  });
+
+  it("enumerates exactly 64 sets", () => {
+    const sets = transitionOf(result, "sixOptionalGuards").sites?.guardSets;
+    expect(sets).toHaveLength(64);
+    expect(sets?.[0]).toEqual([]);
+    expect(sets).toContainEqual(["role(a)", "role(b)", "role(c)", "role(d)", "role(e)", "role(f)"]);
+    // Sorted element-wise, so a prefix comes first and `["role(f)"]` comes last.
+    expect(sets?.at(-1)).toEqual(["role(f)"]);
   });
 });
 

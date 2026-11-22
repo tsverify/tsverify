@@ -9,6 +9,7 @@ import type {
   Transition,
 } from "@tsverify/ir";
 import { parseSymbolRef } from "@tsverify/ir";
+import { expect } from "vitest";
 import { type ExtractResult, extractAll } from "../src/index";
 
 export const FIXTURES = fileURLToPath(new URL("./fixtures/", import.meta.url));
@@ -117,4 +118,21 @@ export function transitionOf(result: ExtractResult, name: string): Transition {
 
 export function guardKeys(t: Transition): string[] {
   return t.requires.map((g) => g.raw);
+}
+
+/**
+ * `guards[].dominates` and `guardSets` agree: a key dominates (is in `requires`, and every
+ * `guards` entry of it says `dominates`) iff every guard set contains it.
+ */
+export function expectDominanceMatchesSets(t: Transition): void {
+  const sites = t.sites;
+  if (!sites?.guardSets) return;
+  const sets = sites.guardSets;
+  const keys = [...new Set([...sites.guards.map((g) => g.guard), ...sets.flat()])].sort();
+  const inEvery = keys.filter((k) => sets.every((s) => s.includes(k)));
+  expect({ transition: t.name, dominating: guardKeys(t) }).toEqual({
+    transition: t.name,
+    dominating: inEvery,
+  });
+  for (const g of sites.guards) expect(g.dominates).toBe(inEvery.includes(g.guard));
 }

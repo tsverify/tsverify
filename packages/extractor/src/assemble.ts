@@ -275,6 +275,7 @@ function buildTransition(
       ? { atomicNote: { message: note.message, hint: note.hint, at: ctx.loc(note.at) } }
       : {}),
     guards,
+    ...(guardFacts.sets ? { guardSets: guardFacts.sets } : {}),
     effects,
     ...(invocation ? { invocation } : {}),
     ...(p.storage ? { storage: p.storage } : {}),
