@@ -73,14 +73,14 @@ jobs:
           category: tsverify
 
       - name: Gate (TSVERIFY_MODE)
-        env:
-          CHECK_EXIT: ${{ steps.check.outputs.exit-code }}
         run: |
           case "$TSVERIFY_MODE" in
             advisory) exit 0 ;;
-            blocking) exit "$CHECK_EXIT" ;;
-            # Re-checks only the enforced specs; an invalid spec still fails (exit 2).
-            enforced) tsverify check --enforced-only ;;
+            # Blocking modes re-check with --strict: code tsverify cannot analyze fails the gate
+            # instead of passing silently (docs/workflows.md).
+            blocking) tsverify check --strict ;;
+            # Only the enforced specs; an invalid spec still fails (exit 2).
+            enforced) tsverify check --enforced-only --strict ;;
             *) echo "::error::unknown TSVERIFY_MODE '$TSVERIFY_MODE'"; exit 2 ;;
           esac
 
