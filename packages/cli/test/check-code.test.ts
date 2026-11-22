@@ -106,6 +106,24 @@ describe("check: code conformance", () => {
     expect(r.code).toBe(0);
   });
 
+  it("reports a write to a state the spec doesn't declare (no internal error)", async () => {
+    // As-is specs for existing code often leave out a state; the code model must still be
+    // checkable (it used to throw "unknown state" and exit 3).
+    const spec = LIGHT_SPEC.replace("states: [off, on, broken]", "states: [off, on]")
+      .replace("terminal: [on, broken]", "terminal: [on]")
+      .replace(/ {2}smash:[\s\S]*$/, "");
+    const code = `${LIGHT_CODE}\nexport function smash(light: Light): void {\n  light.status = "broken";\n}\n`;
+    const cwd = await tempSpecDir({
+      ...lightProject("", code),
+      "src/light.behavior.yaml": spec,
+    });
+    const r = await tsv(["check", "--format", "json"], { cwd });
+    expect(r.stderr).toBe("");
+    expect(r.code).toBe(1);
+    const undeclared = parse(r.stdout).findings.find((f) => f.category === "undeclared-transition");
+    expect(undeclared?.message).toContain("'broken' is not a state of Light");
+  });
+
   it("fails conformance mismatches with exit 1 and cwd-relative code locations", async () => {
     const cwd = await tempSpecDir(lightProject("app/", UNGUARDED_CODE));
     const r = await tsv(["check", "--format", "json"], { cwd });

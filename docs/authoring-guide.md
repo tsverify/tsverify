@@ -635,7 +635,7 @@ transitions:
 | Paths relative to the spec file | `broken-link` | Paths are relative to the project root (the `tsconfig.json` directory) |
 | `entity.state` is not the exact property name | `missing-transition` everywhere, or no writes found | Use the property name exactly (`status`) |
 | `entity.name` is not the type name (assign, memory) or Prisma model | Writes not matched, unless the union equals `states` exactly | Use the type or model name |
-| `states` is missing a member of the union that the code writes | `tsv check` exits 3: `internal error: … refers to unknown state "x"` (a known bug) | List every member of the union |
+| `states` is missing a member of the union that the code writes | `undeclared-transition`: "… ('x' is not a state of Order)", often with a stuck-state consequence | List every member of the union the code can write, then add the transitions into it |
 | Deny-list checks (`if (s === "paid" \|\| s === "void") throw`) | `from-state-mismatch` once a new state is added | Check what is allowed (`if (s !== "draft" && s !== "open") throw`) |
 | A non-terminal state with no exit (e.g. `archived`) | `no-stuck-states` | Mark it `terminal`, or add the transition |
 | One transition with `by: [admin, system]` where the actors have different guards | `guard-not-dominating` for the `system` path | Guards from every actor in `by` are all required. Split into one transition per actor (they may share the `impl`) |
