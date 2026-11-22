@@ -22,6 +22,16 @@ export function allFindings(report: Report): Finding[] {
   return report.specs.flatMap((s) => s.findings);
 }
 
+/** Drops findings whose `id` was already seen, keeping the first; order is otherwise kept. */
+export function dedupeFindings(findings: readonly Finding[]): Finding[] {
+  const seen = new Set<string>();
+  return findings.filter((f) => {
+    if (seen.has(f.id)) return false;
+    seen.add(f.id);
+    return true;
+  });
+}
+
 export function countSeverity(findings: readonly Finding[], severity: Severity): number {
   return findings.filter((f) => f.severity === severity).length;
 }
