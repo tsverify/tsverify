@@ -64,6 +64,13 @@ describe("transaction-atomic", () => {
       concurrency: { ship: 2, ship_root: 2 },
     });
   });
+
+  it("records where each resolved impl is declared", () => {
+    expect(result.model?.implAt).toEqual({
+      ship: { file: "src/ship.ts", line: 5, column: 23, endLine: 5, endColumn: 32 },
+      ship_root: { file: "src/ship.ts", line: 16, column: 23, endLine: 16, endColumn: 38 },
+    });
+  });
 });
 
 describe("non-atomic get/save", () => {
@@ -415,6 +422,7 @@ describe("broken impl link", () => {
 
   it("still extracts the links that resolve", () => {
     expect(result.model?.transitions.map((t) => t.name)).toEqual(["ship"]);
+    expect(Object.keys(result.model?.implAt ?? {})).toEqual(["ship"]);
   });
 });
 

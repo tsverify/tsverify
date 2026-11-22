@@ -7,14 +7,14 @@
  * 4. Type queries: entity matching, from-states, link resolution, call graph, guards, effects,
  *    persistence facts; then model assembly (`assemble.ts`).
  */
-import type { BehaviorModel, Finding, PersistenceKind } from "@tsv/ir";
+import type { BehaviorModel, Finding, PersistenceKind, SourceLocation } from "@tsv/ir";
 import { compareStrings } from "@tsv/ir";
 import { ts } from "ts-morph";
 import { assignAdapter } from "./adapters/assign";
 import { memoryAdapter } from "./adapters/memory";
 import type { PersistenceAdapter, PersistenceFacts } from "./adapters/types";
 import { assemble, type Draft, type MatchedWrite } from "./assemble";
-import { Callees, frameCalls, frameOf, type Reach, reach } from "./callgraph";
+import { Callees, frameCalls, frameNaming, frameOf, type Reach, reach } from "./callgraph";
 import type { FunctionLike } from "./cfg";
 import { ClientCalls } from "./client-calls";
 import { Dominance } from "./dominance";
@@ -288,11 +288,14 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
   };
 
   const impls: { name: string; fn: FunctionLike; reach: Reach }[] = [];
-  for (const t of spec.transitions) {
+  const implAt: Record<string, SourceLocation> = {};
+  for (const t of [...spec.transitions].sort((a, b) => compareStrings(a.name, b.name))) {
     if (!t.impl) continue;
     const r = resolveImpl(ctx, t.impl);
-    if (r.ok) impls.push({ name: t.name, fn: r.value, reach: reachFrom(r.value) });
-    else {
+    if (r.ok) {
+      impls.push({ name: t.name, fn: r.value, reach: reachFrom(r.value) });
+      implAt[t.name] = ctx.loc(frameNaming(r.value).node);
+    } else {
       findings.push(
         brokenLink(
           behavior,
@@ -396,6 +399,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
     persistence: kind,
     adapter,
     findings,
+    implAt,
   });
   return { spec: behavior, model, findings: sortFindings(findings) };
 }

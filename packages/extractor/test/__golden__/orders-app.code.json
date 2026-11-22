@@ -790,5 +790,42 @@
       "stripe.refund": "stripe.refunds.create",
       "email.receipt": "email.send"
     }
+  },
+  "implAt": {
+    "checkout": {
+      "file": "src/orders/checkout.ts",
+      "line": 8,
+      "column": 23,
+      "endLine": 8,
+      "endColumn": 31
+    },
+    "expire": {
+      "file": "src/jobs/expire-orders.ts",
+      "line": 9,
+      "column": 23,
+      "endLine": 9,
+      "endColumn": 34
+    },
+    "payment_succeeded": {
+      "file": "src/payments/webhook.ts",
+      "line": 18,
+      "column": 23,
+      "endLine": 18,
+      "endColumn": 41
+    },
+    "refund": {
+      "file": "src/orders/refund.ts",
+      "line": 11,
+      "column": 23,
+      "endLine": 11,
+      "endColumn": 34
+    },
+    "ship": {
+      "file": "src/admin/orders.ts",
+      "line": 8,
+      "column": 23,
+      "endLine": 8,
+      "endColumn": 32
+    }
   }
 }

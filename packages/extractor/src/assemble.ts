@@ -9,6 +9,8 @@
  * - `concurrency` copies the linked spec transition's bound (2 when unlinked)
  * - name, entity, actors, rules, bindings and file are copied from the spec; transitions sorted
  *   by name; `at` = the write.
+ * - `implAt`: for each spec transition whose `impl` resolves, where the impl function is declared
+ *   (its name, like `CodeSites.function.at`), keyed by transition name.
  *
  * `from`: the narrowed literal set, restricted to `entity.states` (in that order); `"*"` when the
  * type is not a finite literal set. The full declared union stays a list, with
@@ -71,6 +73,8 @@ export interface AssembleEnv {
   adapter: PersistenceAdapter;
   /** Collects findings (appended to). */
   findings: Finding[];
+  /** Declaration location of each resolved spec `impl`, by transition name (sorted). */
+  implAt: Record<string, SourceLocation>;
 }
 
 function compareLoc(a: SourceLocation, b: SourceLocation): number {
@@ -328,5 +332,6 @@ export function assemble(spec: BehaviorModel, drafts: Draft[], env: AssembleEnv)
     rules: copy.rules,
     concurrency: sortedConcurrency,
     bindings: copy.bindings,
+    implAt: structuredClone(env.implAt),
   };
 }
