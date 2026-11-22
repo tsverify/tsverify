@@ -438,7 +438,10 @@
         "column": 3,
         "endLine": 35,
         "endColumn": 53
-      }
+      },
+      "causedBy": [
+        "undeclared-transition:Order lifecycle:reopenOrder"
+      ]
     }
   ],
   "specs": [

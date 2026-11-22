@@ -386,7 +386,10 @@
             }
           }
         ]
-      }
+      },
+      "causedBy": [
+        "from-state-unconstrained:Order lifecycle:payment_succeeded"
+      ]
     },
     {
       "id": "implementation-property:Order lifecycle:rule:Shipped orders are never refunded",
@@ -750,7 +753,10 @@
             }
           }
         ]
-      }
+      },
+      "causedBy": [
+        "from-state-unconstrained:Order lifecycle:payment_succeeded"
+      ]
     },
     {
       "id": "implementation-property:Order lifecycle:effect-multiplicity:email.receipt",
@@ -985,7 +991,10 @@
         "column": 3,
         "endLine": 35,
         "endColumn": 53
-      }
+      },
+      "causedBy": [
+        "from-state-unconstrained:Order lifecycle:payment_succeeded"
+      ]
     },
     {
       "id": "implementation-property:Order lifecycle:effect-multiplicity:stripe.refund",
@@ -1358,7 +1367,10 @@
         "column": 3,
         "endLine": 59,
         "endColumn": 43
-      }
+      },
+      "causedBy": [
+        "from-state-unconstrained:Order lifecycle:payment_succeeded"
+      ]
     }
   ],
   "specs": [
