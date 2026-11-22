@@ -13,6 +13,8 @@ export interface GuardRef {
   args: string[];
   /** Canonical text form, e.g. `role(admin)`. Used as the key into `Bindings.guards`. */
   raw: string;
+  /** Where the guard is written in the spec (a `requires` item). */
+  at?: SourceLocation;
 }
 
 export type Trust = "untrusted" | "authenticated" | "signed-webhook" | "internal";
@@ -128,6 +130,10 @@ export interface Transition {
   after?: string;
   impl?: SymbolRef;
   at?: SourceLocation;
+  /** Spec locations of each `from` item (aligned with `from` when it is a list). */
+  fromAt?: SourceLocation[];
+  /** Spec locations of each `by` item (aligned with `by`). */
+  byAt?: SourceLocation[];
   sites?: CodeSites;
 }
 
@@ -171,6 +177,8 @@ export interface Bindings {
   guards: Record<string, GuardBinding>;
   /** Effect name → code call path, e.g. `stripe.refund` → `stripe.refunds.create`. Omitted → name is the path. */
   effects: Record<string, string>;
+  /** Spec location of each `effects` entry, keyed like `effects`. */
+  effectsAt?: Record<string, SourceLocation>;
 }
 
 /**
@@ -225,4 +233,6 @@ export interface BehaviorModel {
   bindings: Bindings;
   /** Test fixtures for generated tests (spec models only; optional). */
   fixtures?: Fixtures;
+  /** Code models only: declaration location of each linked spec transition's `impl`, keyed by transition name. */
+  implAt?: Record<string, SourceLocation>;
 }
