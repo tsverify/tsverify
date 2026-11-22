@@ -16,6 +16,8 @@ export type { Io } from "./io";
 
 const VERSION: string = pkg.version;
 const FORMAT_HELP = `Output format: ${OUTPUT_FORMATS.join(" | ")}`;
+const ENFORCED_ONLY_HELP =
+  "Keep only specs with `enforced: true` (and invalid ones); none left is an empty run (exit 0)";
 
 /**
  * Runs `tsv` with `argv` (the arguments after the program name) and returns the exit code.
@@ -80,6 +82,7 @@ function program(io: Io): CAC {
       default: DEFAULT_MAX_STATES,
     })
     .option("--spec-only", "Check the specs only: skip code extraction and conformance")
+    .option("--enforced-only", ENFORCED_ONLY_HELP)
     .option(
       "--project <dir>",
       "TypeScript project root for all specs (default: per spec, the nearest tsconfig.json dir)",
@@ -96,6 +99,7 @@ function program(io: Io): CAC {
       "--project <dir>",
       "TypeScript project root for all specs (default: per spec, the nearest tsconfig.json dir)",
     )
+    .option("--enforced-only", ENFORCED_ONLY_HELP)
     .action((paths: string[], options: TestCommandOptions) => testCommand(io, paths, options));
 
   cli

@@ -7,6 +7,8 @@ import type { TestCounts } from "./test-findings";
 export interface SpecReport {
   file: string;
   behavior?: string;
+  /** The spec says `enforced: true` (see `BehaviorModel.enforced`). */
+  enforced?: boolean;
   /**
    * In pipeline order: spec findings, spec checker findings, then (code conformance) extractor
    * findings, conformance mismatches and code-model checker findings. Deduplicated by `id`.
@@ -34,6 +36,8 @@ export interface Report {
   specOnly?: boolean;
   /** `test`: the findings are generated-test results only (static ones come from `check`). */
   command?: "test";
+  /** `--enforced-only`: how many specs were left out because they are not `enforced: true`. */
+  enforcedOnly?: { skipped: number };
 }
 
 export function allFindings(report: Report): Finding[] {

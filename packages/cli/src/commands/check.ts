@@ -1,7 +1,7 @@
 import { check } from "@tsv/checker";
 import { checkCode } from "../code-conformance";
 import { type ExitCode, exitCodeFor, UsageError } from "../exit-codes";
-import { loadSpecs, resolveSpecFiles } from "../inputs";
+import { loadSpecs, resolveSpecFiles, selectEnforced } from "../inputs";
 import type { Io } from "../io";
 import { formatReport, parseFormat } from "../output/format";
 import { resolveProjectDir } from "../project-root";
@@ -16,13 +16,16 @@ export interface CheckCommandOptions {
   specOnly?: unknown;
   /** Raw from cac: the project root for every spec, instead of discovering one per spec. */
   project?: unknown;
+  /** Keep only specs with `enforced: true` (and invalid ones, which may be enforced). */
+  enforcedOnly?: unknown;
 }
 
 /**
  * `tsv check [paths…]`, per spec: validate it, model-check it, then (unless `--spec-only`)
  * extract the code model from its project, compare it with the spec and model-check it
- * (`checkCode`). Invalid specs are reported and skipped. Exit 0, 1 on violations, 2 on invalid
- * input (which takes precedence).
+ * (`checkCode`). Invalid specs are reported and skipped. `--enforced-only` keeps only
+ * `enforced: true` specs (and invalid ones); none left is an empty run (exit 0). Exit 0, 1 on
+ * violations, 2 on invalid input (which takes precedence).
  */
 export async function checkCommand(
   io: Io,
@@ -34,12 +37,20 @@ export async function checkCommand(
   const specOnly = options.specOnly === true;
   const project = await parseProject(options.project, io.cwd);
   const files = await resolveSpecFiles(paths, io.cwd);
-  const specs = await loadSpecs(files, io.cwd);
+  const loaded = await loadSpecs(files, io.cwd);
+  const enforcedOnly = options.enforcedOnly === true ? selectEnforced(loaded) : undefined;
+  const specs = enforcedOnly?.kept ?? loaded;
 
   const reports: SpecReport[] = specs.map(({ file, model, behavior, findings }) => {
     if (!model) return { file, behavior, findings: [...findings] };
     const result = check(model, { maxStates });
-    return { file, behavior, findings: [...findings, ...result.findings], stats: result.stats };
+    return {
+      file,
+      behavior,
+      ...(model.enforced && { enforced: true }),
+      findings: [...findings, ...result.findings],
+      stats: result.stats,
+    };
   });
   if (specOnly) {
     for (const r of reports) r.project = null;
@@ -54,7 +65,11 @@ export async function checkCommand(
     });
   }
   for (const r of reports) r.findings = dedupeFindings(r.findings);
-  const report: Report = { specs: reports, ...(specOnly ? { specOnly } : {}) };
+  const report: Report = {
+    specs: reports,
+    ...(specOnly ? { specOnly } : {}),
+    ...(enforcedOnly && { enforcedOnly: { skipped: enforcedOnly.skipped } }),
+  };
 
   io.stdout(formatReport(report, format, io));
   return exitCodeFor(allFindings(report));

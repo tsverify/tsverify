@@ -20,6 +20,8 @@ export interface JsonSpec {
   file: string;
   /** null when the file is too broken to name its behavior. */
   behavior: string | null;
+  /** Present (and `true`) only when the spec says `enforced: true`. */
+  enforced?: true;
   /** Present when the spec was model-checked. */
   stats?: JsonStats;
   /**
@@ -46,8 +48,10 @@ export function toJsonReport(report: Report): JsonReport {
   return {
     version: 1,
     findings,
-    specs: report.specs.map(({ file, behavior, stats, project, codeStats, extract, generated }) => {
+    specs: report.specs.map((s) => {
+      const { file, behavior, enforced, stats, project, codeStats, extract, generated } = s;
       const spec: JsonSpec = { file, behavior: behavior ?? null };
+      if (enforced) spec.enforced = true;
       if (stats) spec.stats = withoutDuration(stats);
       if (project !== undefined) spec.project = project;
       if (codeStats) spec.codeStats = withoutDuration(codeStats);

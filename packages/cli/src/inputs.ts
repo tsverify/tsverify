@@ -46,6 +46,18 @@ export async function loadSpecs(files: readonly string[], cwd: string): Promise<
   return out;
 }
 
+/**
+ * `--enforced-only`: the specs with `enforced: true`, plus every spec that failed to parse. An
+ * invalid spec may well be an enforced one, so breaking it must not take it out of a blocking run.
+ */
+export function selectEnforced(specs: readonly LoadedSpec[]): {
+  kept: LoadedSpec[];
+  skipped: number;
+} {
+  const kept = specs.filter((s) => s.model === undefined || s.model.enforced === true);
+  return { kept, skipped: specs.length - kept.length };
+}
+
 async function isDirectory(path: string): Promise<boolean> {
   try {
     return (await stat(path)).isDirectory();

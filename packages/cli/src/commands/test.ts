@@ -5,7 +5,7 @@ import { type GeneratedTest, generate } from "@tsv/testgen";
 import { checkCode } from "../code-conformance";
 import { type ExitCode, exitCodeFor } from "../exit-codes";
 import { outDirs, writeGenerated } from "../generated-dir";
-import { loadSpecs, resolveSpecFiles } from "../inputs";
+import { loadSpecs, resolveSpecFiles, selectEnforced } from "../inputs";
 import type { Io } from "../io";
 import { rebaseFile, rebaseLocations } from "../locations";
 import { formatReport, parseFormat } from "../output/format";
@@ -19,6 +19,8 @@ export interface TestCommandOptions {
   format?: unknown;
   /** Raw from cac: the project root for every spec, instead of discovering one per spec. */
   project?: unknown;
+  /** Keep only specs with `enforced: true` (and invalid ones, which may be enforced). */
+  enforcedOnly?: unknown;
 }
 
 /** One spec whose tests were generated, waiting for its project's vitest run. */
@@ -49,11 +51,14 @@ export async function testCommand(
   const project = await parseProject(options.project, io.cwd);
   const cwd = io.cwd;
   const files = await resolveSpecFiles(paths, cwd);
-  const specs = await loadSpecs(files, cwd);
+  const loaded = await loadSpecs(files, cwd);
+  const enforcedOnly = options.enforcedOnly === true ? selectEnforced(loaded) : undefined;
+  const specs = enforcedOnly?.kept ?? loaded;
 
-  const reports: SpecReport[] = specs.map(({ file, behavior, findings }) => ({
+  const reports: SpecReport[] = specs.map(({ file, model, behavior, findings }) => ({
     file,
     behavior,
+    ...(model?.enforced && { enforced: true }),
     findings: findings.filter(isInputError),
   }));
   const specChecks = specs.map((s) => (s.model ? check(s.model).findings : []));
@@ -133,7 +138,11 @@ export async function testCommand(
   }
 
   for (const r of reports) r.findings = dedupeFindings(r.findings);
-  const report: Report = { specs: reports, command: "test" };
+  const report: Report = {
+    specs: reports,
+    command: "test",
+    ...(enforcedOnly && { enforcedOnly: { skipped: enforcedOnly.skipped } }),
+  };
   io.stdout(formatReport(report, format, io));
   return exitCodeFor(allFindings(report));
 }

@@ -43,12 +43,25 @@ export function formatPretty(report: Report, io: Io): string {
     const findings = allFindings(report);
     if (findings.length > 0) out += formatFindings(findings, options);
   }
+  out += enforcedOnlyNote(report, f);
   return `${out}${summaryLine(report, f)}\n`;
 }
 
+/** Why an `--enforced-only` run is empty, or how many specs it skipped. */
+function enforcedOnlyNote(report: Report, f: Formatter): string {
+  if (report.enforcedOnly === undefined) return "";
+  const skipped = report.enforcedOnly.skipped;
+  if (report.specs.length === 0) {
+    return `No enforced specs: --enforced-only keeps only specs with \`enforced: true\`, and none of the ${plural(skipped, "spec")} found has it.\n`;
+  }
+  if (skipped === 0) return "";
+  return `${f.dim(`--enforced-only: skipped ${plural(skipped, "spec")} without \`enforced: true\`.`)}\n`;
+}
+
 function projectLabel(spec: SpecReport, report: Report): string {
-  if (report.specOnly) return "spec only";
-  const project = spec.project ? `project: ${spec.project}` : "no project";
+  const enforced = spec.enforced ? " · enforced" : "";
+  if (report.specOnly) return `spec only${enforced}`;
+  const project = (spec.project ? `project: ${spec.project}` : "no project") + enforced;
   const g = spec.generated;
   if (g === undefined) return project;
   return `${project} · ${g.dir}: ${testCountText(g.tests)}`;
