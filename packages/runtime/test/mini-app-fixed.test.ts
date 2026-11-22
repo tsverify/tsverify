@@ -128,4 +128,17 @@ describe("B3 replay against the transactional mini-app refund", () => {
       },
     ]);
   });
+
+  test("inconclusive: the property is not evaluable, the divergence is still reported", async () => {
+    setup();
+    const outcome = await s.tryPlay(B3);
+    await s.drain();
+    const result = replayResult(outcome, undefined);
+    expect(result).toEqual({
+      verdict: "inconclusive",
+      followed: false,
+      divergence: expect.objectContaining({ kind: "blocked", stepIndex: 1, worker: "w2" }),
+    });
+    expect("violated" in result).toBe(false);
+  });
 });

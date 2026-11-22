@@ -52,10 +52,18 @@ export interface ReplayMapping {
 export interface PlanOptions {
   /**
    * Replace the leading atomic actions (and actions on unmapped transitions) by seeding the
-   * entity status. Default `true`. Sound only when nothing is in flight at that point (checked)
-   * and the status is all of the relevant model state.
+   * entity status. Default `true`; `false` replays from the initial state (`replayFrom: 1`).
+   * Sound only when nothing is in flight at that point (checked) and the status is all of the
+   * relevant model state.
    */
   fastForward?: boolean;
+  /**
+   * Replay from this trace step on (its position in `trace.steps`, which is its `index` in a
+   * checker trace) and fast-forward every step before it by seeding, whatever its kind: e.g. a
+   * step on a transition the test cannot call. The steps from here on must all be mapped. Same
+   * in-flight check as the default. Takes the place of `fastForward`; passing both is an error.
+   */
+  replayFrom?: number;
 }
 
 export interface PlannedWorker {
@@ -103,21 +111,7 @@ export function planFromTrace(
   mapping: ReplayMapping,
   options: PlanOptions = {},
 ): ReplayPlan {
-  const mapped = (t: string) => Object.hasOwn(mapping.transitions, t);
-  const fastForward = options.fastForward ?? true;
-
-  let startIndex = 1;
-  while (fastForward && startIndex < trace.steps.length) {
-    const a = trace.steps[startIndex]?.action;
-    if (!a || (a.kind !== "atomic" && mapped(a.transition))) break;
-    startIndex++;
-  }
-  if (startIndex >= trace.steps.length) {
-    throw new Error(
-      `trace for ${trace.property} has nothing to replay: every action is atomic or on an ` +
-        `unmapped transition (mapped: ${Object.keys(mapping.transitions).sort().join(", ") || "none"})`,
-    );
-  }
+  const startIndex = replayStart(trace, mapping, options);
   const before = trace.steps[startIndex - 1]?.state;
   const last = trace.steps.at(-1)?.state;
   if (!before || !last) throw new Error("trace has no initial state");
@@ -187,4 +181,42 @@ export function planFromTrace(
     origins,
     expectedEffects: byLabel((effect, n) => n - (before.effects[effect] ?? 0)),
   };
+}
+
+/** The first replayed step: `replayFrom`, 1 without fast-forward, or after the default prefix. */
+function replayStart(trace: TraceInput, mapping: ReplayMapping, options: PlanOptions): number {
+  const length = trace.steps.length;
+  const { replayFrom } = options;
+  if (replayFrom !== undefined) {
+    if (options.fastForward !== undefined) {
+      throw new Error("planFromTrace: pass either `fastForward` or `replayFrom`, not both");
+    }
+    if (!Number.isInteger(replayFrom) || replayFrom < 1 || replayFrom >= length) {
+      throw new Error(
+        `planFromTrace: replayFrom ${replayFrom} is not a step of the trace for ${trace.property} ` +
+          `(1 to ${length - 1}; step 0 is the initial state)`,
+      );
+    }
+    return replayFrom;
+  }
+  if (options.fastForward === false) {
+    if (length < 2) throw new Error(`trace for ${trace.property} has no actions to replay`);
+    return 1;
+  }
+
+  const mapped = (t: string) => Object.hasOwn(mapping.transitions, t);
+  let start = 1;
+  while (start < length) {
+    const a = trace.steps[start]?.action;
+    if (!a || (a.kind !== "atomic" && mapped(a.transition))) break;
+    start++;
+  }
+  if (start >= length) {
+    throw new Error(
+      `trace for ${trace.property} has nothing to replay: every action is atomic or on an ` +
+        `unmapped transition (mapped: ${Object.keys(mapping.transitions).sort().join(", ") || "none"}); ` +
+        "pass `replayFrom` to choose the first replayed step",
+    );
+  }
+  return start;
 }

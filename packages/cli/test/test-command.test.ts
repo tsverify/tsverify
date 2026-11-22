@@ -59,8 +59,8 @@ describe("tsv test", () => {
     const doc = JSON.parse(r.stdout) as JsonReport;
     expect(doc.findings).toEqual([
       expect.objectContaining({
-        id: "unanalyzable:Light switch:testgen:fixtures",
-        category: "unanalyzable",
+        id: "not-generated:Light switch:testgen:fixtures",
+        category: "not-generated",
         severity: "info",
       }),
     ]);

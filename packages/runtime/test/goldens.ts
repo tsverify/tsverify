@@ -16,3 +16,11 @@ export const refundRaceTrace = golden<Trace>(
 export const ordersAppCode = golden<BehaviorModel>(
   "../../extractor/test/__golden__/orders-app.code.json",
 );
+
+const testgenTraces = golden<Record<string, Trace>>("../../testgen/test/fixtures/traces.json");
+
+/** B1 (`packages/testgen/test/fixtures/traces.json`): pay, an unlinked reopen, pay again. */
+export const b1ReopenTrace = testgenTraces["b1-reopen"] as Trace;
+
+/** B4 (`packages/testgen/test/fixtures/traces.json`): two atomic webhook deliveries. */
+export const b4WebhookDupTrace = testgenTraces["b4-webhook-dup"] as Trace;

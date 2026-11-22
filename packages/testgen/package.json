@@ -11,5 +11,8 @@
   },
   "dependencies": {
     "@tsv/ir": "workspace:*"
+  },
+  "devDependencies": {
+    "@tsv/runtime": "workspace:*"
   }
 }

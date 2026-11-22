@@ -1,8 +1,8 @@
 # @tsv/testgen
 
 Generates the vitest files `tsv test` writes and runs. Depends only on `@tsv/ir` (doc 6 §2): it
-never imports `@tsv/runtime`; the **generated code** imports it at test time. Pure: data in,
-files (as strings) out, deterministic.
+never imports `@tsv/runtime` in `src/` (only its tests do, as a devDependency); the **generated
+code** imports it at test time. Pure: data in, files (as strings) out, deterministic.
 
 ```ts
 import { generate } from "@tsv/testgen";
@@ -14,7 +14,7 @@ const { files, skipped, tests } = generate({
   outDir: ".tsv/generated/order-lifecycle", // project-relative, used for import paths
 });
 // files:   { path (relative to outDir), content }[]
-// skipped: info findings (`unanalyzable:<behavior>:testgen:…`) saying what was not generated
+// skipped: info findings (`not-generated:<behavior>:testgen:…`) saying what was not generated
 // tests:   one descriptor per generated test(…), so the CLI can map vitest results back
 ```
 
@@ -47,15 +47,19 @@ The sidecar holds the trace and the `CodeSites` subset `mappingFromCode` reads. 
 entity in `plan.seedStatus`, spawns one worker per trace worker (each calls its transition's impl),
 `tryPlay`s the schedule, `drain`s, evaluates the property in code terms and calls `replayResult`.
 
-- **Planning.** When the runtime's default fast-forward leaves something drivable to replay, the
-  sidecar holds the trace unchanged (B3, B6). Otherwise testgen cuts it after the last step it
-  cannot drive and the test plans with `{ fastForward: false }`: an all-atomic trace (B4's
-  duplicate webhook) replays from the initial state; a step on an unlinked transition (B1's
-  `reopenOrder`) is seeded instead of replayed. `src/replay-plan.ts` mirrors the runtime's rules.
+- **Planning.** The sidecar holds the trace unchanged. When the runtime's default fast-forward
+  leaves something drivable to replay, the test plans with the default (B3, B6). Otherwise it
+  passes `{ replayFrom: i }`, the step after the last one it cannot drive: an all-atomic trace
+  (B4's duplicate webhook) replays from the initial state (`replayFrom: 1`); a step on an unlinked
+  transition (B1's `reopenOrder`, step 3) is seeded instead of replayed (`replayFrom: 4`).
+  `src/replay-plan.ts` mirrors the runtime's rules; `test/runtime-cross-check.test.ts` runs the
+  real runtime (a devDependency) on the generated sidecars and plan options to keep the two in
+  step, along with the fake configs `src/context.ts` derives like `storeConfigFromCode`.
 - **Properties.** `effect-multiplicity` and `always` / `never` rules over status checks and effect
   counts are evaluated (`effects[gate]` = fast-forwarded prefix + calls in the replay; `status` =
   the stored entity). Anything else (`eventually`, liveness, structural properties) gives an
-  **inconclusive** replay: it still runs, records `inconclusive: true` and passes.
+  **inconclusive** replay: it still runs, calls `replayResult(outcome, undefined)` (verdict
+  `inconclusive`) and passes.
 
 ### Verdict channel
 
@@ -63,15 +67,15 @@ Each replay test sets `task.meta.tsvReplay` before its assertion; `tsv test` rea
 vitest's `TestCase.meta()`:
 
 ```ts
-tsvReplay: ReplayResult & {          // { verdict, followed, violated, divergence? } from @tsv/runtime
-  inconclusive?: boolean;            // property not evaluable in code terms
+tsvReplay: ReplayResult & {          // { verdict, followed, violated?, divergence? } from @tsv/runtime
   status: unknown;                   // stored state after drain
   effects: Record<string, number>;   // calls per effect gate, seeded prefix included
 }
 ```
 
 `confirmed` and `confirmed-divergent` fail the test (`expect(result.violated, "<verdict>: the real
-code violates <property>…").toBe(false)`); `replay-disagrees` passes. A replay test that fails
+code violates <property>…").toBe(false)`); `replay-disagrees` and `inconclusive` (no `violated`)
+pass. A replay test that fails
 without `tsvReplay` could not run at all.
 
 ## Skipped (info findings)

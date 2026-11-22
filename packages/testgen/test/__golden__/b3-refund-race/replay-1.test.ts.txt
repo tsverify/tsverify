@@ -18,7 +18,6 @@ declare module "vitest" {
   interface TaskMeta {
     /** Read back by `tsv test`: the verdict, plus the stored status and effect counts it saw. */
     tsvReplay?: ReplayResult & {
-      inconclusive?: boolean;
       status: unknown;
       effects: Record<string, number>;
     };

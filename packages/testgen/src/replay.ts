@@ -7,8 +7,8 @@
  * `tryPlay`, `drain`, then the violated property in code terms and `replayResult`.
  *
  * The verdict goes to `task.meta.tsvReplay` (read back by `tsv test`). A `confirmed` or
- * `confirmed-divergent` verdict fails the test. An inconclusive replay (the property is not an
- * effect count or a status check) records `inconclusive: true` and passes.
+ * `confirmed-divergent` verdict fails the test. When the property is not an effect count or a
+ * status check, the test calls `replayResult(outcome, undefined)`: verdict `inconclusive`, passes.
  */
 import type { Finding } from "@tsv/ir";
 import { type Context, effectGate } from "./context";
@@ -103,7 +103,6 @@ function replayFile(
       "  interface TaskMeta {",
       "    /** Read back by `tsv test`: the verdict, plus the stored status and effect counts it saw. */",
       "    tsvReplay?: ReplayResult & {",
-      "      inconclusive?: boolean;",
       "      status: unknown;",
       "      effects: Record<string, number>;",
       "    };",
@@ -128,7 +127,7 @@ function replayFile(
   lines.push("};", "");
 
   lines.push(
-    `const plan = planFromTrace(sidecar.trace, mappingFromCode(sidecar.code)${plan.fastForward ? "" : ", { fastForward: false }"});`,
+    `const plan = planFromTrace(sidecar.trace, mappingFromCode(sidecar.code)${plan.replayFrom === undefined ? "" : `, { replayFrom: ${plan.replayFrom} }`});`,
   );
   lines.push(...scheduleComment(ctx, plan));
   lines.push("");
@@ -178,9 +177,7 @@ function replayFile(
     lines.push("  expect(result.violated, why.trim()).toBe(false);");
   } else {
     lines.push(`  // Inconclusive: ${evaluated.reason}.`);
-    lines.push(
-      "  task.meta.tsvReplay = { ...replayResult(outcome, false), inconclusive: true, status, effects };",
-    );
+    lines.push("  task.meta.tsvReplay = { ...replayResult(outcome, undefined), status, effects };");
   }
   lines.push("});");
 

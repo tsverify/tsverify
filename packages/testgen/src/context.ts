@@ -213,7 +213,7 @@ export function buildContext(input: ContextInput): { ctx?: Context; skipped: Fin
   }
 
   // 3. Fakes, from every code transition's sites (linked or not), like the runtime's
-  //    storeConfigFromCode / effectsConfigFromCode.
+  //    storeConfigFromCode / effectsConfigFromCode (test/runtime-cross-check.test.ts).
   const allSites = code.transitions.flatMap((t) => (t.sites ? [t.sites] : []));
   const storeClients = sortedUnique(allSites.flatMap((s) => (s.storage ? [s.storage.client] : [])));
   const stores: StoreFakeConfig[] = [];

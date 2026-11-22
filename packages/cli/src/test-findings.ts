@@ -7,7 +7,7 @@
  * | replay verdict `confirmed`              | `replay-confirmed` (error)                |
  * | replay verdict `confirmed-divergent`    | `replay-confirmed` (error), with a note on the divergence |
  * | replay verdict `replay-disagrees`       | `replay-disagrees` (warning)              |
- * | replay marked inconclusive              | `unanalyzable` (info)                     |
+ * | replay verdict `inconclusive`           | `unanalyzable` (info)                     |
  * | replay test fails without a verdict     | `generated-test-failed` (error): it could not run |
  *
  * Replay verdicts come from `task.meta.tsvReplay`, which every generated replay test sets
@@ -20,11 +20,10 @@ import type { TestOutcome } from "./test-run";
 
 /** What a generated replay test stores in `task.meta.tsvReplay`. */
 export interface ReplayMeta {
-  verdict: "confirmed" | "confirmed-divergent" | "replay-disagrees";
+  verdict: "confirmed" | "confirmed-divergent" | "replay-disagrees" | "inconclusive";
   followed: boolean;
-  violated: boolean;
+  violated?: boolean;
   divergence?: { kind: string; stepIndex: number; worker: string; message: string };
-  inconclusive?: boolean;
   status?: unknown;
   effects?: Record<string, number>;
 }
@@ -145,7 +144,7 @@ function replayFinding(
     return f;
   };
 
-  if (meta.inconclusive) {
+  if (meta.verdict === "inconclusive") {
     const f = base("unanalyzable", "info");
     f.message = `Replayed the ${against} (${meta.followed ? "schedule followed" : `diverged: ${meta.divergence?.kind ?? "?"}`}), but ${test.property ?? "the property"} cannot be evaluated in code terms, so the replay is inconclusive. ${observed}`;
     f.hint = `The replay test is kept in ${file}.`;
