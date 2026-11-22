@@ -11,6 +11,7 @@ import type { BehaviorModel, Finding, PersistenceKind } from "@tsv/ir";
 import { compareStrings } from "@tsv/ir";
 import { ts } from "ts-morph";
 import { assignAdapter } from "./adapters/assign";
+import { memoryAdapter } from "./adapters/memory";
 import type { PersistenceAdapter, PersistenceFacts } from "./adapters/types";
 import { assemble, type Draft, type MatchedWrite } from "./assemble";
 import { Callees, frameCalls, frameOf, type Reach, reach } from "./callgraph";
@@ -86,7 +87,10 @@ function detectPersistence(ctx: ProjectContext): PersistenceKind {
   return "assign";
 }
 
-const ADAPTERS: Partial<Record<PersistenceKind, PersistenceAdapter>> = { assign: assignAdapter };
+const ADAPTERS: Partial<Record<PersistenceKind, PersistenceAdapter>> = {
+  assign: assignAdapter,
+  memory: memoryAdapter,
+};
 
 function literalArgs(call: ts.CallExpression, checker: ts.TypeChecker): string[] {
   const out: string[] = [];
@@ -201,7 +205,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
         kind,
         `persistence "${kind}" is not supported yet; no code model was extracted`,
         {
-          hint: "Only the `assign` adapter exists in this version; set `bindings.persistence: assign` if the code assigns and saves whole objects.",
+          hint: "Only the `assign` and `memory` adapters exist in this version; set `bindings.persistence: assign` if the code assigns and saves whole objects, or `memory` for in-process objects.",
         },
       ),
     );
@@ -390,6 +394,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
     dominance,
     persistenceClients,
     persistence: kind,
+    adapter,
     findings,
   });
   return { spec: behavior, model, findings: sortFindings(findings) };
