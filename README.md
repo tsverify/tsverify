@@ -91,3 +91,10 @@ pnpm run ci      # lint + typecheck + test
 ```
 
 Repository layout and package ownership: [`idea/6. repo-structure.md`](idea/6.%20repo-structure.md).
+
+## License
+
+[Apache License 2.0](LICENSE). Copyright 2026 The tsverify Authors; see [`NOTICE`](NOTICE).
+
+Files tsverify **generates** in your project, such as the tests under `.tsverify/generated/`, are yours. The license
+places no conditions on them.

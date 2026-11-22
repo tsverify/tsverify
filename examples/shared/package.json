@@ -1,6 +1,7 @@
 {
   "name": "@tsverify-examples/shared",
   "version": "0.0.0",
+  "license": "Apache-2.0",
   "private": true,
   "type": "module",
   "description": "Test helpers shared by the example apps (materialize an app and its seeded-bug variants).",
