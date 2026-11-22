@@ -3,9 +3,9 @@
  * configured call path becomes an async method that passes a gate, records the call (worker,
  * arguments, order) and returns a fake result. Nothing leaves the process.
  */
-import type { GateKind } from "../gates";
-import type { EffectCall, Scheduler } from "../scheduler";
-import { strict } from "./strict";
+import type { GateKind } from "../gates.js";
+import type { EffectCall, Scheduler } from "../scheduler.js";
+import { strict } from "./strict.js";
 
 /** An async method of an effects fake. */
 export type EffectMethod = (...args: unknown[]) => Promise<unknown>;

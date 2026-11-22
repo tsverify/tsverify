@@ -19,8 +19,8 @@
  * - `inconclusive`: the caller cannot evaluate the property from one finished replay (`violated`
  *   is `undefined`), e.g. a liveness rule. The replay still ran; report it as info.
  */
-import type { DivergenceKind } from "./divergence";
-import type { PlayOutcome } from "./scheduler";
+import type { DivergenceKind } from "./divergence.js";
+import type { PlayOutcome } from "./scheduler.js";
 
 export type ReplayVerdict =
   | "confirmed"

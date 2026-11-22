@@ -43,11 +43,11 @@
  *   throw `UninstrumentedCallError` naming the config to add. `$connect` / `$disconnect` are
  *   no-ops.
  */
-import { currentWorkerContext, runInWorker } from "../context";
-import { preview } from "../preview";
-import type { Scheduler } from "../scheduler";
-import type { Row } from "./store";
-import { strict } from "./strict";
+import { currentWorkerContext, runInWorker } from "../context.js";
+import { preview } from "../preview.js";
+import type { Scheduler } from "../scheduler.js";
+import type { Row } from "./store.js";
+import { strict } from "./strict.js";
 
 /** The delegate methods every configured model has. */
 export const PRISMA_METHODS = [

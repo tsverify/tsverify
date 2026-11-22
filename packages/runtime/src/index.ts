@@ -1,9 +1,9 @@
 // @tsverify/runtime: imported by tests that tsverify generates. Zero internal dependencies (doc 6 §2 rule 5).
-// See ../README.md for the semantics and the shape of a generated replay test.
+// See ../DESIGN.md for the semantics and the shape of a generated replay test.
 
-import { effects } from "./instrument/effects";
-import { prisma } from "./instrument/prisma";
-import { store } from "./instrument/store";
+import { effects } from "./instrument/effects.js";
+import { prisma } from "./instrument/prisma.js";
+import { store } from "./instrument/store.js";
 
 export {
   type DivergenceDetails,
@@ -12,9 +12,14 @@ export {
   ReplayDivergence,
   type Step,
   type WorkerSnapshot,
-} from "./divergence";
-export type { GateEvent, GateKind } from "./gates";
-export type { EffectMethod, EffectsClient, EffectsConfig, EffectsFake } from "./instrument/effects";
+} from "./divergence.js";
+export type { GateEvent, GateKind } from "./gates.js";
+export type {
+  EffectMethod,
+  EffectsClient,
+  EffectsConfig,
+  EffectsFake,
+} from "./instrument/effects.js";
 export {
   PRISMA_METHODS,
   type PrismaDelegate,
@@ -25,7 +30,7 @@ export {
   PrismaFakeError,
   type PrismaMethod,
   type PrismaModelConfig,
-} from "./instrument/prisma";
+} from "./instrument/prisma.js";
 export type {
   CollectionConfig,
   CommitMethod,
@@ -35,8 +40,8 @@ export type {
   StoreCollections,
   StoreConfig,
   StoreFake,
-} from "./instrument/store";
-export { UninstrumentedCallError } from "./instrument/strict";
+} from "./instrument/store.js";
+export { UninstrumentedCallError } from "./instrument/strict.js";
 export {
   type ModelActionKind,
   type PlannedWorker,
@@ -46,7 +51,7 @@ export {
   type ReplayPlan,
   type TraceInput,
   type TraceStepInput,
-} from "./plan";
+} from "./plan.js";
 export {
   type EffectCall,
   type Outcome,
@@ -58,7 +63,7 @@ export {
   scheduler,
   UNTIL_DONE,
   type WorkerStatus,
-} from "./scheduler";
+} from "./scheduler.js";
 export {
   type CallSiteInput,
   type CodeModelInput,
@@ -67,8 +72,8 @@ export {
   mappingFromCode,
   prismaConfigFromCode,
   storeConfigFromCode,
-} from "./sites";
-export { type ReplayResult, type ReplayVerdict, replayResult, replayVerdict } from "./verdict";
+} from "./sites.js";
+export { type ReplayResult, type ReplayVerdict, replayResult, replayVerdict } from "./verdict.js";
 
 /** In-memory fakes for the app's clients. `fake.client` is what a `vi.mock` factory exports. */
 export const instrument = { store, prisma, effects };

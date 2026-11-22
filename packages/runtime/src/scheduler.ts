@@ -1,5 +1,5 @@
 /**
- * The replay scheduler: workers, gates, `play(schedule)`. See README "Scheduler semantics".
+ * The replay scheduler: workers, gates, `play(schedule)`. See DESIGN.md "Scheduler semantics".
  *
  * Invariant: at most one worker is `running` at any time, and a worker only starts running when a
  * step (or `drain`) resumes it. A step ends on an event (the worker parks at a gate, waits for a
@@ -9,17 +9,17 @@
  * in its own method (`start`, `park`, `pass`, `markWaiting`, `markReady`, `wake`, `complete`,
  * `fail`), which that file links to.
  */
-import { currentWorkerContext, runInWorker } from "./context";
+import { currentWorkerContext, runInWorker } from "./context.js";
 import {
   type DivergenceDetails,
   type DivergenceKind,
   ReplayDivergence,
   type Step,
   type WorkerSnapshot,
-} from "./divergence";
-import { type GateEvent, type GateKind, GateRegistry } from "./gates";
-import { type LockHost, SchedLock } from "./lock";
-import { errorMessage, preview } from "./preview";
+} from "./divergence.js";
+import { type GateEvent, type GateKind, GateRegistry } from "./gates.js";
+import { type LockHost, SchedLock } from "./lock.js";
+import { errorMessage, preview } from "./preview.js";
 
 // Captured at import, before any test can install fake timers: the step timeout must stay real.
 const realSetTimeout = globalThis.setTimeout;
