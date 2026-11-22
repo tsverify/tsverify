@@ -3,37 +3,37 @@ Order lifecycle
   ✗ from-state-unconstrained  src/orders/order.behavior.yaml:27:3 · src/payments/webhook.ts:18:5
     payment_succeeded: onPaymentSucceeded writes paid from any state (nothing narrows order.status before the write: its type there is the full declared union OrderStatus); the spec allows only pending_payment.
     hint: Check that status is 'pending_payment' before the write, inside the same atomic scope.
-  ✗ implementation-property  src/orders/order.behavior.yaml:27:3 · src/payments/webhook.ts:23:9
-    Exactly-once effect `email.receipt` fires 2 times for one Order.
-    hint: narrow the `from` states of `payment_succeeded` so a repeated invocation is rejected, or deduplicate `email.receipt`
-    trace:
-      step 0  status=draft
-      step 1  payment_succeeded#1 atomic → proceed  status=paid  email.receipt=1
-      step 2  payment_succeeded#2 atomic → proceed (duplicate delivery)  status=paid  email.receipt=2  ✗ effect-multiplicity
-  ✗ implementation-property  src/orders/order.behavior.yaml:52:3 · src/orders/refund.ts:21:10
-    Exactly-once effect `stripe.refund` fires 2 times for one Order.
-    hint: narrow the `from` states of `refund` so a repeated invocation is rejected, or deduplicate `stripe.refund`
-    trace:
-      step 0  status=draft
-      step 1  payment_succeeded#1 atomic → proceed  status=paid  email.receipt=1
-      step 2  refund#1 atomic → proceed  status=refunded  stripe.refund=1
-      step 3  payment_succeeded#2 atomic → proceed (duplicate delivery)  status=paid  email.receipt=2
-      step 4  refund#2 atomic → proceed  status=refunded  stripe.refund=2  ✗ effect-multiplicity
-  ✗ implementation-property  src/orders/order.behavior.yaml:62:5
-    Rule "Refund issued at most once per order" (always: count(effect stripe.refund) <= 1) is violated: a reachable state breaks it.
-    trace:
-      step 0  status=draft
-      step 1  payment_succeeded#1 atomic → proceed  status=paid  email.receipt=1
-      step 2  refund#1 atomic → proceed  status=refunded  stripe.refund=1
-      step 3  payment_succeeded#2 atomic → proceed (duplicate delivery)  status=paid  email.receipt=2
-      step 4  refund#2 atomic → proceed  status=refunded  stripe.refund=2  ✗ rule:Refund issued at most once per order
-  ✗ implementation-property  src/orders/order.behavior.yaml:66:5
-    Rule "Shipped orders are never refunded" (never: status == shipped and count(effect stripe.refund) > 0) is violated: a reachable state satisfies it.
-    trace:
-      step 0  status=draft
-      step 1  payment_succeeded#1 atomic → proceed  status=paid  email.receipt=1
-      step 2  refund#1 atomic → proceed  status=refunded  stripe.refund=1
-      step 3  payment_succeeded#2 atomic → proceed (duplicate delivery)  status=paid  email.receipt=2
-      step 4  ship#1 atomic → proceed  status=shipped  ✗ rule:Shipped orders are never refunded
+    ↳ consequence: ✗ implementation-property  src/orders/order.behavior.yaml:27:3 · src/payments/webhook.ts:23:9
+      Exactly-once effect `email.receipt` fires 2 times for one Order.
+      hint: narrow the `from` states of `payment_succeeded` so a repeated invocation is rejected, or deduplicate `email.receipt`
+      trace:
+        step 0  status=draft
+        step 1  payment_succeeded#1 atomic → proceed  status=paid  email.receipt=1
+        step 2  payment_succeeded#2 atomic → proceed (duplicate delivery)  status=paid  email.receipt=2  ✗ effect-multiplicity
+    ↳ consequence: ✗ implementation-property  src/orders/order.behavior.yaml:52:3 · src/orders/refund.ts:21:10
+      Exactly-once effect `stripe.refund` fires 2 times for one Order.
+      hint: narrow the `from` states of `refund` so a repeated invocation is rejected, or deduplicate `stripe.refund`
+      trace:
+        step 0  status=draft
+        step 1  payment_succeeded#1 atomic → proceed  status=paid  email.receipt=1
+        step 2  refund#1 atomic → proceed  status=refunded  stripe.refund=1
+        step 3  payment_succeeded#2 atomic → proceed (duplicate delivery)  status=paid  email.receipt=2
+        step 4  refund#2 atomic → proceed  status=refunded  stripe.refund=2  ✗ effect-multiplicity
+    ↳ consequence: ✗ implementation-property  src/orders/order.behavior.yaml:62:5
+      Rule "Refund issued at most once per order" (always: count(effect stripe.refund) <= 1) is violated: a reachable state breaks it.
+      trace:
+        step 0  status=draft
+        step 1  payment_succeeded#1 atomic → proceed  status=paid  email.receipt=1
+        step 2  refund#1 atomic → proceed  status=refunded  stripe.refund=1
+        step 3  payment_succeeded#2 atomic → proceed (duplicate delivery)  status=paid  email.receipt=2
+        step 4  refund#2 atomic → proceed  status=refunded  stripe.refund=2  ✗ rule:Refund issued at most once per order
+    ↳ consequence: ✗ implementation-property  src/orders/order.behavior.yaml:66:5
+      Rule "Shipped orders are never refunded" (never: status == shipped and count(effect stripe.refund) > 0) is violated: a reachable state satisfies it.
+      trace:
+        step 0  status=draft
+        step 1  payment_succeeded#1 atomic → proceed  status=paid  email.receipt=1
+        step 2  refund#1 atomic → proceed  status=refunded  stripe.refund=1
+        step 3  payment_succeeded#2 atomic → proceed (duplicate delivery)  status=paid  email.receipt=2
+        step 4  ship#1 atomic → proceed  status=shipped  ✗ rule:Shipped orders are never refunded
 
 ✗ 1 spec, 5 errors, 0 warnings (6 spec states, 39 code states)

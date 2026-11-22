@@ -118,7 +118,11 @@ describe("tsv test on examples/orders-app", { timeout: 60_000 }, () => {
       doc,
       "replay-confirmed:Order lifecycle:effect-multiplicity:stripe.refund:code-model",
     );
-    expect(confirmed).toMatchObject({ severity: "error", transition: "refund" });
+    expect(confirmed).toMatchObject({
+      severity: "error",
+      transition: "refund",
+      causedBy: ["implementation-property:Order lifecycle:effect-multiplicity:stripe.refund"],
+    });
     expect(confirmed.message).toContain("stripe.refunds.create ×2");
     expect(confirmed.trace?.model).toBe("code");
     expect(run.files).toContain("replay-2.test.ts");

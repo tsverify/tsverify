@@ -24,11 +24,12 @@ export function terminalFormatter(io: Io): Formatter {
 
 /**
  * The findings (via `@tsv/render`), then one summary line. `check` reports (specs with a
- * `project`) get one section per spec, headed by the spec file and its project root.
+ * `project`) get one section per spec, headed by the spec file and its project root. Findings
+ * with `causedBy` are printed under their cause (`groupCauses`); the counts include them.
  */
 export function formatPretty(report: Report, io: Io): string {
   const f = terminalFormatter(io);
-  const options = { formatter: f, cwd: io.cwd, countLine: false };
+  const options = { formatter: f, cwd: io.cwd, countLine: false, groupCauses: true };
   let out = "";
   if (report.specs.some((s) => s.project !== undefined)) {
     for (const spec of report.specs) {
