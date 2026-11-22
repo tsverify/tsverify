@@ -10,6 +10,8 @@ interface Manifest {
   private?: boolean;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
+  peerDependenciesMeta?: Record<string, { optional?: boolean }>;
   publishConfig?: { bin?: Record<string, string>; access?: string };
 }
 
@@ -45,6 +47,26 @@ describe("@tsverify/cli package.json", () => {
     for (const [name, version] of Object.entries(deps)) {
       if (name !== RUNTIME) expect(version, name).toMatch(/^\d+\.\d+\.\d+$/);
     }
+  });
+
+  it("bundles no TypeScript: it comes from the project, as either optional peer", () => {
+    const TYPESCRIPTS = ["typescript", "@typescript/typescript6", "ts-morph", "@ts-morph/common"];
+    for (const name of TYPESCRIPTS) expect(deps, name).not.toHaveProperty(name);
+    for (const dir of bundled) {
+      const own = Object.keys(manifest(dir).dependencies ?? {});
+      expect({ from: dir, typescript: own.filter((n) => TYPESCRIPTS.includes(n)) }).toEqual({
+        from: dir,
+        typescript: [],
+      });
+    }
+    expect(cli.peerDependencies).toEqual({
+      "@typescript/typescript6": ">=6.0.0",
+      typescript: ">=5.4",
+    });
+    expect(cli.peerDependenciesMeta).toEqual({
+      "@typescript/typescript6": { optional: true },
+      typescript: { optional: true },
+    });
   });
 
   it("keeps tsx for development only and publishes the bundle as the bin", () => {

@@ -1,8 +1,9 @@
 import { posix, resolve } from "node:path";
 import { type CheckStats, check } from "@tsverify/checker";
 import { compare } from "@tsverify/conformance";
-import { type ExtractStats, extractAll } from "@tsverify/extractor";
+import { type ExtractStats, extractAll, loadTypeScript } from "@tsverify/extractor";
 import type { BehaviorModel, Finding } from "@tsverify/ir";
+import { SetupError } from "./exit-codes";
 import type { LoadedSpec } from "./inputs";
 import { rebaseFile, rebaseLocations } from "./locations";
 import { findProjectRoot, TSCONFIG } from "./project-root";
@@ -46,7 +47,8 @@ export interface CodeOutcome {
  * (`@tsverify/conformance`), model-check it (`@tsverify/checker`), and link the checker's findings to the
  * mismatches behind them (`linkRootCauses`). Specs without a model (invalid
  * input) get no findings here. A spec with no `tsconfig.json` at or above it gets one
- * `broken-link` finding.
+ * `broken-link` finding. A project without a usable TypeScript (`loadTypeScript`) throws a
+ * `SetupError` (exit code 2).
  *
  * The extractor and conformance work with project-root-relative paths, so each spec model is
  * rebased onto its project root before extraction and every finding is rebased back onto the
@@ -80,8 +82,10 @@ export async function checkCode(
   });
 
   for (const [root, members] of projects) {
+    const typescript = loadTypeScript(root);
+    if ("error" in typescript) throw new SetupError(typescript.error);
     const models = members.map((m) => rebaseLocations(m.model, cwd, root));
-    const { results, stats } = extractAll(models, { projectRoot: root });
+    const { results, stats } = extractAll(models, { projectRoot: root, typescript: typescript.ts });
     members.forEach(({ index }, k) => {
       const spec = models[k] as BehaviorModel;
       const result = results[k];

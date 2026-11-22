@@ -9,7 +9,7 @@ import { schemaCommand } from "./commands/schema";
 import { type TestCommandOptions, testCommand } from "./commands/test";
 import { type ValidateCommandOptions, validateCommand } from "./commands/validate";
 import { type ViewCommandOptions, viewCommand } from "./commands/view";
-import { ExitCode, UsageError } from "./exit-codes";
+import { ExitCode, SetupError, UsageError } from "./exit-codes";
 import { helpText } from "./help";
 import type { Io } from "./io";
 import { DIFF_FORMATS } from "./output/diff";
@@ -61,6 +61,10 @@ async function run(argv: string[], io: Io): Promise<number> {
     return await cli.runMatchedCommand();
   } catch (e) {
     if (isUsageError(e)) return usage(io, cli, e.message, command);
+    if (e instanceof SetupError) {
+      io.stderr(`error: ${e.message}\n`);
+      return ExitCode.InvalidInput;
+    }
     throw e;
   }
 }

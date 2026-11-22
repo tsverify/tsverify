@@ -20,6 +20,14 @@ export class UsageError extends Error {
   override readonly name = "UsageError";
 }
 
+/**
+ * The project cannot be analyzed as set up, e.g. it has no TypeScript with the compiler API:
+ * reported on stderr without the usage text, exit code 2.
+ */
+export class SetupError extends Error {
+  override readonly name = "SetupError";
+}
+
 /** Invalid input (2) takes precedence over violations (1). */
 export function exitCodeFor(findings: readonly Finding[]): ExitCode {
   let code: ExitCode = ExitCode.Ok;
