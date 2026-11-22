@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 
 ### Changed
+- **Smaller install.** `@tsverify/cli` no longer installs Mermaid, vitest, yaml, zod, cac or picocolors: about
+  231 MB of `node_modules` became 17 MB (most of it ts-morph). The viewer ships prebuilt with only the part of
+  Mermaid it uses (state diagrams, about 0.8 MB, loaded lazily, still offline and under the same CSP), and the
+  small pure-JS packages are bundled into `dist/tsverify.js`. Their licenses are in
+  `dist/THIRD_PARTY_NOTICES.md` (see `NOTICE`).
+- **vitest is an optional peer dependency** (`^3.0.5 || ^4.0.1 || ^5.0.0`). Only `tsverify test` needs it:
+  install it with `npm i -D vitest`. `tsverify test` uses the project's vitest, else one installed next to
+  tsverify. Without one it exits 2 with "tsverify test runs the generated tests with vitest, which isn't
+  installed: npm i -D vitest"; with a version outside the range it exits 2 and names the version and where it
+  found it. Every other command works without vitest.
 - `by: [a, b]` means **any** listed actor: a call is authorized when it passes the transition's own `requires`
   and all the `requires` of at least one listed actor. `guard-not-dominating` used to require every listed
   actor's guards at once, which flagged correct owner-or-admin code and accepted owner-and-admin code. It now

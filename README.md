@@ -11,8 +11,16 @@ does, and turns every mismatch into a failing test. Local-only: install + YAML f
 ## Quick start
 
 **1. Install.** *Placeholder: `tsverify` is not published yet.* Once it is, it is a dev dependency
-(`npm install --save-dev @tsverify/cli`, then `npx tsverify …`; Node.js 22.12 or later). Until then, run it from a
-checkout of this repository with `pnpm install`, then `pnpm tsverify <command>`.
+(Node.js 22.12 or later):
+
+```sh
+npm i -D @tsverify/cli          # then npx tsverify …
+npm i -D @tsverify/cli vitest   # if you want `tsverify test`, which runs the generated tests with your vitest (3.0.5+, 4.0.1+ or 5)
+```
+
+`check`, `view`, `diff`, `render`, `validate` and `schema` need nothing else; without vitest, `tsverify test` says so
+and exits 2. Until it is published, run it from a checkout of this repository with `pnpm install`, then
+`pnpm tsverify <command>`.
 
 **2. Write a spec** next to the entity it describes, e.g. `src/orders/order.behavior.yaml`:
 
@@ -62,9 +70,9 @@ tsverify diff --base main     # behavior diff (Markdown + Mermaid) for the PR
 tsverify view                 # local viewer: diagram, matrix, findings, counterexample playback, live reload
 ```
 
-`tsverify test` writes the generated tests to `.tsverify/generated/` and runs them with its own vitest, so the
-project needs nothing else installed. To run them with **your own** vitest too (e.g. in `vitest run`), add
-`@tsverify/runtime` (the same version as `@tsverify/cli`) and `vitest` as devDependencies.
+`tsverify test` writes the generated tests to `.tsverify/generated/` and runs them with the project's vitest
+(step 1). To run them in your own `vitest run` too, also add `@tsverify/runtime` (the same version as
+`@tsverify/cli`) as a devDependency.
 
 `tsverify view` serves on 127.0.0.1 only ([docs/viewer.md](docs/viewer.md)); `tsverify render <spec> --mermaid` prints the
 diagram as text.
