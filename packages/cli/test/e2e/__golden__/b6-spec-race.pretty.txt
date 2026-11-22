@@ -1,0 +1,28 @@
+src/orders/order.behavior.yaml  project: .
+Order lifecycle
+  ✗ spec-property  src/orders/order.behavior.yaml:58:9
+    Exactly-once effect `stripe.refund` fires 2 times for one Order.
+    hint: mark `refund` atomic: true, or make its state write conditional
+    trace:
+      step 0  status=draft
+      step 1  checkout#1 atomic → proceed  status=pending_payment
+      step 2  payment_succeeded#1 atomic → proceed  status=paid  email.receipt=1
+      step 3  refund#1 read → proceed  status=paid
+      step 4  refund#2 read → proceed  status=paid
+      step 5  refund#1 write  status=refunded  stripe.refund=1
+      step 6  refund#2 write  status=refunded  stripe.refund=2  ✗ effect-multiplicity
+  ✗ spec-property  src/orders/order.behavior.yaml:62:5
+    Rule "Refund issued at most once per order" (always: count(effect stripe.refund) <= 1) is violated: a reachable state breaks it.
+    hint: mark `refund` atomic: true, or make its state write conditional
+    trace:
+      step 0  status=draft
+      step 1  checkout#1 atomic → proceed  status=pending_payment
+      step 2  payment_succeeded#1 atomic → proceed  status=paid  email.receipt=1
+      step 3  refund#1 read → proceed  status=paid
+      step 4  refund#2 read → proceed  status=paid
+      step 5  refund#1 write  status=refunded  stripe.refund=1
+      step 6  refund#2 write  status=refunded  stripe.refund=2  ✗ rule:Refund issued at most once per order
+
+2 errors · 0 warnings · 0 info
+
+✗ 1 spec, 2 errors, 0 warnings (15 spec states, 6 code states)
