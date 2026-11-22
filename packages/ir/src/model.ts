@@ -44,9 +44,12 @@ export interface CallSite {
   at: SourceLocation;
   /** Client binding name, e.g. `db`, `stripe`. */
   client: string;
-  /** Member path below the client export, e.g. `orders.get`, `refunds.create`. */
+  /**
+   * Member path below the client export, e.g. `orders.get`, `refunds.create`. Empty when the
+   * client export is itself a function called directly (`sendMail(…)` on client `email`).
+   */
   path: string;
-  /** `${client}.${path}`, e.g. `db.orders.get`. */
+  /** `${client}.${path}`, e.g. `db.orders.get`; just `${client}` when `path` is empty. */
   gate: string;
   /** 0-based occurrence of `gate` within one invocation of the impl (repeated calls). */
   occurrence: number;
