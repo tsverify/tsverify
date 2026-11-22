@@ -3,6 +3,7 @@ import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { writeViewerAssets } from "../src/server/assets";
 import { isAllowedHost, isLoopback } from "../src/server/host-guard";
 import { openBrowser, openerCommand } from "../src/server/open";
 import { startViewer, type Viewer, type ViewerOptions } from "../src/server/server";
@@ -170,6 +171,17 @@ describe("startViewer", () => {
     const mermaid = await get(viewer, "/vendor/mermaid/mermaid.esm.min.mjs");
     expect(mermaid.status).toBe(200);
     expect(mermaid.body).toContain("./chunks/mermaid.esm.min/");
+  });
+
+  it("writes the prebuilt app bundle and styles that a bundled build serves", async () => {
+    const dir = await tempDir();
+    const [app, styles] = await writeViewerAssets(join(dir, "viewer"));
+    expect(app).toBe(join(dir, "viewer", "app.js"));
+    expect(styles).toBe(join(dir, "viewer", "app.css"));
+
+    const viewer = await start();
+    expect(await readFile(app as string, "utf8")).toBe((await get(viewer, "/app.js")).body);
+    expect((await get(viewer, "/")).body).toContain(await readFile(styles as string, "utf8"));
   });
 
   it("404s paths outside the served Mermaid files and 405s non-GET methods", async () => {
