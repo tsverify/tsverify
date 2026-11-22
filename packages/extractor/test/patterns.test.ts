@@ -349,6 +349,34 @@ describe("unlinked write", () => {
   });
 });
 
+describe("exact-union entity fallback", () => {
+  const result = extractFixture("entity-fallback", orderSpec([]));
+
+  it("an event typed with the spec's union is not the entity (assignment or spread)", () => {
+    const names = result.model?.transitions.map((t) => t.name);
+    expect(names).not.toContain("announceShipped");
+    expect(names).not.toContain("announceRefunded");
+  });
+
+  it("matches another type name only when a bound read (through a helper) produced it", () => {
+    const t = transitionOf(result, "shipRecord");
+    expect(t.to).toBe("shipped");
+    expect(t.from).toEqual(["paid"]);
+    expect(t.sites?.read).toMatchObject({ gate: "db.orders.get", at: { line: 31 } });
+    expect(t.atomic).toBe(true);
+  });
+
+  it("matches aliases of Pick<Order, …> and Readonly<Order> by name", () => {
+    expect(result.model?.transitions.map((t) => [t.name, t.to])).toEqual([
+      ["refundFrozen", "refunded"],
+      ["shipRecord", "shipped"],
+      ["shipRow", "shipped"],
+    ]);
+    expect(transitionOf(result, "shipRow").from).toEqual(["paid"]);
+    expect(result.findings).toEqual([]);
+  });
+});
+
 describe("string-typed status", () => {
   const spec = {
     ...orderSpec([]),

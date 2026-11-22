@@ -323,10 +323,25 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
   env.writes.forEach((write, i) => {
     if (write.field !== spec.entity.stateField) return;
     const { narrowed, probed } = env.types[i] as WriteTypes;
-    if (!matchesEntity(spec.entity, narrowed.declared, narrowed.refTypeNames)) return;
+    const match = matchesEntity(spec.entity, narrowed.declared, narrowed.refTypeNames);
+    if (!match) return;
+    const frame = frameOf(write.expr);
+    let persistence: PersistenceFacts | undefined;
+    const analyze = (fn: FunctionLike): PersistenceFacts => {
+      persistence ??= adapter.analyzeWrite({
+        write,
+        frame: fn,
+        frameCalls: frameCalls(fn),
+        calls,
+        callees,
+        checker,
+      });
+      return persistence;
+    };
+    // The exact-union fallback needs a recognized read: DTOs and events share the union.
+    if (match === "union" && (!frame || !analyze(frame).read)) return;
     const at = ctx.loc(write.site);
     const value = writtenValue(write.value, checker);
-    const frame = frameOf(write.expr);
     if (value === undefined) {
       findings.push(
         unanalyzable(
@@ -357,15 +372,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
       );
       return;
     }
-    const persistence: PersistenceFacts = adapter.analyzeWrite({
-      write,
-      frame,
-      frameCalls: frameCalls(frame),
-      calls,
-      callees,
-      checker,
-    });
-    matched.push({ write, at, value, narrowed, probed, frame, persistence });
+    matched.push({ write, at, value, narrowed, probed, frame, persistence: analyze(frame) });
   });
 
   const persistenceClients = new Set<string>();

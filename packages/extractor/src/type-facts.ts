@@ -93,18 +93,46 @@ export function singleLiteralOf(type: ts.Type, checker: ts.TypeChecker): string 
   return s !== "*" && s.length === 1 ? s[0] : undefined;
 }
 
-const TRANSPARENT_ALIASES: ReadonlySet<string> = new Set(["Readonly", "Required", "NonNullable"]);
+/** Utility aliases whose first argument names the type (`Pick<Order, "status">` answers to `Order`). */
+const TRANSPARENT_ALIASES: ReadonlySet<string> = new Set([
+  "Readonly",
+  "Required",
+  "Partial",
+  "NonNullable",
+  "Pick",
+  "Omit",
+]);
 
-/** Names a type answers to: its alias, its symbol, union/intersection members, base constraints. */
+/** Names a type node refers to: `Row` → `Row` plus what `Row` aliases; `Pick<Order, …>` → `Order`. */
+function typeNodeNames(node: ts.TypeNode, checker: ts.TypeChecker, depth: number): string[] {
+  if (depth > 4) return [];
+  if (ts.isParenthesizedTypeNode(node)) return typeNodeNames(node.type, checker, depth + 1);
+  if (ts.isTypeReferenceNode(node)) {
+    const name = ts.isIdentifier(node.typeName) ? node.typeName.text : node.typeName.right.text;
+    const first = node.typeArguments?.[0];
+    if (TRANSPARENT_ALIASES.has(name) && first) return typeNodeNames(first, checker, depth + 1);
+  }
+  return typeNames(checker.getTypeFromTypeNode(node), checker, depth + 1);
+}
+
+/**
+ * Names a type answers to: its alias, its symbol, union/intersection members, base constraints,
+ * the first argument of a transparent utility alias, and what a user alias stands for
+ * (`type Shipment = Row; type Row = Pick<Order, …>` answers to `Order`).
+ */
 export function typeNames(type: ts.Type, checker: ts.TypeChecker, depth = 0): string[] {
   if (depth > 4) return [];
   const names = new Set<string>();
   const alias = type.aliasSymbol;
   if (alias) {
     names.add(alias.name);
-    if (TRANSPARENT_ALIASES.has(alias.name)) {
-      for (const arg of type.aliasTypeArguments ?? []) {
-        for (const n of typeNames(arg, checker, depth + 1)) names.add(n);
+    const first = type.aliasTypeArguments?.[0];
+    if (TRANSPARENT_ALIASES.has(alias.name) && first) {
+      for (const n of typeNames(first, checker, depth + 1)) names.add(n);
+    } else {
+      for (const d of alias.declarations ?? []) {
+        if (!ts.isTypeAliasDeclaration(d)) continue;
+        for (const n of typeNodeNames(d.type, checker, depth + 1)) names.add(n);
       }
     }
   }
