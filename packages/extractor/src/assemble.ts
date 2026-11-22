@@ -233,7 +233,8 @@ function buildTransition(
       ),
     );
   }
-  for (const problem of p.problems) {
+  // Persistence problems only make atomicity undecidable: noise unless the spec asks for atomic.
+  for (const problem of t?.atomic ? p.problems : []) {
     env.findings.push(
       unanalyzable(spec.name, "read", name, `${name}: ${problem}`, {
         transition: name,

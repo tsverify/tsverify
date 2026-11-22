@@ -209,3 +209,28 @@ describe("memory: entity from a Map lookup", () => {
     expect(inv("startFirst")).toBeUndefined();
   });
 });
+
+describe("the same code under assign: no read through a bound client", () => {
+  const asAssign = (atomic: boolean): BehaviorModel => {
+    const spec = jobSpec(
+      [{ name: "start", impl: "src/jobs.ts#startJob", from: "queued", to: "running" }],
+      atomic,
+    );
+    spec.bindings.persistence = "assign";
+    return spec;
+  };
+
+  it("warns that atomicity is undecidable when the spec says atomic", () => {
+    const result = extractFixture("memory-sync", asAssign(true));
+    expect(transitionOf(result, "start").atomic).toBe(false);
+    expect(result.findings.map((f) => [f.id, f.severity])).toEqual([
+      ["unanalyzable:Jobs:read:start", "warning"],
+    ]);
+  });
+
+  it("stays quiet when the spec does not ask for atomic", () => {
+    const result = extractFixture("memory-sync", asAssign(false));
+    expect(transitionOf(result, "start").atomic).toBe(false);
+    expect(result.findings).toEqual([]);
+  });
+});

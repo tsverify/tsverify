@@ -25,7 +25,10 @@ export interface PersistenceFacts {
    * `InvocationShape.entityId`.
    */
   entityKey?: ts.Expression;
-  /** Why something could not be determined (becomes an `unanalyzable` warning). */
+  /**
+   * Why atomicity could not be determined. Each becomes an `unanalyzable` warning when the linked
+   * spec transition is `atomic: true` (otherwise the answer does not matter).
+   */
   problems: string[];
 }
 
