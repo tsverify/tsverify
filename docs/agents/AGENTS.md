@@ -23,5 +23,5 @@ specified in `*.behavior.yaml` files and verified by `tsv`. How to write them: `
   PR.
 - Use `--format json` when you parse the output.
 
-**Exit codes:** `0` pass · `1` violations: fix them, usually in the code · `2` invalid spec, broken link or bad usage: fix the
-input · `3` internal error in tsv: report it, don't work around it.
+**Exit codes:** `0` pass · `1` violations: fix them, usually in the code · `2` invalid spec, broken link or
+bad usage: fix the input · `3` internal error in tsv: report it, don't work around it.
