@@ -20,7 +20,7 @@ import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import type { Finding } from "@tsv/ir";
+import type { Finding } from "@tsverify/ir";
 import { describe, expect, it } from "vitest";
 import { materialize } from "../../../../examples/orders-app/test/materialize";
 import type { JsonReport } from "../../src/output/json";

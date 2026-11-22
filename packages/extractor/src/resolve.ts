@@ -3,7 +3,7 @@
  * function. Paths are project-root-relative (docs/behavior-format.md, "Paths"). A link that does
  * not resolve is reported by the caller as `broken-link`.
  */
-import type { ClientBinding, GuardBinding, SymbolRef } from "@tsv/ir";
+import type { ClientBinding, GuardBinding, SymbolRef } from "@tsverify/ir";
 import { ts } from "ts-morph";
 import { type FunctionLike, isFunctionLike } from "./cfg";
 import type { ProjectContext } from "./project";

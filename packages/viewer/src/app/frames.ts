@@ -14,8 +14,8 @@ import {
   type TraceAction,
   type TraceActionKind,
   type WorkerPhase,
-} from "@tsv/ir";
-import { traceToText } from "@tsv/render";
+} from "@tsverify/ir";
+import { traceToText } from "@tsverify/render";
 
 export interface Frame {
   /** 0-based position in `Trace.steps` (what the slider moves). */
@@ -26,7 +26,7 @@ export interface Frame {
   action?: TraceAction;
   /** The action in words, e.g. `refund#2 write`; `initial state` for step 0. */
   label: string;
-  /** This step's line of `traceToText` (`@tsv/render`). */
+  /** This step's line of `traceToText` (`@tsverify/render`). */
   text: string;
   /** What the state diagram emphasises: the current status and the acting transition. */
   highlight: { states: string[]; transitions: string[] };

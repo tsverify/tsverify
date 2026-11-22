@@ -8,7 +8,7 @@ import {
   type SpecInput,
   startViewer,
   type ViewData,
-} from "@tsv/viewer";
+} from "@tsverify/viewer";
 import { ExitCode, UsageError } from "../exit-codes";
 import type { Io } from "../io";
 import { rebaseLocations } from "../locations";
@@ -24,7 +24,7 @@ export interface ViewCommandOptions extends Omit<CheckCommandOptions, "format"> 
 
 /**
  * `tsv view [paths…]`: runs the `tsv check` pipeline (same options) and serves the result in a
- * local browser viewer (`@tsv/viewer`), rebuilding whenever a spec or its project's `src/`
+ * local browser viewer (`@tsverify/viewer`), rebuilding whenever a spec or its project's `src/`
  * changes. Prints the URL and runs until interrupted (`Io.onInterrupt`), then exits 0. Bad
  * options, paths without specs, or a port that cannot be bound are usage errors (exit 2).
  */

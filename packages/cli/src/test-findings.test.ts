@@ -1,5 +1,5 @@
-import type { Finding } from "@tsv/ir";
-import type { GeneratedTest } from "@tsv/testgen";
+import type { Finding } from "@tsverify/ir";
+import type { GeneratedTest } from "@tsverify/testgen";
 import { describe, expect, it } from "vitest";
 import { outDirs, specSlug } from "./generated-dir";
 import { testFindings } from "./test-findings";

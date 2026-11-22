@@ -1,6 +1,6 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { GeneratedFile } from "@tsv/testgen";
+import type { GeneratedFile } from "@tsverify/testgen";
 
 /** Where `tsv test` writes, relative to the project root. Users add `.tsv/` to `.gitignore`. */
 export const GENERATED_ROOT = ".tsv/generated";

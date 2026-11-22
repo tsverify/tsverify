@@ -55,7 +55,7 @@
  * rename or wrap calls, a client-wide default `transactionOptions.isolationLevel`, and reads
  * through helpers when the update's `where` does not use `X.id`.
  */
-import type { EntityDecl, FromState } from "@tsv/ir";
+import type { EntityDecl, FromState } from "@tsverify/ir";
 import { ts } from "ts-morph";
 import { sharedScope } from "../atomicity";
 import type { ClientCall, ClientCalls } from "../client-calls";

@@ -1,5 +1,5 @@
-import type { BehaviorModel } from "@tsv/ir";
-import { parseSymbolRef } from "@tsv/ir";
+import type { BehaviorModel } from "@tsverify/ir";
+import { parseSymbolRef } from "@tsverify/ir";
 import { describe, expect, it } from "vitest";
 import { extractFixture, transitionOf } from "./helpers";
 

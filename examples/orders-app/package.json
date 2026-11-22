@@ -1,11 +1,11 @@
 {
-  "name": "@tsv-examples/orders-app",
+  "name": "@tsverify-examples/orders-app",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "devDependencies": {
-    "@tsv/cli": "workspace:*",
-    "@tsv/ir": "workspace:*",
-    "@tsv/spec": "workspace:*"
+    "@tsverify/cli": "workspace:*",
+    "@tsverify/ir": "workspace:*",
+    "@tsverify/spec": "workspace:*"
   }
 }

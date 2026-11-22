@@ -1,7 +1,7 @@
 /**
  * End-to-end: `tsv test` on the Prisma app, clean and with each seeded-bug variant, as a
  * subprocess (`node packages/cli/bin/tsv.js test src --format json`). The generated tests run the
- * real app code against `@tsv/runtime`'s Prisma fake. Expected results are the assign app's
+ * real app code against `@tsverify/runtime`'s Prisma fake. Expected results are the assign app's
  * (packages/cli/test/e2e/test-command.test.ts), plus B7:
  *
  * | Variant | Expected                                                                          |

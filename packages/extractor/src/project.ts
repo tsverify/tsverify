@@ -6,7 +6,7 @@
  * → only then `ProjectContext` (the first type query happens in its constructor).
  */
 import path from "node:path";
-import type { SourceLocation } from "@tsv/ir";
+import type { SourceLocation } from "@tsverify/ir";
 import { Project, ts } from "ts-morph";
 import { TsMorphTypeFacts } from "./type-facts";
 

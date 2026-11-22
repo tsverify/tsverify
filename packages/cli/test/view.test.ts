@@ -2,7 +2,7 @@ import { writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join, resolve } from "node:path";
-import type { ViewData } from "@tsv/viewer";
+import type { ViewData } from "@tsverify/viewer";
 import { afterEach, describe, expect, it } from "vitest";
 import { formatUrls, watchList } from "../src/commands/view";
 import { type Io, main } from "../src/main";

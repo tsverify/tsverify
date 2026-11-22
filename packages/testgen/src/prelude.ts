@@ -7,7 +7,7 @@
  * 3. the impls, imported dynamically after (1); a static import would break the mock factories
  * 4. the fixtures: `ID`, `ENTITY`, `ACTORS`
  */
-import { compareStrings, formatSymbolRef, type SymbolRef } from "@tsv/ir";
+import { compareStrings, formatSymbolRef, type SymbolRef } from "@tsverify/ir";
 import type { Context } from "./context";
 import { type HeaderInput, headerLines, literal, Names, propertyKey, relativeImport } from "./emit";
 import { ACTORS, ID } from "./invoke";
@@ -17,7 +17,7 @@ export const ENTITY = "ENTITY";
 
 export interface PreludeOptions {
   header: HeaderInput;
-  /** Named imports from `@tsv/runtime` besides `instrument` and `scheduler` (sorted on output). */
+  /** Named imports from `@tsverify/runtime` besides `instrument` and `scheduler` (sorted on output). */
   runtime: string[];
   /** Extra lines after the vitest / runtime imports (e.g. a JSON sidecar import). */
   imports?: string[];
@@ -64,8 +64,8 @@ export function prelude(ctx: Context, options: PreludeOptions): Prelude {
   lines.push(`import { expect, test, vi } from "vitest";`);
   lines.push(
     runtime.length <= 3
-      ? `import { ${runtime.join(", ")} } from "@tsv/runtime";`
-      : ["import {", ...runtime.map((r) => `  ${r},`), `} from "@tsv/runtime";`].join("\n"),
+      ? `import { ${runtime.join(", ")} } from "@tsverify/runtime";`
+      : ["import {", ...runtime.map((r) => `  ${r},`), `} from "@tsverify/runtime";`].join("\n"),
   );
   lines.push(...(options.imports ?? []));
   if (options.declarations) lines.push("", ...options.declarations);

@@ -1,6 +1,6 @@
 // Drive the replay from the checker's real counterexample format (packages/ir Trace).
 import { readFileSync } from "node:fs";
-import type { Trace } from "@tsv/ir";
+import type { Trace } from "@tsverify/ir";
 import { describe, expect, test, vi } from "vitest";
 import {
   instrument,

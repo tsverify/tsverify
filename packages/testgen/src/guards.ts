@@ -4,7 +4,7 @@
  * from-state as that actor; the stored state must be unchanged and no declared effect may fire.
  */
 
-import type { Finding } from "@tsv/ir";
+import type { Finding } from "@tsverify/ir";
 import type { Context } from "./context";
 import { rejectedBody } from "./forbidden";
 import { buildArgs } from "./invoke";

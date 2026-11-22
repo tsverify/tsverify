@@ -1,4 +1,4 @@
-import type { BehaviorModel, Finding } from "@tsv/ir";
+import type { BehaviorModel, Finding } from "@tsverify/ir";
 import { buildLayout, initialState } from "./encode";
 import { explore } from "./explore";
 import { checkContext, type PropertyChecker } from "./properties/context";

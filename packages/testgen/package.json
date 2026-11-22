@@ -1,5 +1,5 @@
 {
-  "name": "@tsv/testgen",
+  "name": "@tsverify/testgen",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -10,9 +10,9 @@
     }
   },
   "dependencies": {
-    "@tsv/ir": "workspace:*"
+    "@tsverify/ir": "workspace:*"
   },
   "devDependencies": {
-    "@tsv/runtime": "workspace:*"
+    "@tsverify/runtime": "workspace:*"
   }
 }

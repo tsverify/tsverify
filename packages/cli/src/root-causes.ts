@@ -1,4 +1,4 @@
-import type { BehaviorModel, Finding, Trace } from "@tsv/ir";
+import type { BehaviorModel, Finding, Trace } from "@tsverify/ir";
 
 /**
  * Root-cause links: `causedBy` on code-model checker findings (`implementation-property`) that a

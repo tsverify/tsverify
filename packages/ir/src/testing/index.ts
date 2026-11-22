@@ -1,3 +1,3 @@
-/** Test-only helpers, imported as `@tsv/ir/testing`. Never import from non-test code. */
+/** Test-only helpers, imported as `@tsverify/ir/testing`. Never import from non-test code. */
 export { orderModel } from "./order-model";
 export { stripLocations } from "./strip";

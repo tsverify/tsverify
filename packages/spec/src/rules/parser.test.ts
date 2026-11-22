@@ -1,4 +1,4 @@
-import type { Expr } from "@tsv/ir";
+import type { Expr } from "@tsverify/ir";
 import { describe, expect, it } from "vitest";
 import { parseRule, parseRuleExpr } from "./parser";
 

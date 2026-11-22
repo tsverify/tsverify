@@ -1,4 +1,4 @@
-import type { Trace } from "@tsv/ir";
+import type { Trace } from "@tsverify/ir";
 import { describe, expect, it } from "vitest";
 import { toItf } from "./itf";
 

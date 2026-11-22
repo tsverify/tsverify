@@ -1,5 +1,11 @@
-import type { BehaviorDiff, BehaviorModel, ChangeKind, FieldChange, ItemChange } from "@tsv/ir";
-import { compareStrings, diffModels } from "@tsv/ir";
+import type {
+  BehaviorDiff,
+  BehaviorModel,
+  ChangeKind,
+  FieldChange,
+  ItemChange,
+} from "@tsverify/ir";
+import { compareStrings, diffModels } from "@tsverify/ir";
 import { DIFF_MARKERS, toMermaidDiff } from "./diff-mermaid";
 import { type Formatter, plainFormatter } from "./findings";
 

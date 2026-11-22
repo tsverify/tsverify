@@ -4,7 +4,7 @@ import {
   type Trace,
   type TraceAction,
   type TraceStep,
-} from "@tsv/ir";
+} from "@tsverify/ir";
 import { assignMermaidIds, escapeMermaidText } from "./mermaid-text";
 
 /**

@@ -4,7 +4,7 @@
  * status checks read the stored entity (`status`). Liveness (`eventually`) and structural
  * properties are not decidable from one finished replay: those replays are inconclusive.
  */
-import type { CmpOp, Expr, Finding, Rule } from "@tsv/ir";
+import type { CmpOp, Expr, Finding, Rule } from "@tsverify/ir";
 
 export type Evaluation =
   | {

@@ -1,5 +1,5 @@
 /**
- * Code-model assembly, following the conventions on `ModelOrigin` (`@tsv/ir` model.ts):
+ * Code-model assembly, following the conventions on `ModelOrigin` (`@tsverify/ir` model.ts):
  * - name: `t` when the write reached from `t`'s impl writes `t.to`, else `t->to`; an unlinked write
  *   is named after its function; collisions get `~2`, `~3`, … (linked first, then by location)
  * - `by`, `idempotent` from the linked spec transition (`[]` / `false` when unlinked)
@@ -31,8 +31,8 @@ import type {
   SourceLocation,
   SymbolRef,
   Transition,
-} from "@tsv/ir";
-import { compareStrings, parseGuardRef } from "@tsv/ir";
+} from "@tsverify/ir";
+import { compareStrings, parseGuardRef } from "@tsverify/ir";
 import type { ts } from "ts-morph";
 import type { PersistenceAdapter, PersistenceFacts } from "./adapters/types";
 import { frameNaming, frameOf, type Reach } from "./callgraph";

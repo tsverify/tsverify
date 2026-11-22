@@ -3,7 +3,7 @@ import type { SourceLocation } from "./location";
 export type CmpOp = "==" | "!=" | "<" | "<=" | ">" | ">=";
 
 /**
- * Rule expression AST. Produced by `@tsv/spec` (syntax), evaluated by `@tsv/checker`.
+ * Rule expression AST. Produced by `@tsverify/spec` (syntax), evaluated by `@tsverify/checker`.
  *
  * Grammar (precedence low → high): implies, or, and, not, atom
  *   atom := status == NAME | status != NAME | status in [NAME, …]

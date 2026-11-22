@@ -1,5 +1,5 @@
-import { orderModel } from "@tsv/ir/testing";
-import { toMermaid } from "@tsv/render";
+import { orderModel } from "@tsverify/ir/testing";
+import { toMermaid } from "@tsverify/render";
 import { describe, expect, it } from "vitest";
 import { codeAnyStateModel, escapingModel, nonAtomicRefundModel } from "./models";
 

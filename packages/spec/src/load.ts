@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
-import type { BehaviorModel, Finding } from "@tsv/ir";
-import { compareStrings } from "@tsv/ir";
+import type { BehaviorModel, Finding } from "@tsverify/ir";
+import { compareStrings } from "@tsverify/ir";
 import { LineCounter, parseDocument } from "yaml";
 import { FindingCollector } from "./findings";
 import { normalize } from "./normalize";

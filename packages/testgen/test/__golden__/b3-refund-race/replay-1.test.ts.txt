@@ -11,7 +11,7 @@ import {
   type ReplayResult,
   replayResult,
   scheduler,
-} from "@tsv/runtime";
+} from "@tsverify/runtime";
 import sidecar from "./replay-1.json" with { type: "json" };
 
 declare module "vitest" {

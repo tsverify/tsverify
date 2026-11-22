@@ -1,6 +1,6 @@
-import type { BehaviorModel, Transition } from "@tsv/ir";
-import { compareStrings } from "@tsv/ir";
-import { orderModel } from "@tsv/ir/testing";
+import type { BehaviorModel, Transition } from "@tsverify/ir";
+import { compareStrings } from "@tsverify/ir";
+import { orderModel } from "@tsverify/ir/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { APP_ROOT, materialize } from "../../../examples/orders-app/test/materialize";
 import { type ExtractResult, extractAll } from "../src/index";

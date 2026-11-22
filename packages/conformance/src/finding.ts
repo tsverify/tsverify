@@ -7,7 +7,7 @@ import {
   type Severity,
   type SourceLocation,
   type Transition,
-} from "@tsv/ir";
+} from "@tsverify/ir";
 
 /**
  * One spec transition `t` paired with the linked code transition `code` that writes `t.to`

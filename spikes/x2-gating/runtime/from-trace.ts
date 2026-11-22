@@ -1,4 +1,4 @@
-import type { Trace, TraceActionKind } from "@tsv/ir";
+import type { Trace, TraceActionKind } from "@tsverify/ir";
 import { type Step, UNTIL_DONE } from "./scheduler";
 
 /**

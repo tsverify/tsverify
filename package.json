@@ -1,5 +1,5 @@
 {
-  "name": "tsv-monorepo",
+  "name": "tsverify-monorepo",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@9.15.0",

@@ -2,7 +2,7 @@
  * End-to-end: `tsv check` over the demo app (examples/orders-app), clean and with every
  * seeded-bug variant, in-process through `main` with the materialized app as the cwd.
  */
-import type { Finding } from "@tsv/ir";
+import type { Finding } from "@tsverify/ir";
 import { describe, expect, it } from "vitest";
 import {
   type ExpectedFinding,

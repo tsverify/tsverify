@@ -1,14 +1,14 @@
 /**
  * Runs the real `tsv` pipeline on a materialized copy of the Prisma app: `tsv check` in-process
- * through `@tsv/cli`'s `main(argv, io)`, and `tsv test` as a subprocess (it runs vitest itself, so
+ * through `@tsverify/cli`'s `main(argv, io)`, and `tsv test` as a subprocess (it runs vitest itself, so
  * it is not nested in this vitest), like packages/cli/test/e2e does for the assign app.
  */
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { type Io, main } from "@tsv/cli";
-import type { Finding } from "@tsv/ir";
+import { type Io, main } from "@tsverify/cli";
+import type { Finding } from "@tsverify/ir";
 import { materialize } from "./materialize";
 
 const BIN = fileURLToPath(new URL("../../../packages/cli/bin/tsv.js", import.meta.url));

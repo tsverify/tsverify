@@ -21,8 +21,8 @@
  * The effect name is the spec name whose `bindings.effects` path equals the call's gate
  * (`stripe.refunds.create` → `stripe.refund`), or the gate itself when no binding maps it.
  */
-import type { BehaviorModel, EffectMultiplicity, Transition } from "@tsv/ir";
-import { compareStrings } from "@tsv/ir";
+import type { BehaviorModel, EffectMultiplicity, Transition } from "@tsverify/ir";
+import { compareStrings } from "@tsverify/ir";
 import type { ts } from "ts-morph";
 import { frameCalls, leadsTo, type Reach } from "./callgraph";
 import { type Cfg, type FunctionLike, reachable } from "./cfg";

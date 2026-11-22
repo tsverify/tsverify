@@ -1,5 +1,5 @@
 {
-  "name": "@tsv/spike-x2-gating",
+  "name": "@tsverify/spike-x2-gating",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -8,6 +8,6 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
-    "@tsv/ir": "workspace:*"
+    "@tsverify/ir": "workspace:*"
   }
 }

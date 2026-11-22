@@ -6,8 +6,8 @@
  * name (e.g. `unanalyzable:Orders:write-value:setStatus`). When two findings of one spec would
  * share an id, `uniqueIds` suffixes the later ones (by code location) with `~2`, `~3`, …
  */
-import type { Finding, SourceLocation } from "@tsv/ir";
-import { compareStrings } from "@tsv/ir";
+import type { Finding, SourceLocation } from "@tsverify/ir";
+import { compareStrings } from "@tsverify/ir";
 
 export type LinkKind = "impl" | "client" | "guard" | "tsconfig";
 

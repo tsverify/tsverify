@@ -1,4 +1,4 @@
-import type { WorkerPhase, WorkerState } from "@tsv/ir";
+import type { WorkerPhase, WorkerState } from "@tsverify/ir";
 
 /**
  * Symmetry reduction over workers.

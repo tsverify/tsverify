@@ -1,5 +1,5 @@
 /**
- * Generation-time view of how `@tsv/runtime`'s `planFromTrace` will replay a counterexample.
+ * Generation-time view of how `@tsverify/runtime`'s `planFromTrace` will replay a counterexample.
  * Testgen may not import the runtime (doc 6 §2), so this mirrors the two parts it needs, kept in
  * step with `packages/runtime/src/plan.ts` and `sites.ts` (`test/runtime-cross-check.test.ts`
  * checks both against the real runtime):
@@ -16,7 +16,7 @@
  * up to and including the last undrivable action are fast-forwarded by seeding, everything after
  * is replayed (from the initial state when every action is drivable).
  */
-import type { BehaviorModel, CallSite, Trace, TraceState, TraceStep } from "@tsv/ir";
+import type { BehaviorModel, CallSite, Trace, TraceState, TraceStep } from "@tsverify/ir";
 
 export interface Gates {
   read: string[];

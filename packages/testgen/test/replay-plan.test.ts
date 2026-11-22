@@ -3,8 +3,8 @@
  * something drivable to replay, otherwise `replayFrom` the step after the last one the test cannot
  * drive. The sidecar always holds the trace unchanged.
  */
-import type { BehaviorModel, Finding, Trace } from "@tsv/ir";
-import { orderModel } from "@tsv/ir/testing";
+import type { BehaviorModel, Finding, Trace } from "@tsverify/ir";
+import { orderModel } from "@tsverify/ir/testing";
 import { describe, expect, it } from "vitest";
 import specTrace from "../../checker/test/__golden__/b6-refund-race.trace.json" with {
   type: "json",

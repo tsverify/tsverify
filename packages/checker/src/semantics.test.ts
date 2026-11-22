@@ -1,5 +1,5 @@
-import type { BehaviorModel, Transition } from "@tsv/ir";
-import { orderModel } from "@tsv/ir/testing";
+import type { BehaviorModel, Transition } from "@tsverify/ir";
+import { orderModel } from "@tsverify/ir/testing";
 import { describe, expect, it } from "vitest";
 import { buildLayout, decodeState, initialState, STATUS } from "./encode";
 import { type Action, applyAction, buildActions, isBudgetLimited, isEnabled } from "./semantics";

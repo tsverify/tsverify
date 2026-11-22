@@ -4,7 +4,7 @@
  * so an instrumented call always knows which worker made it.
  *
  * There must be exactly one copy of this module in a test process: the test file and the
- * `vi.mock` factories have to load the same `@tsv/runtime`.
+ * `vi.mock` factories have to load the same `@tsverify/runtime`.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 

@@ -1,4 +1,4 @@
-import { compareStrings, type Finding } from "@tsv/ir";
+import { compareStrings, type Finding } from "@tsverify/ir";
 import { earliest, type Pairing, pairingFinding } from "./finding";
 
 function uniqueSorted(names: string[]): string[] {

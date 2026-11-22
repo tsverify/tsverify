@@ -1,5 +1,5 @@
-import type { Trace } from "@tsv/ir";
-import { traceToSequenceDiagram, traceToText } from "@tsv/render";
+import type { Trace } from "@tsverify/ir";
+import { traceToSequenceDiagram, traceToText } from "@tsverify/render";
 import { describe, expect, it } from "vitest";
 import { b6DoubleRefundTrace } from "./b6-trace";
 

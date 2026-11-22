@@ -6,7 +6,7 @@
  *   tests never run;
  * - `config: false`: the user's vitest / vite config is not loaded (no setup files, plugins,
  *   fake timers or environments that the generated tests don't expect);
- * - `@tsv/runtime` is aliased to this installation's runtime entry, so the project needs nothing
+ * - `@tsverify/runtime` is aliased to this installation's runtime entry, so the project needs nothing
  *   installed besides tsv (vitest resolves the generated files' `vitest` import itself);
  * - no reporters and `silent`, so nothing reaches stdout/stderr: results are read from the
  *   returned test modules, including each test's `task.meta`;
@@ -34,9 +34,9 @@ export interface TestRunResult {
   unhandled: string[];
 }
 
-/** Absolute path of `@tsv/runtime`'s entry, as resolved from the CLI. */
+/** Absolute path of `@tsverify/runtime`'s entry, as resolved from the CLI. */
 export function runtimeEntry(): string {
-  return fileURLToPath(import.meta.resolve("@tsv/runtime"));
+  return fileURLToPath(import.meta.resolve("@tsverify/runtime"));
 }
 
 /**
@@ -61,7 +61,7 @@ export async function runGeneratedTests(root: string, include: string[]): Promis
     },
     {
       cacheDir: join(root, CACHE_DIR, "vite"),
-      resolve: { alias: { "@tsv/runtime": runtimeEntry() } },
+      resolve: { alias: { "@tsverify/runtime": runtimeEntry() } },
     },
   );
   try {

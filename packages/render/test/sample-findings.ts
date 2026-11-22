@@ -1,4 +1,4 @@
-import type { Finding } from "@tsv/ir";
+import type { Finding } from "@tsverify/ir";
 import { b6DoubleRefundTrace } from "./b6-trace";
 
 export const SAMPLE_CWD = "/repo";

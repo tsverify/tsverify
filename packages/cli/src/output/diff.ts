@@ -1,6 +1,6 @@
-import type { BehaviorDiff, BehaviorModel } from "@tsv/ir";
-import { compareStrings, diffModels } from "@tsv/ir";
-import { type DiffEntry, renderDiffMarkdown, renderDiffText } from "@tsv/render";
+import type { BehaviorDiff, BehaviorModel } from "@tsverify/ir";
+import { compareStrings, diffModels } from "@tsverify/ir";
+import { type DiffEntry, renderDiffMarkdown, renderDiffText } from "@tsverify/render";
 import { UsageError } from "../exit-codes";
 import type { Io } from "../io";
 import { terminalFormatter } from "./pretty";

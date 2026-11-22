@@ -1,5 +1,5 @@
 import { relative, resolve, sep } from "node:path";
-import type { SourceLocation } from "@tsv/ir";
+import type { SourceLocation } from "@tsverify/ir";
 
 /**
  * A copy of `value` in which every `SourceLocation.file` (relative to the directory `from`) is
@@ -7,7 +7,7 @@ import type { SourceLocation } from "@tsv/ir";
  * and arrays on the way are copied, so models and findings shared with other code stay intact.
  *
  * Locations are recognised by shape (`file` string, `line` and `column` numbers), which covers
- * every `SourceLocation` in `@tsv/ir` (finding `specAt` / `codeAt`, model `at`, `sites.*`) and
+ * every `SourceLocation` in `@tsverify/ir` (finding `specAt` / `codeAt`, model `at`, `sites.*`) and
  * leaves `SymbolRef`-like `{ file, symbol }` paths, which are project-relative by contract, alone.
  *
  * The extractor and conformance report locations relative to the project root while the CLI

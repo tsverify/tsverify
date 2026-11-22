@@ -14,7 +14,7 @@ import {
   formatSymbolRef,
   type InvocationShape,
   type Transition,
-} from "@tsv/ir";
+} from "@tsverify/ir";
 import { buildArgs, mentions } from "./invoke";
 import { skipFinding } from "./skips";
 

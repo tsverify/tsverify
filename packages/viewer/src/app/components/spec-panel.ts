@@ -1,4 +1,4 @@
-import type { Finding, Trace } from "@tsv/ir";
+import type { Finding, Trace } from "@tsverify/ir";
 import { type ComponentChild, h } from "preact";
 import { useState } from "preact/hooks";
 import type { SpecView } from "../../view-data";

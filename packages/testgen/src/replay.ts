@@ -1,7 +1,7 @@
 /**
  * Replay tests (`replay-<n>.test.ts` + `replay-<n>.json`): one per finding with a counterexample,
  * from the spec model or the code model. The test forces the real code through the trace's
- * interleaving with `@tsv/runtime` (shape: packages/runtime/test/generated-shape.test.ts):
+ * interleaving with `@tsverify/runtime` (shape: packages/runtime/test/generated-shape.test.ts):
  * fakes, `vi.mock` of the client modules, dynamic impl imports, `planFromTrace` on the JSON
  * sidecar (trace + the code model's `CodeSites` subset), seed, one worker per trace worker,
  * `tryPlay`, `drain`, then the violated property in code terms and `replayResult`.
@@ -10,7 +10,7 @@
  * `confirmed-divergent` verdict fails the test. When the property is not an effect count or a
  * status check, the test calls `replayResult(outcome, undefined)`: verdict `inconclusive`, passes.
  */
-import type { Finding } from "@tsv/ir";
+import type { Finding } from "@tsverify/ir";
 import { type Context, effectGate } from "./context";
 import { headerText, member, propertyKey } from "./emit";
 import { ENTITY, prelude, SCHEDULER } from "./prelude";

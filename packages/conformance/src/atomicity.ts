@@ -1,4 +1,4 @@
-import type { Finding } from "@tsv/ir";
+import type { Finding } from "@tsverify/ir";
 import { type Pairing, pairingFinding } from "./finding";
 
 /**

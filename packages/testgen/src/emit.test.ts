@@ -1,4 +1,4 @@
-import type { InvocationShape } from "@tsv/ir";
+import type { InvocationShape } from "@tsverify/ir";
 import { describe, expect, it } from "vitest";
 import { literal, Names, relativeImport } from "./emit";
 import { buildArgs } from "./invoke";

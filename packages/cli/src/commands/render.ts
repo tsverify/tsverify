@@ -1,6 +1,6 @@
-import type { BehaviorModel } from "@tsv/ir";
-import { formatFindings, permissionMatrixMarkdown, summarize, toMermaid } from "@tsv/render";
-import { loadSpec } from "@tsv/spec";
+import type { BehaviorModel } from "@tsverify/ir";
+import { formatFindings, permissionMatrixMarkdown, summarize, toMermaid } from "@tsverify/render";
+import { loadSpec } from "@tsverify/spec";
 import { ExitCode, UsageError } from "../exit-codes";
 import type { Io } from "../io";
 

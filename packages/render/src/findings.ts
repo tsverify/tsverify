@@ -1,5 +1,5 @@
-import type { Finding, Severity, SourceLocation } from "@tsv/ir";
-import { compareStrings } from "@tsv/ir";
+import type { Finding, Severity, SourceLocation } from "@tsverify/ir";
+import { compareStrings } from "@tsverify/ir";
 import { traceToText } from "./trace";
 
 /** Terminal styling, injected so this package stays free of TTY detection and color libraries. */

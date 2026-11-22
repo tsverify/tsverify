@@ -1,4 +1,4 @@
-import { check } from "@tsv/checker";
+import { check } from "@tsverify/checker";
 import { type CodeOutcome, checkCode } from "../code-conformance";
 import { type ExitCode, exitCodeFor, UsageError } from "../exit-codes";
 import { type LoadedSpec, loadSpecs, resolveSpecFiles, selectEnforced } from "../inputs";

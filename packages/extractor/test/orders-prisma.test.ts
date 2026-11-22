@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { BehaviorModel, Transition } from "@tsv/ir";
-import { compareStrings } from "@tsv/ir";
-import { parseSpec } from "@tsv/spec";
+import type { BehaviorModel, Transition } from "@tsverify/ir";
+import { compareStrings } from "@tsverify/ir";
+import { parseSpec } from "@tsverify/spec";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { APP_ROOT, materialize } from "../../../examples/orders-prisma/test/materialize";
 import { type ExtractResult, extractAll } from "../src/index";

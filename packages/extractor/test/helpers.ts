@@ -7,8 +7,8 @@ import type {
   GuardRef,
   SourceLocation,
   Transition,
-} from "@tsv/ir";
-import { parseSymbolRef } from "@tsv/ir";
+} from "@tsverify/ir";
+import { parseSymbolRef } from "@tsverify/ir";
 import { type ExtractResult, extractAll } from "../src/index";
 
 export const FIXTURES = fileURLToPath(new URL("./fixtures/", import.meta.url));

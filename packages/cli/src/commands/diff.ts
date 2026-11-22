@@ -1,9 +1,9 @@
 import { realpath } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import type { BehaviorModel, Finding } from "@tsv/ir";
-import { compareStrings } from "@tsv/ir";
-import { formatFindings } from "@tsv/render";
-import { parseSpec } from "@tsv/spec";
+import type { BehaviorModel, Finding } from "@tsverify/ir";
+import { compareStrings } from "@tsverify/ir";
+import { formatFindings } from "@tsverify/render";
+import { parseSpec } from "@tsverify/spec";
 import { ExitCode, UsageError } from "../exit-codes";
 import { GitError, listFiles, repoRoot, resolveCommit, showFile } from "../git";
 import { loadSpecs, resolveSpecFiles, toRelative } from "../inputs";

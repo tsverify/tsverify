@@ -2,7 +2,7 @@
  * A persistence adapter knows one ORM / data-access style: how a transition reads the entity, how
  * it commits the write, and which construct makes the two atomic.
  */
-import type { AtomicScope, EntityDecl, FromState, PersistenceKind } from "@tsv/ir";
+import type { AtomicScope, EntityDecl, FromState, PersistenceKind } from "@tsverify/ir";
 import type { ts } from "ts-morph";
 import type { Callees, Reach } from "../callgraph";
 import type { FunctionLike } from "../cfg";

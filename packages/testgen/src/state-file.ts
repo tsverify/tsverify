@@ -4,7 +4,7 @@
  * in a state, calls the real impl once (outside any scheduler worker, so every gate passes
  * straight through) and asserts on the stored state and the recorded effect calls.
  */
-import type { SourceLocation } from "@tsv/ir";
+import type { SourceLocation } from "@tsverify/ir";
 import type { Context, Linked } from "./context";
 import { member, propertyKey } from "./emit";
 import { ENTITY, prelude, SCHEDULER } from "./prelude";

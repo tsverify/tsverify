@@ -9,8 +9,8 @@ import {
   parseGuardRef,
   type SourceLocation,
   type Transition,
-} from "@tsv/ir";
-import { orderModel } from "@tsv/ir/testing";
+} from "@tsverify/ir";
+import { orderModel } from "@tsverify/ir/testing";
 
 /**
  * Test-only spec and code models for the Order app (`examples/orders-app`). The clean code
@@ -121,7 +121,7 @@ function from(state: string[]): FromState {
   return { values: state, unconstrained: false };
 }
 
-/** Follows the conventions documented on `ModelOrigin` in `@tsv/ir`. */
+/** Follows the conventions documented on `ModelOrigin` in `@tsverify/ir`. */
 function buildTransition(spec: BehaviorModel, w: Write): Transition {
   const linked = spec.transitions.find((t) => t.name === w.specTransition);
   const specEffects = spec.transitions.flatMap((t) => t.effects);

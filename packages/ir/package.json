@@ -1,5 +1,5 @@
 {
-  "name": "@tsv/ir",
+  "name": "@tsverify/ir",
   "version": "0.0.0",
   "private": true,
   "type": "module",

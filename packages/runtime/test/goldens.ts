@@ -1,7 +1,7 @@
 // Real inputs from the other packages' golden files: the checker's counterexample for the
 // refund race and the extractor's code model of the demo app.
 import { readFileSync } from "node:fs";
-import type { BehaviorModel, Trace } from "@tsv/ir";
+import type { BehaviorModel, Trace } from "@tsverify/ir";
 
 function golden<T>(path: string): T {
   return JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8")) as T;

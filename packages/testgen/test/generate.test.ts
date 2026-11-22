@@ -5,8 +5,8 @@
  * (`fixtures/b3-refund-race.json`). The generated files are executed against the real app by the
  * CLI's end-to-end suite (packages/cli/test/e2e/test-command.test.ts).
  */
-import type { BehaviorModel, Finding, Trace } from "@tsv/ir";
-import { orderModel } from "@tsv/ir/testing";
+import type { BehaviorModel, Finding, Trace } from "@tsverify/ir";
+import { orderModel } from "@tsverify/ir/testing";
 import { describe, expect, it } from "vitest";
 import specTrace from "../../checker/test/__golden__/b6-refund-race.trace.json" with {
   type: "json",

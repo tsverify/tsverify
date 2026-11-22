@@ -1,4 +1,4 @@
-import { type BehaviorModel, compareStrings, type Finding } from "@tsv/ir";
+import { type BehaviorModel, compareStrings, type Finding } from "@tsverify/ir";
 import { checkAtomicity } from "./atomicity";
 import { checkEffects } from "./effects";
 import type { Pairing } from "./finding";

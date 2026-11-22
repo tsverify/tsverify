@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { BehaviorModel } from "@tsv/ir";
-import { loadSpec } from "@tsv/spec";
+import type { BehaviorModel } from "@tsverify/ir";
+import { loadSpec } from "@tsverify/spec";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { Actor } from "../src/auth/actor";
 import { ForbiddenError } from "../src/errors";
@@ -30,7 +30,7 @@ function at(root: unknown, path: readonly string[]): unknown {
 }
 
 describe("order.behavior.yaml", () => {
-  it("is byte-identical to the canonical fixture in @tsv/spec", async () => {
+  it("is byte-identical to the canonical fixture in @tsverify/spec", async () => {
     const [copy, canonical] = await Promise.all([readFile(join(APP, SPEC)), readFile(CANONICAL)]);
     expect(copy.equals(canonical)).toBe(true);
   });

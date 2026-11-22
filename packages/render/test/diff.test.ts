@@ -1,13 +1,13 @@
-import type { BehaviorModel } from "@tsv/ir";
-import { diffModels } from "@tsv/ir";
-import { orderModel } from "@tsv/ir/testing";
+import type { BehaviorModel } from "@tsverify/ir";
+import { diffModels } from "@tsverify/ir";
+import { orderModel } from "@tsverify/ir/testing";
 import {
   DIFF_COMMENT_MARKER,
   diffSummary,
   renderDiffMarkdown,
   renderDiffText,
   toMermaidDiff,
-} from "@tsv/render";
+} from "@tsverify/render";
 import { describe, expect, it } from "vitest";
 import { escapingModel, orderDiffHead } from "./models";
 

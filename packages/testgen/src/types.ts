@@ -1,4 +1,4 @@
-import type { BehaviorModel, Finding, ModelOrigin, SourceLocation } from "@tsv/ir";
+import type { BehaviorModel, Finding, ModelOrigin, SourceLocation } from "@tsverify/ir";
 
 export interface GeneratedFile {
   /** Relative to `outDir`, `/`-separated. */

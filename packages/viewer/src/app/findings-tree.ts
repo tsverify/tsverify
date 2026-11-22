@@ -1,4 +1,4 @@
-import { compareStrings, type Finding, type Severity, type SourceLocation } from "@tsv/ir";
+import { compareStrings, type Finding, type Severity, type SourceLocation } from "@tsverify/ir";
 
 /** A finding and the findings that are its consequences (`causedBy`), recursively. */
 export interface FindingNode {

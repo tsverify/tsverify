@@ -1,4 +1,4 @@
-import type { Actor, Finding, Transition } from "@tsv/ir";
+import type { Actor, Finding, Transition } from "@tsverify/ir";
 import { type CheckContext, propertyFinding } from "./context";
 
 function actorsOf(ctx: CheckContext, t: Transition): Actor[] {

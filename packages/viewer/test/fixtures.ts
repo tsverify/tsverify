@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import type { Finding, Trace } from "@tsv/ir";
+import type { Finding, Trace } from "@tsverify/ir";
 import type { SpecInput } from "../src/view-data";
 
 /**

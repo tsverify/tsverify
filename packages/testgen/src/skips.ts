@@ -1,4 +1,4 @@
-import type { Finding, SourceLocation } from "@tsv/ir";
+import type { Finding, SourceLocation } from "@tsverify/ir";
 
 /**
  * An `info` finding (category `not-generated`) that explains why `tsv test` generated no test for

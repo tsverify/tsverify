@@ -1,4 +1,4 @@
-import { specJsonSchema } from "@tsv/spec";
+import { specJsonSchema } from "@tsverify/spec";
 import { ExitCode } from "../exit-codes";
 import type { Io } from "../io";
 

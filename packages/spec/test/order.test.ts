@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { orderModel, stripLocations } from "@tsv/ir/testing";
+import { orderModel, stripLocations } from "@tsverify/ir/testing";
 import { describe, expect, it } from "vitest";
 import { parseSpec } from "../src/index";
 
@@ -14,7 +14,7 @@ describe("canonical order.behavior.yaml", () => {
     expect(findings).toEqual([]);
   });
 
-  it("normalizes to the shared IR fixture (contract with @tsv/ir/testing)", () => {
+  it("normalizes to the shared IR fixture (contract with @tsverify/ir/testing)", () => {
     expect(model).toBeDefined();
     const { file, ...rest } = stripItemLocations(stripLocations(model)) as NonNullable<
       typeof model

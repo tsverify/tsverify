@@ -1,7 +1,7 @@
 import { join } from "node:path";
-import { check } from "@tsv/checker";
-import { type Finding, INPUT_ERROR_CATEGORIES } from "@tsv/ir";
-import { type GeneratedTest, generate } from "@tsv/testgen";
+import { check } from "@tsverify/checker";
+import { type Finding, INPUT_ERROR_CATEGORIES } from "@tsverify/ir";
+import { type GeneratedTest, generate } from "@tsverify/testgen";
 import { checkCode } from "../code-conformance";
 import { type ExitCode, exitCodeFor } from "../exit-codes";
 import { outDirs, writeGenerated } from "../generated-dir";

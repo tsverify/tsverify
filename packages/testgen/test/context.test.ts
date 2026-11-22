@@ -1,6 +1,6 @@
 /** What the emitters share: drivable transitions, fake configs and fixtures, from real models. */
-import type { BehaviorModel } from "@tsv/ir";
-import { orderModel } from "@tsv/ir/testing";
+import type { BehaviorModel } from "@tsverify/ir";
+import { orderModel } from "@tsverify/ir/testing";
 import { describe, expect, it } from "vitest";
 import cleanCode from "../../extractor/test/__golden__/orders-app.code.json" with { type: "json" };
 import { buildContext } from "../src/context";

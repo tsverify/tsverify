@@ -1,4 +1,4 @@
-import type { BehaviorModel, EffectMultiplicity } from "@tsv/ir";
+import type { BehaviorModel, EffectMultiplicity } from "@tsverify/ir";
 import { type ExprAccess, effectConstants } from "./eval";
 import { allocateWorkerClasses, type WorkerClasses } from "./symmetry";
 

@@ -1,9 +1,9 @@
-import type { BehaviorModel } from "@tsv/ir";
-import { permissionMatrix, summarize } from "@tsv/render";
+import type { BehaviorModel } from "@tsverify/ir";
+import { permissionMatrix, summarize } from "@tsverify/render";
 import { type ComponentChild, h } from "preact";
 import { type Inline, parseMarkdown } from "../markdown";
 
-/** `summarize` (`@tsv/render`) as elements. */
+/** `summarize` (`@tsverify/render`) as elements. */
 export function SummaryView({ model }: { model: BehaviorModel }): ComponentChild {
   return h(
     "div",
@@ -31,7 +31,7 @@ function inlines(items: Inline[]): ComponentChild[] {
 }
 
 /**
- * `permissionMatrix` (`@tsv/render`) as a table, with the same markers as its Markdown form:
+ * `permissionMatrix` (`@tsverify/render`) as a table, with the same markers as its Markdown form:
  * ✓ and the guards, — for not allowed, ⚠ for untrusted rows and unguarded untrusted cells.
  */
 export function MatrixTable({ model }: { model: BehaviorModel }): ComponentChild {

@@ -1,4 +1,4 @@
-import type { Trace, TraceAction, TraceState, WorkerState } from "@tsv/ir";
+import type { Trace, TraceAction, TraceState, WorkerState } from "@tsverify/ir";
 
 /**
  * `ir.Trace` → ITF JSON, the Informal Trace Format of Apalache (ADR-015) that Quint also reads

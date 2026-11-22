@@ -1,6 +1,6 @@
 import { pathToFileURL } from "node:url";
-import type { Finding, FindingCategory, Severity, SourceLocation } from "@tsv/ir";
-import { traceToText } from "@tsv/render";
+import type { Finding, FindingCategory, Severity, SourceLocation } from "@tsverify/ir";
+import { traceToText } from "@tsverify/render";
 import pkg from "../../package.json" with { type: "json" };
 import type { Report } from "../report";
 

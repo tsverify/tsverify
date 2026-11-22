@@ -1,7 +1,7 @@
 import { join } from "node:path";
-import type { BehaviorModel } from "@tsv/ir";
-import { permissionMatrixMarkdown, summarize, toMermaid } from "@tsv/render";
-import { loadSpec } from "@tsv/spec";
+import type { BehaviorModel } from "@tsverify/ir";
+import { permissionMatrixMarkdown, summarize, toMermaid } from "@tsverify/render";
+import { loadSpec } from "@tsverify/spec";
 import { beforeAll, describe, expect, it } from "vitest";
 import { CANONICAL_SPEC, INVALID_SPEC, REPO_ROOT, tsv } from "./run";
 
@@ -17,7 +17,7 @@ describe("render", () => {
     ["--mermaid", () => toMermaid(model)],
     ["--matrix", () => permissionMatrixMarkdown(model)],
     ["--summary", () => summarize(model)],
-  ])("%s prints exactly what @tsv/render produces", async (flag, expected) => {
+  ])("%s prints exactly what @tsverify/render produces", async (flag, expected) => {
     const r = await tsv(["render", CANONICAL_SPEC, flag]);
     expect(r.code).toBe(0);
     expect(r.stderr).toBe("");

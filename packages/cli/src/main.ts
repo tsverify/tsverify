@@ -1,4 +1,4 @@
-import { DEFAULT_MAX_STATES } from "@tsv/checker";
+import { DEFAULT_MAX_STATES } from "@tsverify/checker";
 import { type CAC, type Command, cac } from "cac";
 import pkg from "../package.json" with { type: "json" };
 import { camelCaseBooleanFlags } from "./argv";

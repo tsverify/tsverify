@@ -14,8 +14,8 @@
  * before its assertion (see packages/testgen/README.md). A `replay-confirmed` finding has
  * `causedBy` the `tsv check` finding it replayed, when that finding is in `sources`.
  */
-import type { Finding, Trace } from "@tsv/ir";
-import type { GeneratedTest } from "@tsv/testgen";
+import type { Finding, Trace } from "@tsverify/ir";
+import type { GeneratedTest } from "@tsverify/testgen";
 import type { TestOutcome } from "./test-run";
 
 /** What a generated replay test stores in `task.meta.tsvReplay`. */

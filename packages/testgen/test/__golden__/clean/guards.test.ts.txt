@@ -3,7 +3,7 @@
 // Source: guard tests, one per transition and actor (with a fixture) not allowed to perform it:
 //   checkout, refund, ship
 import { expect, test, vi } from "vitest";
-import { instrument, scheduler } from "@tsv/runtime";
+import { instrument, scheduler } from "@tsverify/runtime";
 
 // (1) Fakes as plain top-level consts (vi.mock is hoisted, but its factory runs lazily).
 const s = scheduler();

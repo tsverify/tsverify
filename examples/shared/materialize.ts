@@ -11,7 +11,7 @@ import { copyFile, cp, mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/pro
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Finding, FindingCategory } from "@tsv/ir";
+import type { Finding, FindingCategory } from "@tsverify/ir";
 
 export const MANIFEST = "variant.json";
 

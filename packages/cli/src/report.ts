@@ -1,6 +1,6 @@
-import type { CheckStats } from "@tsv/checker";
-import type { ExtractStats } from "@tsv/extractor";
-import type { Finding, Severity } from "@tsv/ir";
+import type { CheckStats } from "@tsverify/checker";
+import type { ExtractStats } from "@tsverify/extractor";
+import type { Finding, Severity } from "@tsverify/ir";
 import type { TestCounts } from "./test-findings";
 
 /** One spec file's outcome: what `validate` and `check` hand to the output formats. */

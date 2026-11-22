@@ -1,4 +1,4 @@
-import { type Formatter, formatFindings, plainFormatter } from "@tsv/render";
+import { type Formatter, formatFindings, plainFormatter } from "@tsverify/render";
 import { describe, expect, it } from "vitest";
 import { causedFindings, SAMPLE_CWD, sampleFindings } from "./sample-findings";
 

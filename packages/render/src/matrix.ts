@@ -1,5 +1,5 @@
-import type { BehaviorModel } from "@tsv/ir";
-import { compareStrings } from "@tsv/ir";
+import type { BehaviorModel } from "@tsverify/ir";
+import { compareStrings } from "@tsverify/ir";
 
 export interface PermissionCell {
   allowed: boolean;
