@@ -47,6 +47,7 @@ export interface LinkInput {
   write: WriteNode;
   frame: FunctionLike;
   reach: Reach;
+  checker: ts.TypeChecker;
 }
 
 /** Atomicity that depends on the path from the impl to the write. */

@@ -13,8 +13,12 @@
  *
  * **Inline callbacks** (a function expression passed directly as a call argument, e.g.
  * `db.transaction(async (tx) => …)`) are built in place: after the arguments, before the call
- * node, executed zero or one time. Their `return` ends the callback, not the function. Other
- * nested functions are separate frames (see `callgraph.ts`).
+ * node, executed zero or one time, entered through a node of the callback itself. Their `return`
+ * ends the callback, not the function. Other nested functions are separate frames (see
+ * `callgraph.ts`).
+ *
+ * With `readsOf: field`, every read `x.<field>` (not an assignment target) is a node too, after
+ * its object expression (`atomicity.ts` uses them as re-checks).
  *
  * Not modelled (over-approximations): truthiness of conditions (both branches are always
  * possible), `return` inside `try` skipping `finally`, generator resumption (a `yield` is only a
@@ -81,6 +85,11 @@ export interface Cfg {
   idsOf(node: ts.Node): readonly number[];
 }
 
+export interface CfgOptions {
+  /** Also make a node of every read of this property (`x.status`, `x?.status`). */
+  readsOf?: string;
+}
+
 type Frontier = number[];
 
 interface JumpContext {
@@ -97,6 +106,8 @@ class Builder {
   private throwTo = THROW_EXIT;
   private jumps: JumpContext[] = [];
   private pendingLabels: string[] = [];
+
+  constructor(private readonly options: CfgOptions = {}) {}
 
   private add(n: ts.Node | undefined): number {
     const id = this.nodes.length;
@@ -142,7 +153,8 @@ class Builder {
     this.returnTo = ret;
     this.jumps = [];
     this.pendingLabels = [];
-    const out = ts.isBlock(fn.body) ? this.stmt(fn.body, f) : this.expr(fn.body, f);
+    const start = this.node(fn, f);
+    const out = ts.isBlock(fn.body) ? this.stmt(fn.body, start) : this.expr(fn.body, start);
     this.connect(out, ret);
     this.returnTo = saved.returnTo;
     this.jumps = saved.jumps;
@@ -338,7 +350,10 @@ class Builder {
         const l = this.expr(e.left, f);
         return [...l, ...this.expr(e.right, l)];
       }
-      const r = this.expr(e.right, this.expr(e.left, f));
+      // An assignment target `x.f = v` evaluates `x`, but does not read `x.f`.
+      const left =
+        op === K.EqualsToken && ts.isPropertyAccessExpression(e.left) ? e.left.expression : e.left;
+      const r = this.expr(e.right, this.expr(left, f));
       return op === K.EqualsToken ? this.node(e, r) : r;
     }
     if (ts.isConditionalExpression(e)) {
@@ -369,6 +384,13 @@ class Builder {
       }
       return this.node(e, cur);
     }
+    if (
+      this.options.readsOf !== undefined &&
+      ts.isPropertyAccessExpression(e) &&
+      e.name.text === this.options.readsOf
+    ) {
+      return this.node(e, this.expr(e.expression, f));
+    }
     let cur = f;
     ts.forEachChild(e, (c) => {
       cur = this.expr(c, cur);
@@ -377,8 +399,8 @@ class Builder {
   }
 }
 
-export function buildCfg(fn: FunctionLike): Cfg {
-  return new Builder().build(fn);
+export function buildCfg(fn: FunctionLike, options?: CfgOptions): Cfg {
+  return new Builder(options).build(fn);
 }
 
 /** Nodes reachable from `starts` without entering `blocked` (start nodes are always visited). */

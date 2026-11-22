@@ -4,7 +4,8 @@
  *   is named after its function; collisions get `~2`, `~3`, … (linked first, then by location)
  * - `by`, `idempotent` from the linked spec transition (`[]` / `false` when unlinked)
  * - `requires` = bound guards that dominate the write; `atomic` = read and write share one scope
- *   (`memory`: no suspension point between the impl's entry and the write, scope `synchronous`)
+ *   (`memory`: no suspension point between the last re-check of the state field, else the impl's
+ *   entry, and the write; scope `synchronous`)
  * - effect multiplicity from the spec's declaration of that effect (`at-least-once` if undeclared)
  * - `concurrency` copies the linked spec transition's bound (2 when unlinked)
  * - name, entity, actors, rules, bindings and file are copied from the spec; transitions sorted
@@ -175,6 +176,7 @@ function buildTransition(
     write: m.write,
     frame: m.frame,
     reach: d.reach,
+    checker: ctx.checker,
   });
   let atomicScope: CodeSites["atomic"];
   if (linkAtomicity) {

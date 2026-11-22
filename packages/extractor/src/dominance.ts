@@ -15,7 +15,7 @@
  * every path to its normal return (a wrapper such as `assertAdmin(ctx)`) counts as a guard call.
  */
 import type { ts } from "ts-morph";
-import { type Callees, frameCalls, type Reach } from "./callgraph";
+import { type Callees, frameCalls, leadsTo, type Reach } from "./callgraph";
 import { buildCfg, type Cfg, ENTRY, EXIT, type FunctionLike, reachable } from "./cfg";
 
 const cfgMemo = new WeakMap<FunctionLike, Cfg>();
@@ -43,11 +43,6 @@ export interface GuardFacts {
   dominating: Set<string>;
   /** Guard calls on some path to the write, in frame order then source order. */
   sites: GuardSite[];
-}
-
-interface LeadGroup {
-  node: ts.Node;
-  callee?: FunctionLike;
 }
 
 export class Dominance {
@@ -96,21 +91,7 @@ export class Dominance {
 
   /** Guard facts for `write` (in frame `writeFrame`) as reached from `root`. */
   analyze(root: Reach, writeFrame: FunctionLike, write: ts.Node): GuardFacts {
-    const leadsMemo = new Map<FunctionLike, LeadGroup[]>();
-    const leads = (fn: FunctionLike, stack: Set<FunctionLike>): LeadGroup[] => {
-      const cached = leadsMemo.get(fn);
-      if (cached) return cached;
-      if (stack.has(fn)) return [];
-      stack.add(fn);
-      const groups: LeadGroup[] = fn === writeFrame ? [{ node: write }] : [];
-      for (const e of root.edges) {
-        if (e.caller !== fn) continue;
-        if (leads(e.callee, stack).length > 0) groups.push({ node: e.call, callee: e.callee });
-      }
-      stack.delete(fn);
-      leadsMemo.set(fn, groups);
-      return groups;
-    };
+    const leads = leadsTo(root, writeFrame, write);
 
     const domMemo = new Map<string, boolean>();
     const dominates = (fn: FunctionLike, key: string, stack: Set<FunctionLike>): boolean => {
@@ -122,7 +103,7 @@ export class Dominance {
       const cfg = cfgOf(fn);
       const guards = this.guardNodes(fn, key);
       let result = true;
-      for (const g of leads(fn, new Set())) {
+      for (const g of leads(fn)) {
         const ids = cfg.idsOf(g.node);
         const blocked = new Set(guards);
         for (const id of ids) blocked.delete(id);
@@ -138,7 +119,7 @@ export class Dominance {
     };
 
     const dominating = new Set<string>();
-    if (leads(root.root, new Set()).length > 0) {
+    if (leads(root.root).length > 0) {
       for (const key of this.keys) if (dominates(root.root, key, new Set())) dominating.add(key);
     }
 
@@ -147,7 +128,7 @@ export class Dominance {
     const collect = (fn: FunctionLike): void => {
       if (visited.has(fn)) return;
       visited.add(fn);
-      const groups = leads(fn, new Set());
+      const groups = leads(fn);
       if (groups.length === 0) return;
       const cfg = cfgOf(fn);
       const fromEntry = reachable(cfg, [ENTRY]);

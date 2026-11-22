@@ -3,7 +3,8 @@ import { parseSymbolRef } from "@tsv/ir";
 import { describe, expect, it } from "vitest";
 import { extractFixture, transitionOf } from "./helpers";
 
-// `persistence: memory`: in-process objects, atomic = no suspension between impl entry and write.
+// `persistence: memory`: in-process objects, atomic = no suspension between the last re-check of
+// the state field (else the impl's entry) and the write.
 
 const STATES = ["queued", "running", "done", "failed"];
 
@@ -142,6 +143,41 @@ describe("memory: await inside a helper on the path", () => {
 
   it("an await in the helper after its write: atomic", () => {
     expect(atomicity(result, "fail")).toEqual({ atomic: true, scope: "synchronous" });
+  });
+});
+
+describe("memory: re-check after the await", () => {
+  const result = extractFixture(
+    "memory-recheck",
+    jobSpec([
+      { name: "rechecked", impl: "src/jobs.ts#startRechecked", from: "queued", to: "running" },
+      { name: "stale", impl: "src/jobs.ts#startStale", from: "queued", to: "running" },
+      { name: "maybe", impl: "src/jobs.ts#finishMaybe", from: "running", to: "done" },
+      { name: "other", impl: "src/jobs.ts#failOther", from: "running", to: "failed" },
+      { name: "viaHelper", impl: "src/jobs.ts#startViaHelper", from: "queued", to: "running" },
+      { name: "later", impl: "src/jobs.ts#failLater", from: "running", to: "failed" },
+      { name: "inHelper", impl: "src/jobs.ts#finishInHelper", from: "running", to: "done" },
+    ]),
+  );
+
+  it.each([["rechecked"], ["viaHelper"], ["later"], ["inHelper"]])(
+    "%s: no suspension between the last re-check and the write: atomic",
+    (name) => {
+      expect(atomicity(result, name)).toEqual({ atomic: true, scope: "synchronous" });
+    },
+  );
+
+  it.each([["stale"], ["maybe"], ["other"]])(
+    "%s: a suspension after the last re-check on some path: not atomic",
+    (name) => {
+      expect(atomicity(result, name)).toEqual({ atomic: false, scope: undefined });
+    },
+  );
+
+  it("does not count the narrowing probe as a re-check", () => {
+    // Without the probe exclusion every write would be "re-checked" right before itself.
+    expect(transitionOf(result, "stale").from).toEqual(["queued"]);
+    expect(result.findings).toEqual([]);
   });
 });
 

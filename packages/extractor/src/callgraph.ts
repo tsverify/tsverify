@@ -178,3 +178,37 @@ export function reach(
   }
   return { root, frames, edges };
 }
+
+/** A node of a frame that leads to a write: the write itself, or a call into a frame that leads to it. */
+export interface LeadGroup {
+  node: ts.Node;
+  callee?: FunctionLike;
+}
+
+/**
+ * The lead nodes of every frame in `root`'s reach towards `write` (in `writeFrame`): the write
+ * itself in its frame, plus each call edge whose callee (transitively) leads to it. Frames that do
+ * not lead to the write get `[]`. Recursive re-entry adds nothing.
+ */
+export function leadsTo(
+  root: Reach,
+  writeFrame: FunctionLike,
+  write: ts.Node,
+): (fn: FunctionLike) => LeadGroup[] {
+  const memo = new Map<FunctionLike, LeadGroup[]>();
+  const leads = (fn: FunctionLike, stack: Set<FunctionLike>): LeadGroup[] => {
+    const cached = memo.get(fn);
+    if (cached) return cached;
+    if (stack.has(fn)) return [];
+    stack.add(fn);
+    const groups: LeadGroup[] = fn === writeFrame ? [{ node: write }] : [];
+    for (const e of root.edges) {
+      if (e.caller !== fn) continue;
+      if (leads(e.callee, stack).length > 0) groups.push({ node: e.call, callee: e.callee });
+    }
+    stack.delete(fn);
+    memo.set(fn, groups);
+    return groups;
+  };
+  return (fn) => leads(fn, new Set());
+}
