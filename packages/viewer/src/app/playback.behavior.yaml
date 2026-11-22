@@ -27,42 +27,42 @@ transitions:
     to: playing
     by: viewer
     atomic: true
-    impl: src/app/playback.ts#PlaybackController.play # from ended: restarts at step 0
+    impl: src/app/playback.ts#Playback.play # from ended: restarts at step 0
 
   pause:
     from: playing
     to: paused
     by: viewer
     atomic: true
-    impl: src/app/playback.ts#PlaybackController.pause
+    impl: src/app/playback.ts#Playback.pause
 
   finish:
     from: playing
     to: ended
     by: clock
     atomic: true
-    impl: src/app/playback.ts#PlaybackController.tick # only when the tick lands on the last step
+    impl: src/app/playback.ts#Playback.tick # only when the tick lands on the last step
 
   hold:
     from: [idle, playing, ended]
     to: paused
     by: viewer
     atomic: true
-    impl: src/app/playback.ts#PlaybackController.hold # stepping or seeking anywhere but the last step
+    impl: src/app/playback.ts#Playback.hold # stepping or seeking anywhere but the last step
 
   arrive:
     from: [idle, playing, paused]
     to: ended
     by: viewer
     atomic: true
-    impl: src/app/playback.ts#PlaybackController.arrive # stepping or seeking onto the last step
+    impl: src/app/playback.ts#Playback.arrive # stepping or seeking onto the last step
 
   reset:
     from: [playing, paused, ended]
     to: idle
     by: viewer
     atomic: true
-    impl: src/app/playback.ts#PlaybackController.reset
+    impl: src/app/playback.ts#Playback.reset
 
 rules:
   - name: The viewer can always rewind to the first step

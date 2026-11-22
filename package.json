@@ -14,7 +14,7 @@
     "test:watch": "vitest",
     "ci": "pnpm lint && pnpm typecheck && pnpm test && pnpm verify",
     "tsv": "tsx packages/cli/src/index.ts",
-    "verify": "pnpm tsv check packages/runtime/src"
+    "verify": "pnpm tsv check packages/runtime/src packages/viewer/src"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.8",
