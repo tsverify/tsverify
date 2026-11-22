@@ -1,0 +1,21 @@
+# A bindings.effects call path starts with a client that bindings.clients does not bind.
+behavior: Mini
+entity:
+  name: Order
+  state: status
+  states: [paid, refunded]
+  initial: paid
+actors:
+  admin: { trust: internal }
+transitions:
+  refund:
+    from: paid
+    to: refunded
+    by: admin
+    effects: [stripe.refund]
+bindings:
+  clients:
+    db: { module: src/db.ts, export: db }
+    stripe: { module: src/payments/stripe.ts, export: stripe }
+  effects:
+    stripe.refund: strpe.refunds.create

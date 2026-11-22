@@ -1,5 +1,5 @@
 import type { BehaviorModel, GuardRef, Transition } from "@tsv/ir";
-import { compareStrings } from "@tsv/ir";
+import { compareStrings, parseGuardRef } from "@tsv/ir";
 import { type FindingCollector, list, suggest } from "./findings";
 import type { Normalized } from "./normalize";
 import type { Locator, Path } from "./positions";
@@ -7,7 +7,8 @@ import type { SpecInput } from "./schema";
 
 /**
  * Semantic checks the schema cannot express (docs/behavior-format.md, "Semantic validation").
- * Everything is an error except terminal states with outgoing transitions, which is a warning.
+ * Everything is an error except terminal states with outgoing transitions and unused guard
+ * bindings, which are warnings.
  */
 export function validate(
   input: SpecInput,
@@ -43,6 +44,8 @@ class Validator {
     this.fixtures();
     this.rules();
     this.guardBindings();
+    this.unusedGuardBindings();
+    this.effectBindings();
   }
 
   private entity(): void {
@@ -213,6 +216,68 @@ class Validator {
     for (const t of this.model.transitions) {
       for (const g of t.requires) {
         check(g, `transition "${t.name}"`, ["transitions", t.name], t.name);
+      }
+    }
+  }
+
+  /**
+   * A bound guard no transition or actor requires is dead configuration (often a typo in a
+   * `requires` item or in the binding key). Clients are not checked: persistence clients such as
+   * `db` are legitimately referenced by no effect or guard.
+   */
+  private unusedGuardBindings(): void {
+    const used = new Set([
+      ...Object.values(this.model.actors).flatMap((a) => a.requires.map((g) => g.raw)),
+      ...this.model.transitions.flatMap((t) => t.requires.map((g) => g.raw)),
+    ]);
+    const reported = new Set<string>();
+    for (const key of Object.keys(this.input.bindings?.guards ?? {})) {
+      const raw = parseGuardRef(key)?.raw;
+      // Malformed and duplicate keys are already errors (normalize.ts).
+      if (raw === undefined || !this.model.bindings.guards[raw]) continue;
+      if (used.has(raw) || reported.has(raw)) continue;
+      reported.add(raw);
+      this.out.warning(
+        this.locator.key(["bindings", "guards", key]),
+        `bindings.guards: unused guard binding "${raw}" (no transition or actor requires it)`,
+        { hint: `add "${raw}" to a "requires" list, or remove the binding` },
+      );
+    }
+  }
+
+  /**
+   * `bindings.effects` keys are effects declared on some transition, and each value's first
+   * segment is a bound client (when any client is bound).
+   */
+  private effectBindings(): void {
+    const declared = [
+      ...new Set(this.model.transitions.flatMap((t) => t.effects.map((e) => e.name))),
+    ].sort(compareStrings);
+    const clients = Object.keys(this.model.bindings.clients);
+    for (const [key, target] of Object.entries(this.input.bindings?.effects ?? {})) {
+      const path = ["bindings", "effects", key];
+      if (!declared.includes(key)) {
+        const where =
+          declared.length > 0
+            ? `declared on transitions: ${list(declared)}`
+            : "no transition declares any effects";
+        this.out.error(
+          this.locator.key(path),
+          `bindings.effects: unknown effect "${key}" (${where})`,
+          { hint: didYouMean(key, declared) },
+        );
+      }
+      const client = target.split(".")[0] as string;
+      if (clients.length > 0 && !clients.includes(client)) {
+        this.out.error(
+          this.locator.value(path),
+          `bindings.effects "${key}": unknown client "${client}" in "${target}" (bound clients: ${list(clients)})`,
+          {
+            hint:
+              didYouMean(client, clients) ??
+              `add \`${client}: { module: path/to/file.ts, export: ${client} }\` under bindings.clients`,
+          },
+        );
       }
     }
   }

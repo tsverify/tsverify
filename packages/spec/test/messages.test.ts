@@ -263,9 +263,9 @@ describe("semantic errors", () => {
     ],
     [
       "guard bound twice after canonicalisation",
-      `${BASE}bindings:\n  guards:\n    role(admin): a.ts#f\n    role( admin ): a.ts#g\n`,
+      `${BASE}    requires: role(admin)\nbindings:\n  guards:\n    role(admin): a.ts#f\n    role( admin ): a.ts#g\n`,
       'bindings.guards: guard "role(admin)" is bound twice (as "role(admin)" and "role( admin )")',
-      18,
+      19,
       5,
     ],
     [
@@ -317,6 +317,61 @@ describe("semantic errors", () => {
         at: expect.objectContaining({ line: 15, column: 16 }),
       },
     ]);
+  });
+
+  describe("bindings", () => {
+    const WITH_EFFECT = `${BASE}    effects: [stripe.refund]\n`;
+
+    it("does not flag clients no effect or guard references", () => {
+      const text = `${BASE}bindings:\n  clients:\n    db: { module: src/db.ts, export: db }\n`;
+      expect(parseSpec(text, FILE).findings).toEqual([]);
+    });
+
+    it("skips the client check when no client is bound", () => {
+      const text = `${WITH_EFFECT}bindings:\n  effects:\n    stripe.refund: stripe.refunds.create\n`;
+      expect(parseSpec(text, FILE).findings).toEqual([]);
+    });
+
+    it("suggests adding a client that is not close to any bound one", () => {
+      const text = `${WITH_EFFECT}bindings:\n  clients:\n    db: { module: src/db.ts, export: db }\n  effects:\n    stripe.refund: payments.refunds.create\n`;
+      const finding = expectFinding(
+        text,
+        'bindings.effects "stripe.refund": unknown client "payments" in "payments.refunds.create" (bound clients: db)',
+        20,
+        20,
+      );
+      expect(finding.hint).toBe(
+        "add `payments: { module: path/to/file.ts, export: payments }` under bindings.clients",
+      );
+    });
+
+    it("reports an effect binding when no transition declares effects", () => {
+      const text = `${BASE}bindings:\n  effects:\n    stripe.refund: stripe.refunds.create\n`;
+      const finding = expectFinding(
+        text,
+        'bindings.effects: unknown effect "stripe.refund" (no transition declares any effects)',
+        17,
+        5,
+      );
+      expect(finding.severity).toBe("error");
+    });
+
+    it("counts actor requires as uses of a guard binding", () => {
+      const text = `${BASE.replace("{ trust: untrusted }", "{ trust: untrusted, requires: role( admin ) }")}bindings:\n  guards:\n    role(admin): a.ts#f\n`;
+      expect(parseSpec(text, FILE).findings).toEqual([]);
+    });
+
+    it("warns about an unused guard binding under its canonical name, at its key", () => {
+      const text = `${BASE}bindings:\n  guards:\n    role( admin ): a.ts#f\n`;
+      const finding = expectFinding(
+        text,
+        'bindings.guards: unused guard binding "role(admin)" (no transition or actor requires it)',
+        17,
+        5,
+      );
+      expect(finding.severity).toBe("warning");
+      expect(parseSpec(text, FILE).model).toBeDefined();
+    });
   });
 
   it("reports every problem, sorted by position, with unique ids", () => {

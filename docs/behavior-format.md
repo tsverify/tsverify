@@ -132,4 +132,10 @@ All reported as `invalid-spec` with the YAML location:
 - effect names are unique within a transition
 - every guard used in `requires` (transition or actor) has a binding **if** `bindings.guards` is non-empty
   (a spec with no guard bindings at all is allowed — e.g. a design-only spec)
+- `bindings.effects` keys are effects declared on some transition
+- the first segment of each `bindings.effects` call path (`stripe` in `stripe.refunds.create`) is a
+  `bindings.clients` key, **if** `bindings.clients` is non-empty
 - terminal states have no outgoing transitions (warning, not error)
+- every `bindings.guards` entry is required by some transition or actor (warning, not error: "unused guard
+  binding"). Clients are not checked this way: a persistence client such as `db` is legitimately referenced
+  by no effect or guard
