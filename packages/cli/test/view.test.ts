@@ -1,4 +1,6 @@
 import { writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { join, resolve } from "node:path";
 import type { ViewData } from "@tsv/viewer";
 import { afterEach, describe, expect, it } from "vitest";
@@ -179,6 +181,20 @@ describe("tsv view", () => {
     const empty = await tsv(["view", "."], { cwd: dir });
     expect(empty.code).toBe(2);
     expect(empty.stderr).toContain("no *.behavior.yaml files found");
+  });
+
+  it("reports a port that is already taken as a usage error", async () => {
+    const dir = await tempSpecDir({ "light.behavior.yaml": SPEC });
+    const taken = createServer();
+    await new Promise<void>((done) => taken.listen(0, "127.0.0.1", done));
+    try {
+      const port = (taken.address() as AddressInfo).port;
+      const r = await tsv(["view", "--spec-only", "--port", String(port)], { cwd: dir });
+      expect(r.code).toBe(2);
+      expect(r.stderr).toContain(`cannot listen on 127.0.0.1:${port} (EADDRINUSE)`);
+    } finally {
+      await new Promise((done) => taken.close(done));
+    }
   });
 
   it("watches each spec and its project's src", () => {

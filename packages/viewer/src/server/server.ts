@@ -102,7 +102,7 @@ export async function startViewer(options: ViewerOptions): Promise<Viewer> {
     } else if (path === "/api/data") {
       send(res, 200, "application/json; charset=utf-8", JSON.stringify(data), req);
     } else if (path === "/api/events") {
-      openStream(req, res);
+      openStream(res);
     } else if (path.startsWith(MERMAID_PREFIX)) {
       const asset = await mermaidAsset(path.slice(MERMAID_PREFIX.length));
       if (asset) send(res, 200, asset.type, asset.body, req);
@@ -112,7 +112,7 @@ export async function startViewer(options: ViewerOptions): Promise<Viewer> {
     }
   }
 
-  function openStream(req: IncomingMessage, res: ServerResponse): void {
+  function openStream(res: ServerResponse): void {
     res.writeHead(200, {
       ...SECURITY_HEADERS,
       "Content-Type": "text/event-stream; charset=utf-8",
@@ -120,13 +120,8 @@ export async function startViewer(options: ViewerOptions): Promise<Viewer> {
     });
     res.write(`retry: 2000\n: version ${data.version}\n\n`);
     streams.add(res);
-    req.on("close", () => streams.delete(res));
+    res.on("close", () => streams.delete(res));
   }
-
-  const heartbeat = setInterval(() => {
-    for (const s of streams) s.write(": ping\n\n");
-  }, HEARTBEAT_MS);
-  heartbeat.unref();
 
   const watchList = (d: ViewData) =>
     [...(typeof options.watch === "function" ? options.watch(d) : options.watch)].sort();
@@ -194,6 +189,10 @@ export async function startViewer(options: ViewerOptions): Promise<Viewer> {
     });
   });
   const port = (server.address() as AddressInfo).port;
+  const heartbeat = setInterval(() => {
+    for (const s of streams) s.write(": ping\n\n");
+  }, HEARTBEAT_MS);
+  heartbeat.unref();
   allowed = allowedHosts(host, port);
   rewatch();
 
