@@ -61,7 +61,7 @@ instrument.effects(s, {
 }) → { client, calls(path): EffectCall[] }
 
 mappingFromCode(codeModel) → ReplayMapping       // { transitions: { t: { read, write, atomic: gate[] } }, effects }
-planFromTrace(trace, mapping, { fastForward? = true }) → ReplayPlan
+planFromTrace(trace, mapping, { fastForward? = true } | { replayFrom: stepIndex }) → ReplayPlan
   // { property, startIndex, seedStatus, seedEffects, skipped, workers, schedule, origins, expectedEffects }
 storeConfigFromCode(codeModel, "db") / effectsConfigFromCode(codeModel, "stripe")
 
@@ -176,9 +176,13 @@ the code serialises the workers is what the replay finds out.
 
 `planFromTrace(trace, mapping)` fast-forwards the leading atomic actions (and actions on unmapped
 transitions) by seeding `seedStatus`, refuses when a worker is in flight at that point, maps each
-remaining action to its gates, and appends `until-done` for every worker. `seedEffects` are the
-prefix's effect counts (add them when evaluating a count rule); `expectedEffects` are the model's
-counts for the replayed part. For `b6-refund-race` against the orders app:
+remaining action to its gates, and appends `until-done` for every worker. When that leaves nothing
+(an all-atomic trace, such as B4's duplicate webhook), it throws; choose the first replayed step
+with `{ replayFrom: i }` instead: every step before `i` is seeded whatever its kind (B1: the
+unmapped `reopenOrder` at step 3, so `replayFrom: 4`), the same in-flight check applies, and every
+step from `i` on must be mapped. `{ fastForward: false }` is `{ replayFrom: 1 }`. `seedEffects`
+are the prefix's effect counts (add them when evaluating a count rule); `expectedEffects` are the
+model's counts for the replayed part. For `b6-refund-race` against the orders app:
 
 ```
 skipped: checkout#1 (atomic), payment_succeeded#1 (atomic)      seedStatus: paid

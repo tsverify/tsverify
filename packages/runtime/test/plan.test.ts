@@ -1,4 +1,5 @@
 // planFromTrace driven by the checker's real counterexample and the extractor's real CodeSites.
+// The B1 / B4 traces are real code-model counterexamples kept as testgen fixtures.
 import { describe, expect, test } from "vitest";
 import {
   effectsConfigFromCode,
@@ -8,7 +9,7 @@ import {
   replayVerdict,
   storeConfigFromCode,
 } from "../src/index";
-import { ordersAppCode, refundRaceTrace } from "./goldens";
+import { b1ReopenTrace, b4WebhookDupTrace, ordersAppCode, refundRaceTrace } from "./goldens";
 
 describe("mappingFromCode (orders-app CodeSites)", () => {
   test("model actions → sync gates; transactions and effects stay transparent", () => {
@@ -166,7 +167,96 @@ describe("planFromTrace (b6-refund-race)", () => {
   test("a trace with nothing to replay says so", () => {
     expect(() =>
       planFromTrace({ ...refundRaceTrace, steps: refundRaceTrace.steps.slice(0, 3) }, mapping),
-    ).toThrow("has nothing to replay: every action is atomic or on an unmapped transition");
+    ).toThrow(
+      "has nothing to replay: every action is atomic or on an unmapped transition " +
+        "(mapped: checkout, expire, payment_succeeded, refund, ship); pass `replayFrom` to choose the first replayed step",
+    );
+  });
+});
+
+describe("planFromTrace with replayFrom (all-atomic traces)", () => {
+  const mapping = mappingFromCode(ordersAppCode);
+  const b1 = b1ReopenTrace;
+  const b4 = b4WebhookDupTrace;
+
+  test("the default fast-forward leaves nothing of an all-atomic trace (B4)", () => {
+    expect(() => planFromTrace(b4, mapping)).toThrow("has nothing to replay");
+  });
+
+  test("B1: steps before replayFrom are seeded, even one on an unmapped transition", () => {
+    // reopenOrder (step 3) has no code mapping: the test cannot call it, so it is seeded.
+    expect(planFromTrace(b1, mapping, { replayFrom: 4 })).toEqual({
+      property: "effect-multiplicity",
+      startIndex: 4,
+      seedStatus: "pending_payment",
+      seedEffects: { "email.send": 1, "stripe.refunds.create": 0 },
+      skipped: [
+        { index: 1, worker: "checkout#1", transition: "checkout", kind: "atomic" },
+        {
+          index: 2,
+          worker: "payment_succeeded#1",
+          transition: "payment_succeeded",
+          kind: "atomic",
+        },
+        { index: 3, worker: "reopenOrder#1", transition: "reopenOrder", kind: "atomic" },
+      ],
+      workers: [{ id: "payment_succeeded#2", transition: "payment_succeeded", duplicate: true }],
+      schedule: [
+        ["payment_succeeded#2", "db.orders.get"],
+        ["payment_succeeded#2", "db.orders.save"],
+        ["payment_succeeded#2", "until-done"],
+      ],
+      origins: [4, 4, -1],
+      expectedEffects: { "email.send": 1, "stripe.refunds.create": 0 },
+    });
+  });
+
+  test("B4: replayFrom 1 replays both deliveries from the initial state", () => {
+    const plan = planFromTrace(b4, mapping, { replayFrom: 1 });
+    expect(plan).toMatchObject({
+      startIndex: 1,
+      seedStatus: "draft",
+      seedEffects: { "email.send": 0, "stripe.refunds.create": 0 },
+      skipped: [],
+      expectedEffects: { "email.send": 2, "stripe.refunds.create": 0 },
+    });
+    expect(plan).toEqual(planFromTrace(b4, mapping, { fastForward: false }));
+  });
+
+  test("B4: replayFrom 2 seeds the first delivery's status and receipt", () => {
+    const plan = planFromTrace(b4, mapping, { replayFrom: 2 });
+    expect(plan).toMatchObject({
+      startIndex: 2,
+      seedStatus: "paid",
+      seedEffects: { "email.send": 1, "stripe.refunds.create": 0 },
+      workers: [{ id: "payment_succeeded#2", duplicate: true }],
+      expectedEffects: { "email.send": 1, "stripe.refunds.create": 0 },
+    });
+  });
+
+  test("replayFrom keeps the in-flight check", () => {
+    // B6: refund#1 has read the state at step 3 and writes at step 5.
+    expect(() => planFromTrace(refundRaceTrace, mapping, { replayFrom: 4 })).toThrow(
+      "cannot fast-forward to step 4: refund#1 read the state in the prefix and has not written yet",
+    );
+  });
+
+  test("replayFrom must name a step after the initial state, without fastForward", () => {
+    expect(() => planFromTrace(b4, mapping, { replayFrom: 0 })).toThrow(
+      "planFromTrace: replayFrom 0 is not a step of the trace for effect-multiplicity (1 to 2; step 0 is the initial state)",
+    );
+    expect(() => planFromTrace(b4, mapping, { replayFrom: 3 })).toThrow(
+      "replayFrom 3 is not a step",
+    );
+    expect(() => planFromTrace(b4, mapping, { replayFrom: 1, fastForward: false })).toThrow(
+      "pass either `fastForward` or `replayFrom`, not both",
+    );
+  });
+
+  test("the steps from replayFrom on must be mapped", () => {
+    expect(() => planFromTrace(b1, mapping, { replayFrom: 3 })).toThrow(
+      'trace step 3 (reopenOrder#1: reopenOrder.atomic) has no code mapping; add "reopenOrder".atomic to the replay mapping',
+    );
   });
 });
 
