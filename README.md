@@ -58,10 +58,11 @@ tsv check --spec-only    # model-check the spec alone: design bugs, with a count
 tsv check                # also extract what the code does and compare (exit 0 ok · 1 violations · 2 invalid input · 3 internal)
 tsv test                 # generate and run tests from spec + code; replays turn counterexamples into failing tests
 tsv diff --base main     # behavior diff (Markdown + Mermaid) for the PR
+tsv view                 # local viewer: diagram, matrix, findings, counterexample playback, live reload
 ```
 
-`tsv view` (the local interactive viewer with counterexample playback) is coming in M7. Until then,
-`tsv render <spec> --mermaid` prints the diagram.
+`tsv view` serves on 127.0.0.1 only ([docs/viewer.md](docs/viewer.md)); `tsv render <spec> --mermaid` prints the
+diagram as text.
 
 **Next:**
 
