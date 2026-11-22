@@ -1,7 +1,8 @@
 /**
  * Generation-time view of how `@tsv/runtime`'s `planFromTrace` will replay a counterexample.
  * Testgen may not import the runtime (doc 6 §2), so this mirrors the two parts it needs, kept in
- * step with `packages/runtime/src/plan.ts` and `sites.ts`:
+ * step with `packages/runtime/src/plan.ts` and `sites.ts` (`test/runtime-cross-check.test.ts`
+ * checks both against the real runtime):
  *
  * - the gate mapping (`mappingFromCode`), for the schedule comments in the generated file;
  * - the fast-forward rule (leading atomic actions and actions on unmapped transitions are seeded

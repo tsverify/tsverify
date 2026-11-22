@@ -1,8 +1,8 @@
 # @tsv/testgen
 
 Generates the vitest files `tsv test` writes and runs. Depends only on `@tsv/ir` (doc 6 §2): it
-never imports `@tsv/runtime`; the **generated code** imports it at test time. Pure: data in,
-files (as strings) out, deterministic.
+never imports `@tsv/runtime` in `src/` (only its tests do, as a devDependency); the **generated
+code** imports it at test time. Pure: data in, files (as strings) out, deterministic.
 
 ```ts
 import { generate } from "@tsv/testgen";
@@ -52,7 +52,9 @@ entity in `plan.seedStatus`, spawns one worker per trace worker (each calls its 
   passes `{ replayFrom: i }`, the step after the last one it cannot drive: an all-atomic trace
   (B4's duplicate webhook) replays from the initial state (`replayFrom: 1`); a step on an unlinked
   transition (B1's `reopenOrder`, step 3) is seeded instead of replayed (`replayFrom: 4`).
-  `src/replay-plan.ts` mirrors the runtime's rules.
+  `src/replay-plan.ts` mirrors the runtime's rules; `test/runtime-cross-check.test.ts` runs the
+  real runtime (a devDependency) on the generated sidecars and plan options to keep the two in
+  step, along with the fake configs `src/context.ts` derives like `storeConfigFromCode`.
 - **Properties.** `effect-multiplicity` and `always` / `never` rules over status checks and effect
   counts are evaluated (`effects[gate]` = fast-forwarded prefix + calls in the replay; `status` =
   the stored entity). Anything else (`eventually`, liveness, structural properties) gives an

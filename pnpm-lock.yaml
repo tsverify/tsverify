@@ -128,6 +128,10 @@ importers:
       '@tsv/ir':
         specifier: workspace:*
         version: link:../ir
+    devDependencies:
+      '@tsv/runtime':
+        specifier: workspace:*
+        version: link:../runtime
 
   spikes/x1-narrowing:
     dependencies:
