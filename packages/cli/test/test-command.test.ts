@@ -79,10 +79,17 @@ describe("tsv test", () => {
   });
 
   it("reports only generated-test findings, and says so in pretty output", async () => {
-    // switchOn has no client calls, so `tsv check` reports info findings that `tsv test` leaves out.
-    const cwd = await tempSpecDir(PROJECT);
+    // `smash` has no impl, so `tsv check` reports a static (conformance) info finding that
+    // `tsv test` must leave out.
+    const spec = SPEC.replace("states: [off, on]", "states: [off, on, broken]")
+      .replace("terminal: [on]", "terminal: [on, broken]")
+      .concat("  smash:\n    from: off\n    to: broken\n    by: user\n");
+    const cwd = await tempSpecDir({ ...PROJECT, "src/light.behavior.yaml": spec });
     const check = await tsv(["check", "--format", "json"], { cwd });
-    expect((JSON.parse(check.stdout) as JsonReport).findings.length).toBeGreaterThan(0);
+    const messages = (JSON.parse(check.stdout) as JsonReport).findings.map((f) => f.message);
+    expect(messages).toContain(
+      "smash: not linked to code (no impl), so it is not checked against the code.",
+    );
     const r = await tsv(["test"], { cwd });
     expect(r.code).toBe(0);
     expect(r.stdout).toContain(
@@ -92,6 +99,7 @@ describe("tsv test", () => {
       "Generated-test results only: static findings (model checking, conformance) come from `tsv check`.",
     );
     expect(r.stdout).toMatch(/✓ 1 spec, 0 generated tests, 0 errors, 0 warnings\n$/);
+    expect(r.stdout).not.toContain("not linked to code");
   });
 
   it("exits 2 on an invalid spec", async () => {

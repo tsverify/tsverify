@@ -89,7 +89,7 @@ describe("check: code conformance", () => {
     expect(r.stdout).toContain("ℹ unanalyzable  src/light.behavior.yaml:16:3");
     expect(r.stdout).toContain("smash: not linked to code (no impl)");
     expect(r.stdout).toMatch(
-      /✓ 1 spec, 0 errors, 1 warning \(\d+ spec states, \d+ code states\)\n$/,
+      /✓ 1 spec, 0 errors, 0 warnings \(\d+ spec states, \d+ code states\)\n$/,
     );
   });
 
@@ -149,9 +149,8 @@ describe("check: code conformance", () => {
     expect(inner.code).toBe(0);
     const doc = parse(inner.stdout);
     expect(doc.specs[0]).toMatchObject({ file: "light.behavior.yaml", project: ".." });
-    // Locations from the extractor and conformance are relative to the cwd too.
+    // Locations are relative to the cwd too (code locations: see the conformance-mismatch test).
     expect(doc.findings.map((f) => f.specAt?.file ?? f.codeAt?.file)).toEqual([
-      "light.ts",
       "light.behavior.yaml",
     ]);
   });
@@ -221,11 +220,7 @@ describe("check: code conformance", () => {
     const doc = parse(r.stdout);
     const bad = doc.specs.find((s) => s.file === "src/bad.behavior.yaml");
     expect(bad).toEqual({ file: "src/bad.behavior.yaml", behavior: "Light", project: "." });
-    expect(doc.findings.map((f) => f.category)).toEqual([
-      "invalid-spec",
-      "unanalyzable",
-      "unanalyzable",
-    ]);
+    expect(doc.findings.map((f) => f.category)).toEqual(["invalid-spec", "unanalyzable"]);
   });
 
   it("extracts each project once and shares its stats", async () => {
