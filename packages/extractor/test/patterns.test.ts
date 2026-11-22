@@ -306,6 +306,49 @@ describe("effect mapping", () => {
   });
 });
 
+describe("effects on the write's path", () => {
+  const result = extractFixture(
+    "effect-path",
+    orderSpec([
+      { name: "ship", impl: "src/orders.ts#shipOrder", to: "shipped" },
+      { name: "refund", impl: "src/orders.ts#refundOrder", to: "refunded" },
+      {
+        name: "pay",
+        impl: "src/orders.ts#payOrder",
+        from: ["pending_payment"],
+        to: "paid",
+        by: ["system"],
+      },
+      {
+        name: "cancel",
+        impl: "src/orders.ts#cancelOrder",
+        from: ["pending_payment"],
+        to: "cancelled",
+        by: ["system"],
+      },
+    ]),
+  );
+  const effects = (name: string) =>
+    transitionOf(result, name).sites?.effects.map((e) => [e.gate, e.at.line]);
+
+  it("a catch around the transaction is not on the path; the call after it is", () => {
+    expect(effects("ship")).toEqual([["email.send", 17]]);
+  });
+
+  it("a rejection branch and a catch around the commit are not; the call before the write is", () => {
+    expect(effects("refund")).toEqual([["stripe.refunds.create", 30]]);
+    expect(transitionOf(result, "refund").effects.map((e) => e.name)).toEqual(["stripe.refund"]);
+  });
+
+  it("a flag returned from the transaction: the helper called after the commit is attributed", () => {
+    expect(effects("pay")).toEqual([["email.send", 60]]);
+  });
+
+  it("the write in a helper: the catch around the helper call is not attributed", () => {
+    expect(effects("cancel")).toEqual([["email.send", 71]]);
+  });
+});
+
 describe("unlinked write", () => {
   const result = extractFixture(
     "unlinked-write",

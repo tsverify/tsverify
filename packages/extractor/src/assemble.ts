@@ -208,6 +208,8 @@ function buildTransition(
 
   const effects: (CallSite & { effect: string })[] = effectCalls(
     d.reach,
+    m.frame,
+    m.write.expr,
     calls,
     env.persistenceClients,
   )

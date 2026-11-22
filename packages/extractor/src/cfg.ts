@@ -9,7 +9,10 @@
  * with `break` / `continue` (labels too), `switch` with fall-through, `return`, `throw`,
  * `try` / `catch` / `finally`. Any call may throw: the frontier *before* the call (the call
  * started but did not complete) flows to the current throw target, so a throwing guard inside a
- * `try` does not count as passed on the way to the `catch`.
+ * `try` does not count as passed on the way to the `catch`. Throw targets (`THROW_EXIT`, the join
+ * entering a `catch`, the join entering a rethrowing `finally`) are only ever entered by
+ * exceptional edges: `Cfg.throwTargets` lists them, so blocking them gives normal-completion
+ * reachability.
  *
  * **Inline callbacks** (a function expression passed directly as a call argument, e.g.
  * `db.transaction(async (tx) => …)`) are built in place: after the arguments, before the call
@@ -83,6 +86,8 @@ export interface Cfg {
   readonly succ: readonly (readonly number[])[];
   /** CFG nodes of a ts node (more than one when a `finally` block is built twice). */
   idsOf(node: ts.Node): readonly number[];
+  /** Nodes entered only by exceptional edges (a call or `throw` that did not complete). */
+  readonly throwTargets: ReadonlySet<number>;
 }
 
 export interface CfgOptions {
@@ -106,6 +111,7 @@ class Builder {
   private throwTo = THROW_EXIT;
   private jumps: JumpContext[] = [];
   private pendingLabels: string[] = [];
+  private readonly throwTargets = new Set<number>([THROW_EXIT]);
 
   constructor(private readonly options: CfgOptions = {}) {}
 
@@ -138,13 +144,24 @@ class Builder {
     return this.add(undefined);
   }
 
+  private throwJoin(): number {
+    const id = this.join();
+    this.throwTargets.add(id);
+    return id;
+  }
+
   build(fn: FunctionLike): Cfg {
     const body = fn.body;
     let out: Frontier = [ENTRY];
     if (body) out = ts.isBlock(body) ? this.stmt(body, out) : this.expr(body, out);
     this.connect(out, EXIT);
     const ids = this.ids;
-    return { nodes: this.nodes, succ: this.succ, idsOf: (n) => ids.get(n) ?? [] };
+    return {
+      nodes: this.nodes,
+      succ: this.succ,
+      idsOf: (n) => ids.get(n) ?? [],
+      throwTargets: this.throwTargets,
+    };
   }
 
   private inline(fn: ts.ArrowFunction | ts.FunctionExpression, f: Frontier): Frontier {
@@ -313,14 +330,14 @@ class Builder {
 
   private tryStmt(s: ts.TryStatement, f: Frontier): Frontier {
     const outerThrow = this.throwTo;
-    const tryThrow = this.join();
+    const tryThrow = this.throwJoin();
     this.throwTo = tryThrow;
     const tryOut = this.stmt(s.tryBlock, f);
     this.throwTo = outerThrow;
     let out = tryOut;
     let uncaught: number | undefined = tryThrow;
     if (s.catchClause) {
-      const catchThrow = s.finallyBlock ? this.join() : outerThrow;
+      const catchThrow = s.finallyBlock ? this.throwJoin() : outerThrow;
       this.throwTo = catchThrow;
       const catchOut = this.stmt(s.catchClause.block, [tryThrow]);
       this.throwTo = outerThrow;

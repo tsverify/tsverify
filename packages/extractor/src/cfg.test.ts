@@ -66,6 +66,36 @@ describe("cfg: guard dominance by reachability", () => {
     expect(bypassable(body)).toBe(true);
   });
 
+  it.each([
+    ["catch after the source", "try { source(); target(); } catch { other(); }", ["target"]],
+    [
+      "finally runs normally",
+      "try { source(); } finally { target(); } other();",
+      ["target", "other"],
+    ],
+    [
+      "callback return reaches the caller",
+      "run(() => { source(); return 1; }); target();",
+      ["target"],
+    ],
+    ["throw skips the rest", "source(); if (a) throw b; target();", ["target"]],
+  ])("normal completion (throw targets blocked): %s", (_, body, expected) => {
+    const sf = ts.createSourceFile(
+      "f.ts",
+      `function f(a: any, b: any) {${body}}`,
+      ts.ScriptTarget.ES2022,
+      true,
+    );
+    const cfg = buildCfg(sf.statements[0] as FunctionLike);
+    const calls = (name: string) =>
+      cfg.nodes.flatMap((n, id) =>
+        n && ts.isCallExpression(n) && n.expression.getText(sf) === name ? [id] : [],
+      );
+    const seen = reachable(cfg, calls("source"), cfg.throwTargets);
+    const hit = ["target", "other"].filter((name) => calls(name).some((id) => seen[id] === 1));
+    expect(hit).toEqual(expected);
+  });
+
   it("reaches the normal exit only through returns and fall-through", () => {
     const sf = ts.createSourceFile(
       "f.ts",
