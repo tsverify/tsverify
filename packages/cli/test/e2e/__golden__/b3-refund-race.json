@@ -529,7 +529,10 @@
           }
         ]
       },
-      "hint": "make `refund`'s state check and write atomic in the code (one transaction or a conditional update)"
+      "hint": "make `refund`'s state check and write atomic in the code (one transaction or a conditional update)",
+      "causedBy": [
+        "non-atomic:Order lifecycle:refund"
+      ]
     },
     {
       "id": "implementation-property:Order lifecycle:effect-multiplicity:stripe.refund",
@@ -1044,7 +1047,10 @@
         "column": 3,
         "endLine": 59,
         "endColumn": 43
-      }
+      },
+      "causedBy": [
+        "non-atomic:Order lifecycle:refund"
+      ]
     }
   ],
   "specs": [

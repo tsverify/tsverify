@@ -107,6 +107,7 @@ describe("testFindings", () => {
       severity: "error",
       message:
         "Replay confirmed in the real code: Exactly-once effect `stripe.refund` fires 2 times for one Order. Observed: final state refunded; stripe.refunds.create ×2.",
+      causedBy: [source.id],
     });
     const [divergent] = map(
       [replay],
@@ -121,11 +122,28 @@ describe("testFindings", () => {
       [outcome(replay, { meta: meta("replay-disagrees", { divergence }) })],
     ).findings;
     expect(disagrees).toMatchObject({ category: "replay-disagrees", severity: "warning" });
+    expect(disagrees?.causedBy).toBeUndefined();
     const [inconclusive] = map(
       [replay],
       [outcome(replay, { meta: meta("replay-disagrees", { inconclusive: true }) })],
     ).findings;
     expect(inconclusive).toMatchObject({ category: "unanalyzable", severity: "info" });
+  });
+
+  it("links a confirmed replay to its static finding only when that finding is known", () => {
+    const failed = outcome(replay, {
+      state: "failed",
+      meta: { tsvReplay: { verdict: "confirmed", followed: true, violated: true } },
+    });
+    const unknown = testFindings({
+      behavior: "Order lifecycle",
+      outDir: OUT,
+      tests: [replay],
+      outcomes: [failed],
+      sources: new Map(),
+    });
+    expect(unknown.findings[0]).toMatchObject({ category: "replay-confirmed" });
+    expect(unknown.findings[0]?.causedBy).toBeUndefined();
   });
 
   it("reports a replay that failed before recording a verdict", () => {

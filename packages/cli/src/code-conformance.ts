@@ -6,6 +6,7 @@ import type { BehaviorModel, Finding } from "@tsv/ir";
 import type { LoadedSpec } from "./inputs";
 import { rebaseFile, rebaseLocations } from "./locations";
 import { findProjectRoot, TSCONFIG } from "./project-root";
+import { linkRootCauses } from "./root-causes";
 
 export interface CodeConformanceOptions {
   /** Absolute; spec files are relative to it, and so are the returned locations. */
@@ -19,7 +20,10 @@ export interface CodeConformanceOptions {
 export interface CodeOutcome {
   /** Project root relative to the cwd (`.` for the cwd); `null` when none was found. */
   project: string | null;
-  /** Extractor findings, conformance mismatches, then code-model checker findings. */
+  /**
+   * Extractor findings, conformance mismatches, then code-model checker findings, with
+   * `causedBy` linking the latter to the mismatches that explain them (`root-causes.ts`).
+   */
   findings: Finding[];
   /** Present when the extractor ran for the spec's project. */
   extract?: ExtractStats;
@@ -39,7 +43,8 @@ export interface CodeOutcome {
 /**
  * Code conformance for every spec, aligned with `specs`: extract the as-implemented model
  * (`@tsv/extractor`, one `extractAll` per project root), compare it with the spec
- * (`@tsv/conformance`), and model-check it (`@tsv/checker`). Specs without a model (invalid
+ * (`@tsv/conformance`), model-check it (`@tsv/checker`), and link the checker's findings to the
+ * mismatches behind them (`linkRootCauses`). Specs without a model (invalid
  * input) get no findings here. A spec with no `tsconfig.json` at or above it gets one
  * `broken-link` finding.
  *
@@ -92,7 +97,7 @@ export async function checkCode(
         findings.push(...checked.findings.map((f) => withSpecAt(f, spec)));
         outcome.codeStats = checked.stats;
       }
-      outcome.findings = rebaseLocations(findings, root, cwd);
+      outcome.findings = rebaseLocations(linkRootCauses(findings, spec), root, cwd);
     });
   }
   return outcomes;

@@ -94,6 +94,29 @@ describe("actions", () => {
     });
   });
 
+  it("keeps one checked class whatever status the read observed", () => {
+    // refund non-atomic from paid or shipped: read at paid then ship then read at shipped is the
+    // same state as two reads at paid then ship, since the writes can't tell them apart.
+    const m = model();
+    const refund = m.transitions.find((t) => t.name === "refund") as Transition;
+    refund.atomic = false;
+    refund.from = ["paid", "shipped"];
+    const l = buildLayout(m);
+    const as = buildActions(l);
+    expect(as.filter((a) => a.transition.name === "refund").map((a) => a.kind)).toEqual([
+      "read",
+      "write",
+    ]);
+    const read = action(as, "refund", "read");
+    const ship = action(as, "ship", "atomic");
+    const paid = initialState(l);
+    paid[STATUS] = l.stateIndex.get("paid") as number;
+    const a = step(read, step(ship, step(read, paid)));
+    const b = step(ship, step(read, step(read, paid)));
+    expect([...a]).toEqual([...b]);
+    expect(a[action(as, "refund", "write").field]).toBe(2);
+  });
+
   it("saturates effect counts at the cap", () => {
     const m = model();
     const ps = m.transitions.find((t) => t.name === "payment_succeeded") as Transition;

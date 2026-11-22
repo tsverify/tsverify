@@ -30,6 +30,13 @@ export interface FormatFindingsOptions {
   cwd?: string;
   /** Append the `N errors · N warnings · N info` line (default true). Callers with their own summary turn it off. */
   countLine?: boolean;
+  /**
+   * Print each finding with `causedBy` indented under its cause, as `↳ consequence: …` (trace
+   * kept), instead of as a sibling (default false). Only causes in the same behavior group
+   * count: a consequence whose causes are all absent renders normally. With several causes
+   * present, it goes under the first one in display order.
+   */
+  groupCauses?: boolean;
 }
 
 const SEVERITY_ORDER: Record<Severity, number> = { error: 0, warning: 1, info: 2 };
@@ -39,8 +46,9 @@ const NO_BEHAVIOR = "(no behavior)";
 /**
  * Findings as terminal text, grouped by behavior (by name; findings without one come last),
  * then ordered by severity, location and id. Each finding has a headline (severity icon,
- * category, locations) with its message, hint and counterexample indented below. Ends with a
- * count summary line unless `countLine: false`.
+ * category, locations) with its message, hint and counterexample indented below. With
+ * `groupCauses`, consequences follow their cause, one level deeper. Ends with a count summary
+ * line (which counts consequences too) unless `countLine: false`.
  */
 export function formatFindings(findings: Finding[], options: FormatFindingsOptions = {}): string {
   const f = options.formatter ?? plainFormatter;
@@ -62,7 +70,12 @@ export function formatFindings(findings: Finding[], options: FormatFindingsOptio
   for (const name of names) {
     lines.push(f.bold(name));
     const group = [...(groups.get(name) ?? [])].sort(compareFindings);
-    for (const finding of group) lines.push(...formatFinding(finding, f, options.cwd));
+    const arranged = options.groupCauses
+      ? nestConsequences(group)
+      : group.map((finding) => ({ finding, depth: 0 }));
+    for (const { finding, depth } of arranged) {
+      lines.push(...formatFinding(finding, f, options.cwd, depth));
+    }
     lines.push("");
   }
   if (options.countLine !== false) lines.push(countLine(findings, f));
@@ -70,24 +83,74 @@ export function formatFindings(findings: Finding[], options: FormatFindingsOptio
   return `${lines.join("\n")}\n`;
 }
 
-function formatFinding(finding: Finding, f: Formatter, cwd: string | undefined): string[] {
+/**
+ * `group` (already sorted) in display order with nesting depths: every finding whose `causedBy`
+ * names another finding of the group follows that cause (the first one in `group` order), one
+ * level deeper, after the cause's other consequences that sort before it. A link that would close
+ * a cycle is ignored, so every finding is printed exactly once.
+ */
+function nestConsequences(group: readonly Finding[]): { finding: Finding; depth: number }[] {
+  const position = new Map<string, number>();
+  group.forEach((finding, i) => {
+    if (!position.has(finding.id)) position.set(finding.id, i);
+  });
+  const parent = new Map<number, number>();
+  group.forEach((finding, i) => {
+    const causes = (finding.causedBy ?? [])
+      .map((id) => position.get(id))
+      .filter((p): p is number => p !== undefined && p !== i);
+    if (causes.length === 0) return;
+    const cause = Math.min(...causes);
+    // Walk up from the cause: reaching this finding means the link would close a cycle.
+    for (let p: number | undefined = cause; p !== undefined; p = parent.get(p)) {
+      if (p === i) return;
+    }
+    parent.set(i, cause);
+  });
+
+  const children = new Map<number, number[]>();
+  for (const [child, cause] of [...parent].sort(([a], [b]) => a - b)) {
+    children.set(cause, [...(children.get(cause) ?? []), child]);
+  }
+  const out: { finding: Finding; depth: number }[] = [];
+  const visit = (i: number, depth: number) => {
+    out.push({ finding: group[i] as Finding, depth });
+    for (const child of children.get(i) ?? []) visit(child, depth + 1);
+  };
+  group.forEach((_, i) => {
+    if (!parent.has(i)) visit(i, 0);
+  });
+  return out;
+}
+
+/** One finding's lines; `depth > 0` marks a consequence printed under its cause. */
+function formatFinding(
+  finding: Finding,
+  f: Formatter,
+  cwd: string | undefined,
+  depth = 0,
+): string[] {
   const color = severityColor(finding.severity, f);
   const locations = [finding.specAt, finding.codeAt]
     .filter((l): l is SourceLocation => l !== undefined)
     .map((l) => formatLocation(l, cwd));
-  let headline = `  ${color(`${ICON[finding.severity]} ${finding.category}`)}`;
+  const pad = "  ".repeat(depth);
+  const label = color(`${ICON[finding.severity]} ${finding.category}`);
+  let headline = depth === 0 ? `  ${label}` : `  ${pad}${f.dim("↳ consequence:")} ${label}`;
   if (locations.length > 0) headline += `  ${f.dim(locations.join(" · "))}`;
 
   const out = [headline];
-  for (const line of finding.message.split(/\r?\n/)) out.push(`    ${line}`);
+  for (const line of finding.message.split(/\r?\n/)) out.push(`    ${pad}${line}`);
   if (finding.hint !== undefined) {
     const [first = "", ...rest] = finding.hint.split(/\r?\n/);
-    out.push(`    ${f.dim("hint:")} ${first}`);
-    for (const line of rest) out.push(`          ${line}`);
+    out.push(`    ${pad}${f.dim("hint:")} ${first}`);
+    for (const line of rest) out.push(`          ${pad}${line}`);
   }
   if (finding.trace) {
-    out.push(`    ${f.dim("trace:")}`);
-    for (const line of traceToText(finding.trace).trimEnd().split("\n")) out.push(`      ${line}`);
+    out.push(`    ${pad}${f.dim("trace:")}`);
+    for (const line of traceToText(finding.trace).trimEnd().split("\n")) {
+      out.push(`      ${pad}${line}`);
+    }
   }
   return out;
 }

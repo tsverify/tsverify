@@ -8,15 +8,9 @@ function cloneState(s: TraceState): TraceState {
   return { status: s.status, effects: { ...s.effects }, workers: s.workers.map((w) => ({ ...w })) };
 }
 
-function moveWorker(ctx: CheckContext, state: TraceState, action: Action): WorkerState {
+function moveWorker(state: TraceState, action: Action): WorkerState {
   const t = action.transition;
-  const observed = action.kind === "write" ? ctx.layout.states[action.observed] : undefined;
-  const w = representative(
-    state.workers,
-    t.name,
-    action.kind === "write" ? "checked" : "idle",
-    observed,
-  );
+  const w = representative(state.workers, t.name, action.kind === "write" ? "checked" : "idle");
   if (!w) throw new Error(`checker: trace replay found no worker for ${action.kind} ${t.name}`);
   return w;
 }
@@ -25,8 +19,10 @@ function moveWorker(ctx: CheckContext, state: TraceState, action: Action): Worke
  * Reconstructs the counterexample ending in `stateId` from the BFS parent chain.
  *
  * The chain gives the sequence of abstract actions; replaying it on concrete workers assigns
- * identities (always the lowest-numbered worker of the moved class, see `symmetry.ts`) and true,
- * unsaturated effect counts. Step 0 is the initial state and has no action.
+ * identities (always the lowest-numbered worker of the moved class, see `symmetry.ts`), true,
+ * unsaturated effect counts, and each checked worker's `observed` status: the encoding does not
+ * store it, so it is the status at the step where that worker read. Step 0 is the initial state
+ * and has no action.
  */
 export function buildTrace(
   ctx: CheckContext,
@@ -55,7 +51,7 @@ export function buildTrace(
   for (const action of path) {
     state = cloneState(state);
     const t = action.transition;
-    const worker = moveWorker(ctx, state, action);
+    const worker = moveWorker(state, action);
     if (action.kind === "read") {
       worker.phase = "checked";
       worker.observed = state.status;

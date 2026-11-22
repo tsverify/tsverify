@@ -163,6 +163,26 @@ describe("B6: refund missing atomic: true", () => {
   });
 });
 
+describe("checked workers without observed", () => {
+  // refund non-atomic and readable from two statuses: a worker that read `paid` and one that
+  // read `shipped` are in the same class, since the write never looks at what was observed.
+  function twoFrom(): BehaviorModel {
+    const m = orderModel();
+    const refund = transition(m, "refund");
+    refund.atomic = false;
+    refund.from = ["paid", "shipped"];
+    return m;
+  }
+
+  it("stores one checked count per transition", () => {
+    // 19 states when the checked count was split by observed status.
+    const { findings, stats } = check(twoFrom());
+    expect(stats).toMatchObject({ states: 15, complete: true });
+    expect(findings.map((f) => f.property)).toEqual([REFUND_RULE, "effect-multiplicity"]);
+    for (const f of findings) if (f.trace) expectConsistent(f.trace);
+  });
+});
+
 describe("code-origin duplicate webhook (B4 analogue)", () => {
   const RECEIPT_ID = "implementation-property:Order lifecycle:effect-multiplicity:email.receipt";
 

@@ -73,3 +73,71 @@ export function sampleFindings(): Finding[] {
     },
   ];
 }
+
+const code = "/repo/src/orders/refund.ts";
+const NON_ATOMIC = "non-atomic:Order lifecycle:refund";
+
+/**
+ * B3-shaped findings with `causedBy` links: a non-atomic refund explains two code-model property
+ * violations, one of which explains a third finding in turn; another consequence names a cause
+ * that is not in the list. Deliberately unsorted.
+ */
+export function causedFindings(): Finding[] {
+  return [
+    {
+      id: "implementation-property:Order lifecycle:effect-multiplicity:stripe.refund",
+      category: "implementation-property",
+      severity: "error",
+      message: "Exactly-once effect `stripe.refund` fires 2 times for one Order.",
+      behavior: "Order lifecycle",
+      transition: "refund",
+      property: "effect-multiplicity",
+      specAt: { file: spec, line: 52, column: 3 },
+      codeAt: { file: code, line: 13, column: 24 },
+      trace: b6DoubleRefundTrace(),
+      hint: "make `refund`'s state check and write atomic in the code",
+      causedBy: [NON_ATOMIC],
+    },
+    {
+      id: "replay-confirmed:Order lifecycle:effect-multiplicity:stripe.refund:code-model",
+      category: "replay-confirmed",
+      severity: "error",
+      message: "Replay confirmed in the real code: stripe.refund fires twice.",
+      behavior: "Order lifecycle",
+      transition: "refund",
+      specAt: { file: spec, line: 52, column: 3 },
+      causedBy: ["implementation-property:Order lifecycle:effect-multiplicity:stripe.refund"],
+    },
+    {
+      id: NON_ATOMIC,
+      category: "non-atomic",
+      severity: "error",
+      message: "refund: refundOrder reads the entity and writes refunded outside one atomic scope.",
+      behavior: "Order lifecycle",
+      transition: "refund",
+      specAt: { file: spec, line: 52, column: 3 },
+      codeAt: { file: code, line: 10, column: 23 },
+      hint: "Wrap the read and write in one transaction or use a conditional update.",
+    },
+    {
+      id: "implementation-property:Order lifecycle:rule:Refund issued at most once per order",
+      category: "implementation-property",
+      severity: "error",
+      message: 'Rule "Refund issued at most once per order" is violated.',
+      behavior: "Order lifecycle",
+      property: "rule:Refund issued at most once per order",
+      specAt: { file: spec, line: 62, column: 5 },
+      trace: b6DoubleRefundTrace(),
+      causedBy: [NON_ATOMIC],
+    },
+    {
+      id: "implementation-property:Order lifecycle:effect-multiplicity:email.receipt",
+      category: "implementation-property",
+      severity: "warning",
+      message: "Its cause is not in the list, so it renders as a top-level finding.",
+      behavior: "Order lifecycle",
+      specAt: { file: spec, line: 27, column: 3 },
+      causedBy: ["from-state-unconstrained:Order lifecycle:payment_succeeded"],
+    },
+  ];
+}

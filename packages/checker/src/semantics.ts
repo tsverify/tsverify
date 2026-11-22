@@ -4,7 +4,7 @@
  *
  * State
  *   `status`, a count per effect, and for every transition `t` its `concurrency[t]` workers
- *   (invocations), each `idle`, `checked` (with the `observed` status) or `done`. Effects are
+ *   (invocations), each `idle`, `checked` or `done`. Effects are
  *   those declared on transitions; an effect named only in a rule always counts 0.
  *
  * Initial state
@@ -14,7 +14,7 @@
  *   atomic t      enabled iff an idle worker of t exists and (`from = "*"` or `status ∈ from`).
  *                 Sets `status := to`, increments each declared effect, the worker becomes done.
  *   read t        (non-atomic t) enabled iff an idle worker of t exists and `status ∈ from`
- *                 (or `"*"`). The worker becomes checked with `observed = status`.
+ *                 (or `"*"`). The worker becomes checked (traces record `observed = status`).
  *   write t       (non-atomic t) enabled iff a checked worker of t exists. Sets `status := to`
  *                 and increments the effects WITHOUT re-checking `from`: this is the
  *                 check-then-act gap. The worker becomes done.
@@ -35,8 +35,9 @@
  *   workers, since a pending write is always enabled.
  *
  * Abstraction (exact for every property checked)
- *   - Symmetry: workers of one transition in the same (phase, observed) class are stored as a
- *     count (`symmetry.ts`).
+ *   - Symmetry: workers of one transition in the same phase are stored as a count
+ *     (`symmetry.ts`). A checked worker's observed status is not part of the state: no action
+ *     or property reads it, so it is reconstructed when a trace is built (`trace.ts`).
  *   - Effect counts saturate at `max(2, 1 + largest constant compared against the effect in any
  *     rule)`; comparisons against those constants and the `> 1` multiplicity check cannot tell
  *     a saturated count from the true one. Traces replay the actions, so they show true counts.
@@ -50,41 +51,24 @@ export interface Action {
   index: number;
   transition: TransitionCode;
   kind: ActionKind;
-  /** For `write`: the observed status index of the worker class it moves. Otherwise -1. */
-  observed: number;
-  /** For `write`: the field of that class. For `atomic`/`read`: the idle field. */
+  /** For `write`: the checked field. For `atomic`/`read`: the idle field. */
   field: number;
 }
 
 /**
  * Every action of the model, in a fixed order: transitions in model order; per transition
- * `atomic`, or `read` followed by one `write` per observable status (ascending).
+ * `atomic`, or `read` followed by `write`.
  */
 export function buildActions(layout: Layout): Action[] {
   const out: Action[] = [];
   for (const t of layout.transitions) {
     if (t.concurrency === 0) continue;
     if (t.atomic) {
-      out.push({
-        index: out.length,
-        transition: t,
-        kind: "atomic",
-        observed: -1,
-        field: t.workers.idle,
-      });
+      out.push({ index: out.length, transition: t, kind: "atomic", field: t.workers.idle });
       continue;
     }
-    out.push({
-      index: out.length,
-      transition: t,
-      kind: "read",
-      observed: -1,
-      field: t.workers.idle,
-    });
-    for (const o of t.workers.observed) {
-      const field = t.workers.checked[o] as number;
-      out.push({ index: out.length, transition: t, kind: "write", observed: o, field });
-    }
+    out.push({ index: out.length, transition: t, kind: "read", field: t.workers.idle });
+    out.push({ index: out.length, transition: t, kind: "write", field: t.workers.checked });
   }
   return out;
 }
@@ -100,7 +84,7 @@ export function applyAction(action: Action, s: Uint16Array): void {
   const t = action.transition;
   s[action.field] = (s[action.field] as number) - 1;
   if (action.kind === "read") {
-    const checked = t.workers.checked[s[STATUS] as number] as number;
+    const checked = t.workers.checked;
     s[checked] = (s[checked] as number) + 1;
     return;
   }

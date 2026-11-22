@@ -11,7 +11,8 @@
  * | replay test fails without a verdict     | `generated-test-failed` (error): it could not run |
  *
  * Replay verdicts come from `task.meta.tsvReplay`, which every generated replay test sets
- * before its assertion (see packages/testgen/README.md).
+ * before its assertion (see packages/testgen/README.md). A `replay-confirmed` finding has
+ * `causedBy` the `tsv check` finding it replayed, when that finding is in `sources`.
  */
 import type { Finding, Trace } from "@tsv/ir";
 import type { GeneratedTest } from "@tsv/testgen";
@@ -167,6 +168,7 @@ function replayFinding(
     if (meta.divergence) f.message += `\n${meta.divergence.message}`;
   }
   f.hint = `The replay test is kept in ${file}; it fails until the code is fixed.`;
+  if (source) f.causedBy = [source.id];
   const trace: Trace | undefined = source?.trace;
   if (trace) f.trace = trace;
   return f;
