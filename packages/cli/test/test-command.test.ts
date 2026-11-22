@@ -113,6 +113,20 @@ describe("tsverify test", () => {
     expect(doc.findings.map((f) => f.category)).toEqual(["invalid-spec"]);
   });
 
+  it("exits 2 before generating anything when the project's vitest is unusable", async () => {
+    const cwd = await tempSpecDir({
+      ...PROJECT,
+      "node_modules/vitest/package.json": `{ "name": "vitest", "version": "2.1.9" }\n`,
+    });
+    const r = await tsverify(["test", "--format", "json"], { cwd });
+    expect(r.code).toBe(2);
+    expect(r.stdout).toBe("");
+    expect(r.stderr).toBe(
+      `tsverify test needs vitest ^3.0.5 || ^4.0.1 || ^5.0.0, but the vitest it found is 2.1.9 (${join(cwd, "node_modules/vitest/package.json")}): npm i -D vitest@5\n`,
+    );
+    await expect(readdir(join(cwd, ".tsverify"))).rejects.toThrow(/ENOENT/);
+  });
+
   it("rejects a bad --format with exit 2", async () => {
     const r = await tsverify(["test", "--format", "xml"]);
     expect(r.code).toBe(2);

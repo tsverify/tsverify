@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { satisfies, VITEST_RANGE } from "../src/vitest-resolve";
 
 // The published CLI is one bundle (scripts/build.ts): workspace packages are inlined, and so are
 // their third-party dependencies, except the CLI's own `dependencies` and `peerDependencies`,
@@ -13,6 +14,7 @@ interface Manifest {
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
+  peerDependenciesMeta?: Record<string, { optional?: boolean }>;
   publishConfig?: { bin?: Record<string, string>; access?: string };
 }
 
@@ -63,6 +65,14 @@ describe("@tsverify/cli package.json", () => {
     // Mermaid is the viewer's build-time input only.
     expect(manifest("viewer").dependencies ?? {}).not.toHaveProperty("mermaid");
     expect(manifest("viewer").devDependencies?.mermaid).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+
+  it("makes vitest an optional peer dependency in the range test-run.ts supports", () => {
+    expect(deps).not.toHaveProperty("vitest");
+    expect(cli.peerDependencies?.vitest).toBe(VITEST_RANGE);
+    expect(cli.peerDependenciesMeta?.vitest).toEqual({ optional: true });
+    // Development runs on a supported version.
+    expect(satisfies(devDeps.vitest ?? "", VITEST_RANGE)).toBe(true);
   });
 
   it("keeps tsx for development only and publishes the bundle as the bin", () => {

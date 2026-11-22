@@ -3,7 +3,7 @@ import { check } from "@tsverify/checker";
 import { type Finding, INPUT_ERROR_CATEGORIES } from "@tsverify/ir";
 import { type GeneratedTest, generate } from "@tsverify/testgen";
 import { checkCode } from "../code-conformance";
-import { type ExitCode, exitCodeFor } from "../exit-codes";
+import { ExitCode, exitCodeFor } from "../exit-codes";
 import { outDirs, writeGenerated } from "../generated-dir";
 import { loadSpecs, resolveSpecFiles, selectEnforced } from "../inputs";
 import type { Io } from "../io";
@@ -19,6 +19,7 @@ import {
 } from "../report";
 import { testFindings } from "../test-findings";
 import { runGeneratedTests } from "../test-run";
+import { findVitest, type ResolvedVitest } from "../vitest-resolve";
 import { parseProject } from "./check";
 
 export interface TestCommandOptions {
@@ -51,6 +52,8 @@ interface Job {
  * errors (invalid spec, broken link) are reported as well, since they make the run invalid.
  * `--strict` also reports the static `unanalyzable` warnings (what the generated tests may not
  * cover), as errors. Exit 0, 1 on any error finding, 2 on invalid input (which takes precedence).
+ * vitest is an optional peer dependency (`vitest-resolve.ts`): when a project with tests to run
+ * has no usable vitest, the command says so on stderr, before generating anything, and exits 2.
  */
 export async function testCommand(
   io: Io,
@@ -85,6 +88,17 @@ export async function testCommand(
     if (outcome.root === undefined || !outcome.spec || !outcome.code) return;
     roots.set(outcome.root, [...(roots.get(outcome.root) ?? []), i]);
   });
+
+  // vitest is an optional peer dependency: without a usable one, nothing is generated or run.
+  const runners = new Map<string, ResolvedVitest>();
+  for (const root of roots.keys()) {
+    const found = findVitest(root);
+    if (!found.ok) {
+      io.stderr(found.message);
+      return ExitCode.InvalidInput;
+    }
+    runners.set(root, found.vitest);
+  }
 
   for (const [root, members] of roots) {
     const dirs = outDirs(members.map((i) => outcomes[i]?.spec?.name ?? ""));
@@ -125,6 +139,7 @@ export async function testCommand(
     const run = await runGeneratedTests(
       root,
       runnable.map((j) => `${j.outDir}/**/*.test.ts`),
+      runners.get(root) as ResolvedVitest,
     );
     for (const job of runnable) {
       const mapped = testFindings({

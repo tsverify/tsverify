@@ -1,19 +1,21 @@
 /**
  * Runs generated test files with vitest's programmatic API (`createVitest` + `start` from
- * `vitest/node`, vitest 5.1.1), in-process:
+ * `vitest/node`; the vitest found by `vitest-resolve.ts`, within its `VITEST_RANGE`), in-process:
  *
  * - `root` is the project root and `include` lists only the generated files, so the user's own
  *   tests never run;
  * - `config: false`: the user's vitest / vite config is not loaded (no setup files, plugins,
  *   fake timers or environments that the generated tests don't expect);
  * - `@tsverify/runtime` is aliased to this installation's runtime entry, so the project needs nothing
- *   installed besides tsverify (vitest resolves the generated files' `vitest` import itself);
+ *   installed besides tsverify and vitest (vitest resolves the generated files' `vitest` import
+ *   itself);
  * - no reporters and `silent`, so nothing reaches stdout/stderr: results are read from the
  *   returned test modules, including each test's `task.meta`;
  * - vite's and vitest's caches go to `.tsverify/cache/`, not into the project's `node_modules`.
  */
 import { join, relative, sep } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import type { ResolvedVitest } from "./vitest-resolve";
 
 /** Caches of the vitest run, relative to the project root (next to `.tsverify/generated`). */
 export const CACHE_DIR = ".tsverify/cache";
@@ -42,9 +44,16 @@ export function runtimeEntry(): string {
 /**
  * @param root absolute project root
  * @param include project-relative globs of the generated test files
+ * @param runner the vitest to run them with (`findVitest`)
  */
-export async function runGeneratedTests(root: string, include: string[]): Promise<TestRunResult> {
-  const { createVitest } = await import("vitest/node");
+export async function runGeneratedTests(
+  root: string,
+  include: string[],
+  runner: ResolvedVitest,
+): Promise<TestRunResult> {
+  const { createVitest } = (await import(
+    pathToFileURL(runner.nodeEntry).href
+  )) as typeof import("vitest/node");
   const exitCode = process.exitCode;
   const vitest = await createVitest(
     "test",
