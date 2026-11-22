@@ -388,9 +388,22 @@ describe("spread-to-save write", () => {
   it("a non-literal target state is a warning, not a transition", () => {
     expect(result.findings).toEqual([
       expect.objectContaining({
-        id: "unanalyzable:Fixture orders:write-value:src/refund.ts:16:36",
+        id: "unanalyzable:Fixture orders:write-value:setStatus",
         severity: "warning",
+        codeAt: expect.objectContaining({ file: "src/refund.ts", line: 16, column: 36 }),
       }),
+    ]);
+  });
+});
+
+describe("unanalyzable ids", () => {
+  const result = extractFixture("finding-ids", orderSpec([]));
+
+  it("name the function (or file) instead of a position, suffixing collisions by location", () => {
+    expect(result.findings.map((f) => [f.id, f.codeAt?.line])).toEqual([
+      ["unanalyzable:Fixture orders:write-frame:seed", 7],
+      ["unanalyzable:Fixture orders:write-value:setTwice", 12],
+      ["unanalyzable:Fixture orders:write-value:setTwice~2", 13],
     ]);
   });
 });

@@ -19,7 +19,7 @@ import type { FunctionLike } from "./cfg";
 import { ClientCalls } from "./client-calls";
 import { Dominance } from "./dominance";
 import { matchesEntity, writtenValue } from "./entity";
-import { brokenLink, locText, sortFindings, unanalyzable } from "./findings";
+import { brokenLink, sortFindings, unanalyzable, uniqueIds } from "./findings";
 import { loadProject, ProjectContext } from "./project";
 import { resolveClient, resolveGuard, resolveImpl, symbolOf } from "./resolve";
 import {
@@ -185,6 +185,12 @@ export function extractAll(
   };
 }
 
+/** A file's name without directory and extension: the subject of findings outside any function. */
+function moduleName(ctx: ProjectContext, node: ts.Node): string {
+  const rel = ctx.rel(node.getSourceFile().fileName);
+  return rel.slice(rel.lastIndexOf("/") + 1).replace(/\.[cm]?[jt]sx?$/, "");
+}
+
 function sortedEntries<T>(record: Record<string, T>): [string, T][] {
   return Object.entries(record).sort(([a], [b]) => compareStrings(a, b));
 }
@@ -320,12 +326,13 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
     if (!matchesEntity(spec.entity, narrowed.declared, narrowed.refTypeNames)) return;
     const at = ctx.loc(write.site);
     const value = writtenValue(write.value, checker);
+    const frame = frameOf(write.expr);
     if (value === undefined) {
       findings.push(
         unanalyzable(
           behavior,
           "write-value",
-          locText(at),
+          frame ? frameNaming(frame).name : moduleName(ctx, write.expr),
           `${spec.entity.name}.${write.field} is assigned a value that is not a single literal (${write.value.getText()}); the write is not extracted`,
           {
             codeAt: at,
@@ -335,13 +342,12 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
       );
       return;
     }
-    const frame = frameOf(write.expr);
     if (!frame) {
       findings.push(
         unanalyzable(
           behavior,
           "write-frame",
-          locText(at),
+          moduleName(ctx, write.expr),
           `${spec.entity.name}.${write.field} is written outside any function; the write is not extracted`,
           {
             codeAt: at,
@@ -401,5 +407,5 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
     findings,
     implAt,
   });
-  return { spec: behavior, model, findings: sortFindings(findings) };
+  return { spec: behavior, model, findings: sortFindings(uniqueIds(findings)) };
 }
