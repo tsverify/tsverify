@@ -3,6 +3,7 @@ import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { appStylesPath, buildApp } from "./app-build";
 
 /**
  * Everything the browser loads, all local: the page, the app bundle and Mermaid's prebuilt ESM
@@ -13,7 +14,7 @@ import { fileURLToPath } from "node:url";
  *   bundle (`dist/tsverify.js`) with the assets in `dist/viewer/`, written at build time by
  *   `writeViewerAssets`, so an installed tsverify needs no esbuild.
  * - **Built on demand** otherwise (development, from `src/`): `src/app/` is bundled with esbuild
- *   on first use and kept in memory.
+ *   on first use (`app-build.ts`) and kept in memory.
  */
 
 /** Prebuilt app bundle and styles, relative to {@link PREBUILT_DIR}. */
@@ -63,32 +64,17 @@ export function appBundle(): Promise<AppBundle> {
 async function loadApp(): Promise<AppBundle> {
   const start = performance.now();
   const file = prebuilt(APP_FILE);
-  const code = file === undefined ? await buildApp() : await readFile(file, "utf8");
+  const code = file === undefined ? await buildAppBundle() : await readFile(file, "utf8");
   return { code, ms: Math.round(performance.now() - start) };
 }
 
-/** Bundles `src/app/` with esbuild (a development-only dependency of the published CLI). */
-async function buildApp(): Promise<string> {
-  const { build } = await import("esbuild");
-  const result = await build({
-    entryPoints: [fileURLToPath(new URL("../app/main.ts", import.meta.url))],
-    bundle: true,
-    format: "esm",
-    platform: "browser",
-    target: "es2022",
-    minify: true,
-    write: false,
-    legalComments: "none",
-    logLevel: "silent",
-    external: [`${MERMAID_PREFIX}*`],
-  });
-  const code = result.outputFiles[0]?.text;
-  if (code === undefined) throw new Error("esbuild produced no output for the viewer app");
-  return code;
+/** The app built from `src/app/`, with the served Mermaid files left external. */
+function buildAppBundle(): Promise<string> {
+  return buildApp([`${MERMAID_PREFIX}*`]);
 }
 
 function stylesPath(): string {
-  return prebuilt(STYLES_FILE) ?? fileURLToPath(new URL("../app/styles.css", import.meta.url));
+  return prebuilt(STYLES_FILE) ?? appStylesPath();
 }
 
 /**
@@ -99,8 +85,8 @@ export async function writeViewerAssets(outDir: string): Promise<string[]> {
   const app = join(outDir, APP_FILE);
   const styles = join(outDir, STYLES_FILE);
   await mkdir(outDir, { recursive: true });
-  await writeFile(app, await buildApp());
-  await copyFile(stylesPath(), styles);
+  await writeFile(app, await buildAppBundle());
+  await copyFile(appStylesPath(), styles);
   return [app, styles];
 }
 

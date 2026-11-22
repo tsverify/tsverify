@@ -65,6 +65,31 @@ importers:
 
   packages/cli:
     dependencies:
+      '@tsverify/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      cac:
+        specifier: 7.1.1
+        version: 7.1.1
+      mermaid:
+        specifier: 12.3.0
+        version: 12.3.0
+      picocolors:
+        specifier: 1.1.1
+        version: 1.1.1
+      ts-morph:
+        specifier: 28.0.0
+        version: 28.0.0
+      vitest:
+        specifier: 5.1.1
+        version: 5.1.1(@types/node@22.20.5)(vite@8.3.8(@types/node@22.20.5)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+      yaml:
+        specifier: 2.9.1
+        version: 2.9.1
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
       '@tsverify/checker':
         specifier: workspace:*
         version: link:../checker
@@ -80,9 +105,6 @@ importers:
       '@tsverify/render':
         specifier: workspace:*
         version: link:../render
-      '@tsverify/runtime':
-        specifier: workspace:*
-        version: link:../runtime
       '@tsverify/spec':
         specifier: workspace:*
         version: link:../spec
@@ -92,18 +114,12 @@ importers:
       '@tsverify/viewer':
         specifier: workspace:*
         version: link:../viewer
-      cac:
-        specifier: 7.1.1
-        version: 7.1.1
-      picocolors:
-        specifier: 1.1.1
-        version: 1.1.1
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
       tsx:
         specifier: 4.23.15
         version: 4.23.15
-      vitest:
-        specifier: 5.1.1
-        version: 5.1.1(@types/node@22.20.5)(vite@8.3.8(@types/node@22.20.5)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/conformance:
     dependencies:

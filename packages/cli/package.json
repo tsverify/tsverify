@@ -1,9 +1,33 @@
 {
   "name": "@tsverify/cli",
   "version": "0.1.0-alpha.0",
+  "description": "Verify TypeScript code against *.behavior.yaml state-machine specs: model checking, code conformance and generated tests",
+  "keywords": [
+    "tsverify",
+    "typescript",
+    "verification",
+    "model-checking",
+    "state-machine",
+    "conformance",
+    "race-condition",
+    "static-analysis",
+    "cli"
+  ],
   "license": "Apache-2.0",
-  "private": true,
+  "author": "The tsverify Authors",
+  "homepage": "https://github.com/tsverify/tsverify#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tsverify/tsverify.git",
+    "directory": "packages/cli"
+  },
+  "bugs": {
+    "url": "https://github.com/tsverify/tsverify/issues"
+  },
   "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
   "bin": {
     "tsverify": "./bin/tsverify.js"
   },
@@ -13,19 +37,48 @@
       "default": "./src/main.ts"
     }
   },
+  "files": [
+    "dist",
+    "behavior.schema.json",
+    "README.md",
+    "LICENSE",
+    "NOTICE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "tsx scripts/build.ts",
+    "prepack": "pnpm run build && tsx ../../scripts/copy-release-files.ts --readme"
+  },
+  "publishConfig": {
+    "access": "public",
+    "bin": {
+      "tsverify": "./dist/tsverify.js"
+    },
+    "exports": {
+      "./behavior.schema.json": "./behavior.schema.json",
+      "./package.json": "./package.json"
+    }
+  },
   "dependencies": {
+    "@tsverify/runtime": "workspace:*",
+    "cac": "7.1.1",
+    "mermaid": "12.3.0",
+    "picocolors": "1.1.1",
+    "ts-morph": "28.0.0",
+    "vitest": "5.1.1",
+    "yaml": "2.9.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
     "@tsverify/checker": "workspace:*",
     "@tsverify/conformance": "workspace:*",
     "@tsverify/extractor": "workspace:*",
     "@tsverify/ir": "workspace:*",
     "@tsverify/render": "workspace:*",
-    "@tsverify/runtime": "workspace:*",
     "@tsverify/spec": "workspace:*",
     "@tsverify/testgen": "workspace:*",
     "@tsverify/viewer": "workspace:*",
-    "cac": "7.1.1",
-    "picocolors": "1.1.1",
-    "tsx": "4.23.15",
-    "vitest": "5.1.1"
+    "esbuild": "0.28.2",
+    "tsx": "4.23.15"
   }
 }
