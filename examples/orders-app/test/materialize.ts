@@ -36,6 +36,7 @@ const CATEGORIES: Record<FindingCategory, true> = {
   "replay-confirmed": true,
   "replay-disagrees": true,
   unanalyzable: true,
+  "not-generated": true,
 };
 
 /**

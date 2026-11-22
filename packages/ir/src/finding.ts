@@ -24,7 +24,9 @@ export type FindingCategory =
   | "replay-confirmed"
   | "replay-disagrees"
   // analysis limits
-  | "unanalyzable";
+  | "unanalyzable"
+  /** `tsv test` could not generate a test (missing fixtures, invocation shape, unsupported persistence). */
+  | "not-generated";
 
 /** Categories that mean "the input is invalid" rather than "a behavior bug was found". */
 export const INPUT_ERROR_CATEGORIES: ReadonlySet<FindingCategory> = new Set([
@@ -52,4 +54,9 @@ export interface Finding {
   codeAt?: SourceLocation;
   trace?: Trace;
   hint?: string;
+  /**
+   * Ids of findings this one is a consequence of (same run). E.g. B3's implementation-property
+   * double refund is caused by the `non-atomic` conformance finding on `refund`.
+   */
+  causedBy?: string[];
 }
