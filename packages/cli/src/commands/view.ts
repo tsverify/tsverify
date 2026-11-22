@@ -8,7 +8,6 @@ import {
   type SpecInput,
   startViewer,
   type ViewData,
-  type ViewerUrls,
 } from "@tsv/viewer";
 import { ExitCode, UsageError } from "../exit-codes";
 import type { Io } from "../io";
@@ -19,8 +18,6 @@ export interface ViewCommandOptions extends Omit<CheckCommandOptions, "format"> 
   /** Raw from cac: 0 (the default) picks a free port. */
   port?: unknown;
   host?: unknown;
-  /** `--allow-host`: one name or several (cac gives an array for a repeated flag). */
-  allowHost?: unknown;
   /** Open the page in the default browser. Never the default. */
   open?: unknown;
 }
@@ -38,7 +35,6 @@ export async function viewCommand(
 ): Promise<ExitCode> {
   const port = parsePort(options.port);
   const host = parseHost(options.host);
-  const allowHosts = parseAllowHosts(options.allowHost);
   const load = () => loadViewData(io.cwd, paths, options);
 
   const viewer = await startViewer({
@@ -46,7 +42,6 @@ export async function viewCommand(
     watch: (data) => watchList(data),
     port,
     host,
-    allowHosts,
     onReload: (e) => {
       io.stderr(
         e.error === undefined
@@ -62,12 +57,7 @@ export async function viewCommand(
     throw e;
   });
 
-  io.stdout(formatUrls(viewer.urls));
-  if (!isLoopback(host)) {
-    io.stderr(
-      `warning: listening on ${host}, so other machines may reach this viewer and read your specs and code locations\n`,
-    );
-  }
+  io.stdout(formatUrls(viewer.url, viewer.port));
   io.stderr("Watching for changes. Press Ctrl+C to stop.\n");
   if (options.open === true) {
     openBrowser(viewer.url, {
@@ -135,36 +125,25 @@ function parsePort(value: unknown): number {
   return n;
 }
 
-/** Next/Vite-style URL block: `Local`, then `Network` (or how to expose / forward). */
-export function formatUrls(urls: ViewerUrls): string {
-  const lines = ["tsv view"];
-  if (urls.local) lines.push(`  Local:    ${urls.local}`);
-  if (urls.network.length === 0) {
-    lines.push(
-      "  Network:  not exposed (use --host 0.0.0.0, or forward the port: see docs/viewer.md)",
-    );
-  }
-  urls.network.forEach((u, i) => {
-    lines.push(`  ${i === 0 ? "Network: " : "         "} ${u}`);
-  });
-  return `${lines.join("\n")}\n`;
-}
-
-function parseAllowHosts(value: unknown): string[] {
-  if (value === undefined) return [];
-  const list = Array.isArray(value) ? value : [value];
-  return list.flatMap((v) => {
-    if (typeof v !== "string" || !/^(\[[0-9a-f:.]+\]|[a-z0-9.-]+)$/i.test(v.trim())) {
-      throw new UsageError(`--allow-host takes a host name without a port (got ${String(v)})`);
-    }
-    return [v.trim()];
-  });
+/** The URL block: the local address, and how to reach it from another machine (SSH only). */
+export function formatUrls(url: string, port: number): string {
+  return [
+    "tsv view",
+    `  Local:    ${url}`,
+    `  Remote:   ssh -N -L ${port}:127.0.0.1:${port} <user>@<this machine>, then open http://localhost:${port}/`,
+    "",
+  ].join("\n");
 }
 
 function parseHost(value: unknown): string {
   if (value === undefined) return DEFAULT_HOST;
   if (typeof value !== "string" || value === "") {
     throw new UsageError(`--host takes one address (got ${String(value)})`);
+  }
+  if (!isLoopback(value)) {
+    throw new UsageError(
+      `--host must be a loopback address (127.0.0.1, ::1 or localhost); the viewer is local-only. To view it from another machine, forward the port over SSH (see docs/viewer.md)`,
+    );
   }
   return value;
 }

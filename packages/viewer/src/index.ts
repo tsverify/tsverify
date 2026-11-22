@@ -1,5 +1,3 @@
-export type { ViewerUrls } from "./server/addresses";
-export { viewerUrls } from "./server/addresses";
 export { isLoopback } from "./server/host-guard";
 export type { OpenBrowserOptions } from "./server/open";
 export { openBrowser } from "./server/open";
