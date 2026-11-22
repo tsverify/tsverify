@@ -10,6 +10,10 @@
     "summary": {
       "type": "string"
     },
+    "enforced": {
+      "description": "Marks the spec as one CI should block on (default false). tsv itself never acts on it: it is reported in --format json|sarif and selected with --enforced-only",
+      "type": "boolean"
+    },
     "kind": {
       "description": "Only `entity` in v1 (default)",
       "type": "string",

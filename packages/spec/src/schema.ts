@@ -158,6 +158,12 @@ export const specSchema = z
   .strictObject({
     behavior: name.describe("Behavior name"),
     summary: z.string().optional(),
+    enforced: z
+      .boolean()
+      .optional()
+      .describe(
+        "Marks the spec as one CI should block on (default false). tsv itself never acts on it: it is reported in --format json|sarif and selected with --enforced-only",
+      ),
     kind: z.literal("entity").optional().describe("Only `entity` in v1 (default)"),
     entity,
     actors: z.record(name, actor),

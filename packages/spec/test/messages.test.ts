@@ -400,6 +400,7 @@ describe("normalization", () => {
       bindings: { clients: {}, guards: {}, effects: {} },
     });
     expect(model?.summary).toBeUndefined();
+    expect(model?.enforced).toBeUndefined();
     expect(model?.bindings.persistence).toBeUndefined();
     expect(model?.transitions[0]).toMatchObject({
       from: ["draft"],
@@ -411,6 +412,15 @@ describe("normalization", () => {
     });
     expect(model?.transitions[0]?.impl).toBeUndefined();
     expect(model?.transitions[0]?.after).toBeUndefined();
+  });
+
+  it("keeps enforced only when it is true", () => {
+    const enforced = (value: string) =>
+      parseSpec(`enforced: ${value}\n${BASE}`, FILE).model?.enforced;
+    expect(enforced("true")).toBe(true);
+    expect(enforced("false")).toBeUndefined();
+    const { findings } = parseSpec(`enforced: "yes"\n${BASE}`, FILE);
+    expect(findings.map((f) => [f.specAt?.line, f.severity])).toEqual([[1, "error"]]);
   });
 
   it("resolves concurrency for every transition", () => {

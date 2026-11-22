@@ -49,6 +49,7 @@ export function normalize(
     kind: "entity",
     name: input.behavior,
     ...(input.summary !== undefined && { summary: input.summary }),
+    ...(input.enforced === true && { enforced: true }),
     origin: "spec",
     file,
     entity: n.entity(input.entity),
