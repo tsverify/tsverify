@@ -1,6 +1,7 @@
 {
-  "name": "@tsv/checker",
+  "name": "@tsverify/checker",
   "version": "0.0.0",
+  "license": "Apache-2.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -10,6 +11,6 @@
     }
   },
   "dependencies": {
-    "@tsv/ir": "workspace:*"
+    "@tsverify/ir": "workspace:*"
   }
 }

@@ -8,7 +8,7 @@ import {
   type SpecInput,
   startViewer,
   type ViewData,
-} from "@tsv/viewer";
+} from "@tsverify/viewer";
 import { ExitCode, UsageError } from "../exit-codes";
 import type { Io } from "../io";
 import { rebaseLocations } from "../locations";
@@ -23,8 +23,8 @@ export interface ViewCommandOptions extends Omit<CheckCommandOptions, "format"> 
 }
 
 /**
- * `tsv view [paths…]`: runs the `tsv check` pipeline (same options) and serves the result in a
- * local browser viewer (`@tsv/viewer`), rebuilding whenever a spec or its project's `src/`
+ * `tsverify view [paths…]`: runs the `tsverify check` pipeline (same options) and serves the result in a
+ * local browser viewer (`@tsverify/viewer`), rebuilding whenever a spec or its project's `src/`
  * changes. Prints the URL and runs until interrupted (`Io.onInterrupt`), then exits 0. Bad
  * options, paths without specs, or a port that cannot be bound are usage errors (exit 2).
  */
@@ -45,8 +45,8 @@ export async function viewCommand(
     onReload: (e) => {
       io.stderr(
         e.error === undefined
-          ? `tsv view: rebuilt (build ${e.version}, ${e.ms} ms)\n`
-          : `tsv view: rebuild failed, still serving the previous build: ${e.error}\n`,
+          ? `tsverify view: rebuilt (build ${e.version}, ${e.ms} ms)\n`
+          : `tsverify view: rebuild failed, still serving the previous build: ${e.error}\n`,
       );
     },
   }).catch((e: unknown) => {
@@ -61,7 +61,7 @@ export async function viewCommand(
   io.stderr("Watching for changes. Press Ctrl+C to stop.\n");
   if (options.open === true) {
     openBrowser(viewer.url, {
-      onError: (e) => io.stderr(`tsv view: could not open a browser (${e.message})\n`),
+      onError: (e) => io.stderr(`tsverify view: could not open a browser (${e.message})\n`),
     });
   }
 
@@ -72,12 +72,12 @@ export async function viewCommand(
     });
   });
   await viewer.close();
-  io.stderr("tsv view: stopped\n");
+  io.stderr("tsverify view: stopped\n");
   return ExitCode.Ok;
 }
 
 /**
- * The `tsv check` pipeline as `ViewData`: every location relative to the cwd (the code model is
+ * The `tsverify check` pipeline as `ViewData`: every location relative to the cwd (the code model is
  * rebased from its project root).
  */
 export async function loadViewData(
@@ -128,7 +128,7 @@ function parsePort(value: unknown): number {
 /** The URL block: the local address, and how to reach it from another machine (SSH only). */
 export function formatUrls(url: string, port: number): string {
   return [
-    "tsv view",
+    "tsverify view",
     `  Local:    ${url}`,
     `  Remote:   ssh -N -L ${port}:127.0.0.1:${port} <user>@<this machine>, then open http://localhost:${port}/`,
     "",

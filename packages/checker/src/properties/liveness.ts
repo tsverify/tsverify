@@ -1,4 +1,4 @@
-import { type Finding, type Rule, ruleProperty } from "@tsv/ir";
+import { type Finding, type Rule, ruleProperty } from "@tsverify/ir";
 import { encodedAccess, STATUS } from "../encode";
 import { type CompiledExpr, compileExpr } from "../eval";
 import { type CheckContext, type PropertyChecker, propertyFinding } from "./context";

@@ -8,7 +8,7 @@
  * back through the helper's call sites in the impl's reach (all call sites must agree).
  * Not followed: element access, spread arguments, `let` variables, inline-callback parameters.
  */
-import type { ArgPath } from "@tsv/ir";
+import type { ArgPath } from "@tsverify/ir";
 import { ts } from "ts-morph";
 import type { Reach } from "./callgraph";
 import type { FunctionLike } from "./cfg";

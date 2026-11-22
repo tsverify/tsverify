@@ -1,11 +1,11 @@
-import type { InvocationShape } from "@tsv/ir";
+import type { InvocationShape } from "@tsverify/ir";
 import { describe, expect, it } from "vitest";
 import { literal, Names, relativeImport } from "./emit";
 import { buildArgs } from "./invoke";
 
 describe("relativeImport", () => {
   it("goes from the generated directory to a project file", () => {
-    expect(relativeImport(".tsv/generated/order-lifecycle", "src/db.ts")).toBe(
+    expect(relativeImport(".tsverify/generated/order-lifecycle", "src/db.ts")).toBe(
       "../../../src/db.ts",
     );
     expect(relativeImport("gen", "gen/x.json")).toBe("./x.json");

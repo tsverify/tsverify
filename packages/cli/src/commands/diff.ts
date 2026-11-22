@@ -1,9 +1,9 @@
 import { realpath } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import type { BehaviorModel, Finding } from "@tsv/ir";
-import { compareStrings } from "@tsv/ir";
-import { formatFindings } from "@tsv/render";
-import { parseSpec } from "@tsv/spec";
+import type { BehaviorModel, Finding } from "@tsverify/ir";
+import { compareStrings } from "@tsverify/ir";
+import { formatFindings } from "@tsverify/render";
+import { parseSpec } from "@tsverify/spec";
 import { ExitCode, UsageError } from "../exit-codes";
 import { GitError, listFiles, repoRoot, resolveCommit, showFile } from "../git";
 import { loadSpecs, resolveSpecFiles, toRelative } from "../inputs";
@@ -21,11 +21,11 @@ export interface DiffCommandOptions {
 }
 
 /** Directories `findSpecFiles` skips on the head side; skipped on the base side too. */
-const SKIPPED_DIRS: ReadonlySet<string> = new Set(["node_modules", ".git", ".tsv", "dist"]);
+const SKIPPED_DIRS: ReadonlySet<string> = new Set(["node_modules", ".git", ".tsverify", "dist"]);
 const SPEC_SUFFIX = ".behavior.yaml";
 
 /**
- * `tsv diff --base <ref> [paths…]`: the behavior diff between the specs at `<ref>` and the
+ * `tsverify diff --base <ref> [paths…]`: the behavior diff between the specs at `<ref>` and the
  * working tree. Head specs are found like `check` finds them; base specs are the same paths at
  * `<ref>`, read with the local `git` (`ls-tree`, `show`) and parsed from text. Files are paired by
  * path, so a renamed file is one removed and one added behavior.

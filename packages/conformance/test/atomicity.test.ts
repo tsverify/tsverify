@@ -1,4 +1,4 @@
-import { compare } from "@tsv/conformance";
+import { compare } from "@tsverify/conformance";
 import { describe, expect, it } from "vitest";
 import { buildCodeModel, cleanWrites, patchWrite, specModel, VARIANT_CASES } from "./code-model";
 

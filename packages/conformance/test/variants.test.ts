@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { compare } from "@tsv/conformance";
-import type { Finding, FindingCategory } from "@tsv/ir";
+import { compare } from "@tsverify/conformance";
+import type { Finding, FindingCategory } from "@tsverify/ir";
 import { describe, expect, it } from "vitest";
 import { MUTATION_CASES, variantCase } from "./code-model";
 

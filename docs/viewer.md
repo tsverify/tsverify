@@ -1,13 +1,13 @@
-# `tsv view`: the local viewer
+# `tsverify view`: the local viewer
 
-`tsv view` runs the same pipeline as `tsv check` and shows the results in your browser: the state diagram, the
+`tsverify view` runs the same pipeline as `tsverify check` and shows the results in your browser: the state diagram, the
 permission matrix, the plain-English summary, the findings grouped by root cause, and a step-by-step **playback**
 of every counterexample. It rebuilds and reloads the page whenever a spec or its project's code changes.
 
 ```sh
-tsv view                      # every *.behavior.yaml under the current directory
-tsv view src/orders --open    # one directory, and open the browser
-tsv view --spec-only          # specs only: no code extraction or conformance
+tsverify view                      # every *.behavior.yaml under the current directory
+tsverify view src/orders --open    # one directory, and open the browser
+tsverify view --spec-only          # specs only: no code extraction or conformance
 ```
 
 It prints the URL (`http://127.0.0.1:<port>/`) and runs until you press Ctrl+C. The exit code is 0 after a clean
@@ -20,23 +20,23 @@ stop, and 2 for bad options or paths without specs, as with `check`.
 | `--port <n>` | `0` | Port to listen on; `0` picks a free one |
 | `--host <address>` | `127.0.0.1` | Loopback address to listen on: `127.0.0.1`, `::1` or `localhost`. Anything else is refused (exit 2) |
 | `--open` | off | Open the page in the default browser (`open`, `xdg-open` or `start`). Never done by default |
-| `--spec-only`, `--project <dir>`, `--max-states <n>`, `--enforced-only` | | As for `tsv check` |
+| `--spec-only`, `--project <dir>`, `--max-states <n>`, `--enforced-only` | | As for `tsverify check` |
 
 ## Viewing from another machine
 
-The viewer never listens on the network. `tsv view` prints its local address and the SSH command for reaching it
+The viewer never listens on the network. `tsverify view` prints its local address and the SSH command for reaching it
 from another machine:
 
 ```
-tsv view
+tsverify view
   Local:    http://127.0.0.1:4400/
   Remote:   ssh -N -L 4400:127.0.0.1:4400 <user>@<this machine>, then open http://localhost:4400/
 ```
 
-When `tsv` runs on a remote box (SSH, a dev VM, a container) and your browser is on your laptop, `127.0.0.1` in the
+When `tsverify` runs on a remote box (SSH, a dev VM, a container) and your browser is on your laptop, `127.0.0.1` in the
 URL means the **laptop**. Forward the port over SSH:
 
-1. On the remote box, pick a fixed port: `tsv view --port 4400`.
+1. On the remote box, pick a fixed port: `tsverify view --port 4400`.
 2. On the laptop: `ssh -N -L 4400:127.0.0.1:4400 <user>@<remote-host>`. If the box is only reachable through
    another host (a hypervisor, a bastion), add `-J <user>@<jump-host>`.
 3. Open `http://localhost:4400/`. A different local port also works (`-L 9000:127.0.0.1:4400` →
@@ -46,7 +46,7 @@ URL means the **laptop**. Forward the port over SSH:
 
 For each behavior file:
 
-- **Findings**, grouped by root cause like `tsv check`'s output: a consequence (for example B3's double refund) is
+- **Findings**, grouped by root cause like `tsverify check`'s output: a consequence (for example B3's double refund) is
   nested under the finding that causes it (the `non-atomic` refund). Every finding with a counterexample has a
   **Play counterexample** button.
 - **Playback** of the chosen counterexample:
@@ -56,7 +56,7 @@ For each behavior file:
   - one swimlane per worker that acts, showing its phase (`idle`, `checked`, `done`) and the status it read
   - effect counters with their limit (`/ 1` for an exactly-once effect); on the last step the violated property is
     named and the counter it concerns is marked `✗ violated`
-  - the step list from `tsv check`'s trace text, where each step is clickable
+  - the step list from `tsverify check`'s trace text, where each step is clickable
 - **State diagram** of the spec model, and of the code model when one was extracted.
 - **Summary** and **permission matrix** of the spec.
 
@@ -66,7 +66,7 @@ by hand pauses playback.
 ## Live reload
 
 The viewer watches each spec file and each project's `src/` directory (the project root when there is no `src/`),
-ignoring `node_modules`, `.git` and `.tsv`. After a burst of changes it re-runs the pipeline and the page reloads
+ignoring `node_modules`, `.git` and `.tsverify`. After a burst of changes it re-runs the pipeline and the page reloads
 its data, keeping the spec and trace you had selected when they still exist. If a rebuild fails (for example
 because every spec was deleted), the page keeps showing the last good build with an error banner.
 

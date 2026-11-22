@@ -120,7 +120,7 @@ export interface PrismaFake<M extends string = string> {
   rows(model: M): Row[];
 }
 
-const OPERATION = Symbol("tsv.prisma.operation");
+const OPERATION = Symbol("tsverify.prisma.operation");
 
 interface Lazy<T> extends PromiseLike<T> {
   catch(onRejected: (reason: unknown) => unknown): Promise<unknown>;

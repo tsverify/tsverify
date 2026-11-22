@@ -2,12 +2,12 @@
  * `prisma` persistence: generated tests use `instrument.prisma` for the Prisma client, built from
  * the extractor's golden code model of examples/orders-prisma. The mirrors of the runtime
  * (`buildContext`'s fake config, `gateMapping`, `planReplay`) are checked against the real
- * `@tsv/runtime` on the same inputs, as in `runtime-cross-check.test.ts`. The generated files run
+ * `@tsverify/runtime` on the same inputs, as in `runtime-cross-check.test.ts`. The generated files run
  * against the real app in examples/orders-prisma/test/test-command.e2e.test.ts.
  */
-import type { BehaviorModel, Finding, Trace } from "@tsv/ir";
-import { orderModel } from "@tsv/ir/testing";
-import { mappingFromCode, planFromTrace, prismaConfigFromCode } from "@tsv/runtime";
+import type { BehaviorModel, Finding, Trace } from "@tsverify/ir";
+import { orderModel } from "@tsverify/ir/testing";
+import { mappingFromCode, planFromTrace, prismaConfigFromCode } from "@tsverify/runtime";
 import { describe, expect, it } from "vitest";
 import specTrace from "../../checker/test/__golden__/b6-refund-race.trace.json" with {
   type: "json",
@@ -20,7 +20,7 @@ import { generate } from "../src/index";
 import { gateMapping, planReplay } from "../src/replay-plan";
 import traces from "./fixtures/traces.json" with { type: "json" };
 
-const OUT = ".tsv/generated/order-lifecycle";
+const OUT = ".tsverify/generated/order-lifecycle";
 const code = prismaCode as unknown as BehaviorModel;
 
 /** examples/orders-prisma's spec: the canonical one with Prisma bindings. */
@@ -76,7 +76,7 @@ describe("clean orders-prisma app", () => {
   });
 });
 
-describe("prisma mirrors ≡ @tsv/runtime", () => {
+describe("prisma mirrors ≡ @tsverify/runtime", () => {
   const { ctx } = buildContext({ spec: spec(), code, outDir: OUT });
 
   it("fake config ≡ prismaConfigFromCode", () => {

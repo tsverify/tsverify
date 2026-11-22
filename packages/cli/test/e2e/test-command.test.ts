@@ -1,7 +1,7 @@
 /**
- * End-to-end: `tsv test` over the demo app (examples/orders-app), clean and with each seeded-bug
- * variant. `tsv test` runs vitest itself, so it runs here as a subprocess
- * (`node packages/cli/bin/tsv.js test src --format json`, cwd = the materialized app) instead of
+ * End-to-end: `tsverify test` over the demo app (examples/orders-app), clean and with each seeded-bug
+ * variant. `tsverify test` runs vitest itself, so it runs here as a subprocess
+ * (`node packages/cli/bin/tsverify.js test src --format json`, cwd = the materialized app) instead of
  * nesting vitest in vitest. About 2–3 s per run.
  *
  * | Variant | Expected                                                                          |
@@ -20,15 +20,15 @@ import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import type { Finding } from "@tsv/ir";
+import type { Finding } from "@tsverify/ir";
 import { describe, expect, it } from "vitest";
 import { materialize } from "../../../../examples/orders-app/test/materialize";
 import type { JsonReport } from "../../src/output/json";
 import type { SarifLog } from "../../src/output/sarif";
 import { SARIF_SUBSET, validate } from "../sarif-schema";
 
-const BIN = fileURLToPath(new URL("../../bin/tsv.js", import.meta.url));
-const GENERATED = ".tsv/generated/order-lifecycle";
+const BIN = fileURLToPath(new URL("../../bin/tsverify.js", import.meta.url));
+const GENERATED = ".tsverify/generated/order-lifecycle";
 
 interface Run {
   code: number;
@@ -38,7 +38,7 @@ interface Run {
   files: string[];
 }
 
-async function tsvTest(variant: string | undefined, format = "json"): Promise<Run> {
+async function tsverifyTest(variant: string | undefined, format = "json"): Promise<Run> {
   const app = await materialize(variant);
   try {
     const result = await promisify(execFile)(
@@ -76,9 +76,9 @@ function find(doc: JsonReport, id: string): Finding {
   return finding as Finding;
 }
 
-describe("tsv test on examples/orders-app", { timeout: 60_000 }, () => {
+describe("tsverify test on examples/orders-app", { timeout: 60_000 }, () => {
   it("clean: every generated test passes", async () => {
-    const run = await tsvTest(undefined);
+    const run = await tsverifyTest(undefined);
     const doc = report(run);
     expect(run.code).toBe(0);
     expect(problems(doc)).toEqual([]);
@@ -99,17 +99,17 @@ describe("tsv test on examples/orders-app", { timeout: 60_000 }, () => {
   });
 
   it("clean, pretty: says where static findings come from", async () => {
-    const run = await tsvTest(undefined, "pretty");
+    const run = await tsverifyTest(undefined, "pretty");
     expect(run.code).toBe(0);
     expect(run.stdout).toContain(`project: . · ${GENERATED}: 33 tests, 33 passed`);
     expect(run.stdout).toContain(
-      "Generated-test results only: static findings (model checking, conformance) come from `tsv check`.",
+      "Generated-test results only: static findings (model checking, conformance) come from `tsverify check`.",
     );
     expect(run.stdout).toMatch(/✓ 1 spec, 33 generated tests, 0 errors, 0 warnings\n$/);
   });
 
   it("B3 refund race: the replay confirms the double Stripe refund", async () => {
-    const run = await tsvTest("b3-refund-race");
+    const run = await tsverifyTest("b3-refund-race");
     const doc = report(run);
     expect(run.code).toBe(1);
     expect(problems(doc)).toEqual([
@@ -132,7 +132,7 @@ describe("tsv test on examples/orders-app", { timeout: 60_000 }, () => {
   });
 
   it("B3 refund race as SARIF: the confirmed replay, at the code, with its cause", async () => {
-    const run = await tsvTest("b3-refund-race", "sarif");
+    const run = await tsverifyTest("b3-refund-race", "sarif");
     expect(run.stderr).toBe("");
     expect(run.code).toBe(1);
     // The absolute temp dir only appears as the %SRCROOT% base.
@@ -141,7 +141,7 @@ describe("tsv test on examples/orders-app", { timeout: 60_000 }, () => {
     expect(validate(log, SARIF_SUBSET)).toEqual([]);
     const confirmed = log.runs[0].results.find(
       (r) =>
-        r.partialFingerprints["tsvFindingId/v1"] ===
+        r.partialFingerprints["tsverifyFindingId/v1"] ===
         "replay-confirmed:Order lifecycle:effect-multiplicity:stripe.refund:code-model",
     );
     expect(confirmed).toMatchObject({
@@ -156,7 +156,7 @@ describe("tsv test on examples/orders-app", { timeout: 60_000 }, () => {
   });
 
   it("B4 webhook redelivery: the replay confirms the second receipt", async () => {
-    const run = await tsvTest("b4-webhook-dup");
+    const run = await tsverifyTest("b4-webhook-dup");
     const doc = report(run);
     expect(run.code).toBe(1);
     const receipt = find(
@@ -180,7 +180,7 @@ describe("tsv test on examples/orders-app", { timeout: 60_000 }, () => {
   });
 
   it("B5 undeclared effect: the expire path test catches the Stripe call", async () => {
-    const run = await tsvTest("b5-undeclared-effect");
+    const run = await tsverifyTest("b5-undeclared-effect");
     const doc = report(run);
     expect(run.code).toBe(1);
     expect(problems(doc)).toEqual([
@@ -198,7 +198,7 @@ describe("tsv test on examples/orders-app", { timeout: 60_000 }, () => {
   });
 
   it("B6 spec race: the code is safer than the spec (replay-disagrees, exit 0)", async () => {
-    const run = await tsvTest("b6-spec-race");
+    const run = await tsverifyTest("b6-spec-race");
     const doc = report(run);
     expect(run.code).toBe(0);
     expect(problems(doc)).toEqual([
@@ -215,9 +215,9 @@ describe("tsv test on examples/orders-app", { timeout: 60_000 }, () => {
   });
 
   it("B1 reopen: the fast-forwarded reopen lets the real webhook send a second receipt", async () => {
-    const run = await tsvTest("b1-reopen");
+    const run = await tsverifyTest("b1-reopen");
     const doc = report(run);
-    // The undeclared reopenOrder itself is static (tsv check); the code-model counterexample it
+    // The undeclared reopenOrder itself is static (tsverify check); the code-model counterexample it
     // enables (pay, reopen, pay again) replays with the reopen seeded, and the real webhook does
     // send the receipt again.
     expect(run.code).toBe(1);
@@ -231,10 +231,10 @@ describe("tsv test on examples/orders-app", { timeout: 60_000 }, () => {
   });
 
   it("B2 guard bypass: static only, every generated test passes", async () => {
-    const run = await tsvTest("b2-guard-bypass");
+    const run = await tsverifyTest("b2-guard-bypass");
     const doc = report(run);
     // The bypass needs `ctx.internal: true`, which the invocation shape never sets: the guard
-    // tests call refundOrder as a customer and are rejected. `tsv check` reports the bug.
+    // tests call refundOrder as a customer and are rejected. `tsverify check` reports the bug.
     expect(run.code).toBe(0);
     expect(problems(doc)).toEqual([]);
     expect(doc.specs[0]?.generated?.tests).toEqual({

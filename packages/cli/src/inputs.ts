@@ -1,8 +1,8 @@
 import { stat } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
-import type { BehaviorModel, Finding } from "@tsv/ir";
-import { compareStrings } from "@tsv/ir";
-import { findSpecFiles, loadSpec } from "@tsv/spec";
+import type { BehaviorModel, Finding } from "@tsverify/ir";
+import { compareStrings } from "@tsverify/ir";
+import { findSpecFiles, loadSpec } from "@tsverify/spec";
 import { UsageError } from "./exit-codes";
 
 export interface LoadedSpec {
@@ -20,7 +20,7 @@ export interface LoadedSpec {
  * `**\/*.behavior.yaml`; files are taken as given, so a missing file surfaces as an
  * `invalid-spec` finding from `loadSpec`. Deduplicated, sorted, relative to `cwd`.
  *
- * `existingOnly` (`tsv diff`, where the other side may have the files): a missing path and a
+ * `existingOnly` (`tsverify diff`, where the other side may have the files): a missing path and a
  * directory without specs contribute nothing instead of an error.
  */
 export async function resolveSpecFiles(

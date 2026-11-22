@@ -1,5 +1,5 @@
 {
-  "$comment": "Real pipeline output for examples/orders-app with variants/b3-refund-race applied (tsv check: extractAll, compare, check on the code model). Locations are relative to the app root. `findings` keeps only the findings with a counterexample.",
+  "$comment": "Real pipeline output for examples/orders-app with variants/b3-refund-race applied (tsverify check: extractAll, compare, check on the code model). Locations are relative to the app root. `findings` keeps only the findings with a counterexample.",
   "code": {
     "kind": "entity",
     "name": "Order lifecycle",

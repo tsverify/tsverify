@@ -162,7 +162,7 @@ export const specSchema = z
       .boolean()
       .optional()
       .describe(
-        "Marks the spec as one CI should block on (default false). tsv itself never acts on it: it is reported in --format json|sarif and selected with --enforced-only",
+        "Marks the spec as one CI should block on (default false). tsverify itself never acts on it: it is reported in --format json|sarif and selected with --enforced-only",
       ),
     kind: z.literal("entity").optional().describe("Only `entity` in v1 (default)"),
     entity,
@@ -174,7 +174,7 @@ export const specSchema = z
     fixtures: fixtures.optional(),
   })
   .meta({
-    title: "tsv behavior spec (v1)",
+    title: "tsverify behavior spec (v1)",
     description: "A `*.behavior.yaml` file. See docs/behavior-format.md.",
   });
 

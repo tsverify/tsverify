@@ -1,4 +1,4 @@
-import type { Trace, TraceAction, TraceState, WorkerState } from "@tsv/ir";
+import type { Trace, TraceAction, TraceState, WorkerState } from "@tsverify/ir";
 
 /**
  * `ir.Trace` → ITF JSON, the Informal Trace Format of Apalache (ADR-015) that Quint also reads
@@ -18,7 +18,7 @@ export function toItf(trace: Trace): Record<string, unknown> {
     "#meta": {
       format: "ITF",
       "format-description": "https://apalache-mc.org/docs/adr/015adr-trace.html",
-      description: `tsv counterexample: ${trace.property} in ${trace.behavior}`,
+      description: `tsverify counterexample: ${trace.property} in ${trace.behavior}`,
       behavior: trace.behavior,
       model: trace.model,
       property: trace.property,

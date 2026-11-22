@@ -24,7 +24,7 @@ afterAll(async () => {
 
 /** A fresh temp directory holding `files` (relative path → text), removed after the test file. */
 export async function tempSpecDir(files: Record<string, string>): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), "tsv-cli-"));
+  const dir = await mkdtemp(join(tmpdir(), "tsverify-cli-"));
   created.push(dir);
   for (const [path, text] of Object.entries(files)) {
     await mkdir(dirname(join(dir, path)), { recursive: true });

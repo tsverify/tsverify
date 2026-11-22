@@ -1,12 +1,13 @@
 {
-  "name": "@tsv-examples/orders-prisma",
+  "name": "@tsverify-examples/orders-prisma",
   "version": "0.0.0",
+  "license": "Apache-2.0",
   "private": true,
   "type": "module",
   "devDependencies": {
-    "@tsv-examples/shared": "workspace:*",
-    "@tsv/cli": "workspace:*",
-    "@tsv/ir": "workspace:*",
-    "@tsv/spec": "workspace:*"
+    "@tsverify-examples/shared": "workspace:*",
+    "@tsverify/cli": "workspace:*",
+    "@tsverify/ir": "workspace:*",
+    "@tsverify/spec": "workspace:*"
   }
 }

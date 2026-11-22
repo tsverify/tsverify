@@ -14,7 +14,7 @@
  *    event record typed with the same union (`StatusChangedEvent { status: OrderStatus }`) is not
  *    the entity.
  */
-import type { EntityDecl } from "@tsv/ir";
+import type { EntityDecl } from "@tsverify/ir";
 import { ts } from "ts-morph";
 import { type LiteralSet, singleLiteralOf } from "./type-facts";
 

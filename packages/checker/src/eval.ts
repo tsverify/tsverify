@@ -1,4 +1,4 @@
-import type { CmpOp, Expr } from "@tsv/ir";
+import type { CmpOp, Expr } from "@tsverify/ir";
 
 /**
  * How a compiled expression reads a state of type `S`. Resolution happens once at compile time,

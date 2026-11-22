@@ -1,5 +1,5 @@
 /**
- * Reads the Markdown subset `@tsv/render`'s `summarize` writes, so the app can show it as
+ * Reads the Markdown subset `@tsverify/render`'s `summarize` writes, so the app can show it as
  * elements without `innerHTML`: paragraphs, `- ` bullet lists, `**strong**`, `` `code` `` and
  * backslash escapes. Anything else stays literal text.
  */

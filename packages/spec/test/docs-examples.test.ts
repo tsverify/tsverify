@@ -2,7 +2,7 @@
  * The YAML in the user-facing docs stays valid. `docs/` has no package, so the test lives here.
  *
  * - Every fenced `yaml` block parses as YAML (fragments are allowed).
- * - Every block whose first line is `# tsv:example` is a complete spec: `parseSpec` reports
+ * - Every block whose first line is `# tsverify:example` is a complete spec: `parseSpec` reports
  *   no findings at all.
  * - Every fenced `json` block parses as JSON.
  */
@@ -22,7 +22,7 @@ const DOCS = [
     .sort()
     .map((f) => `${AGENTS}/${f}`),
 ];
-const EXAMPLE_MARKER = "# tsv:example";
+const EXAMPLE_MARKER = "# tsverify:example";
 
 interface Block {
   lang: string;

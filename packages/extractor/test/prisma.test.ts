@@ -1,4 +1,4 @@
-import type { Bindings } from "@tsv/ir";
+import type { Bindings } from "@tsverify/ir";
 import { describe, expect, it } from "vitest";
 import { extractFixture, guardKeys, orderSpec, type TransitionSpec, transitionOf } from "./helpers";
 

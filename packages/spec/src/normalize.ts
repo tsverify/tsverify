@@ -14,7 +14,7 @@ import {
   parseSymbolRef,
   type Rule,
   type Transition,
-} from "@tsv/ir";
+} from "@tsverify/ir";
 import type { FindingCollector } from "./findings";
 import type { Locator, Path } from "./positions";
 import { type NameRef, parseRule } from "./rules/parser";

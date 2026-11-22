@@ -28,7 +28,7 @@ export function App({ data, connection, initial }: AppProps): ComponentChild {
     h(
       "header",
       { class: "top" },
-      h("h1", null, "tsv view"),
+      h("h1", null, "tsverify view"),
       h("span", { class: "muted cwd" }, data.cwd),
       data.specOnly ? h("span", { class: "badge" }, "spec only") : null,
       h(

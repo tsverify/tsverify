@@ -1,4 +1,4 @@
-import type { CmpOp, Expr } from "@tsv/ir";
+import type { CmpOp, Expr } from "@tsverify/ir";
 import { lex, type RuleSyntaxError, type Token } from "./lexer";
 
 /**

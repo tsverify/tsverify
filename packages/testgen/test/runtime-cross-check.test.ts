@@ -1,5 +1,5 @@
 /**
- * Drift check: testgen mirrors parts of `@tsv/runtime` at generation time (doc 6 §2: `src/` may
+ * Drift check: testgen mirrors parts of `@tsverify/runtime` at generation time (doc 6 §2: `src/` may
  * not import it), so this runs the real runtime (a devDependency) on the same inputs and expects
  * identical results:
  *
@@ -14,15 +14,15 @@
  * and counterexamples, the checker's golden spec-model trace (B6), and the all-atomic / unlinked
  * code-model traces of B4 and B1.
  */
-import type { BehaviorModel, Finding, Trace } from "@tsv/ir";
-import { orderModel } from "@tsv/ir/testing";
+import type { BehaviorModel, Finding, Trace } from "@tsverify/ir";
+import { orderModel } from "@tsverify/ir/testing";
 import {
   effectsConfigFromCode,
   mappingFromCode,
   type PlanOptions,
   planFromTrace,
   storeConfigFromCode,
-} from "@tsv/runtime";
+} from "@tsverify/runtime";
 import { describe, expect, it } from "vitest";
 import specTrace from "../../checker/test/__golden__/b6-refund-race.trace.json" with {
   type: "json",
@@ -34,7 +34,7 @@ import { gateMapping, planReplay } from "../src/replay-plan";
 import b3 from "./fixtures/b3-refund-race.json" with { type: "json" };
 import traces from "./fixtures/traces.json" with { type: "json" };
 
-const OUT = ".tsv/generated/order-lifecycle";
+const OUT = ".tsverify/generated/order-lifecycle";
 const spec: BehaviorModel = { ...orderModel(), file: "src/orders/order.behavior.yaml" };
 const clean = cleanCode as unknown as BehaviorModel;
 const b3Code = b3.code as unknown as BehaviorModel;

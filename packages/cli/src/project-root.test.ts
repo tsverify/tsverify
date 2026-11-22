@@ -7,7 +7,7 @@ import { findProjectRoot, resolveProjectDir } from "./project-root";
 let dir = "";
 
 beforeAll(async () => {
-  dir = await mkdtemp(join(tmpdir(), "tsv-project-root-"));
+  dir = await mkdtemp(join(tmpdir(), "tsverify-project-root-"));
   for (const path of ["outer/tsconfig.json", "outer/inner/tsconfig.json", "outer/inner/src/x"]) {
     await mkdir(join(dir, path, ".."), { recursive: true });
     await writeFile(join(dir, path), "{}");

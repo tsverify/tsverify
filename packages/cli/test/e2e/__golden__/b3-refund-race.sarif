@@ -5,7 +5,7 @@
     {
       "tool": {
         "driver": {
-          "name": "tsv",
+          "name": "tsverify",
           "version": "0.0.0",
           "rules": [
             {
@@ -117,14 +117,14 @@
               "id": "unanalyzable",
               "name": "Unanalyzable",
               "shortDescription": {
-                "text": "tsv could not analyze this part of the code or spec."
+                "text": "tsverify could not analyze this part of the code or spec."
               }
             },
             {
               "id": "not-generated",
               "name": "NotGenerated",
               "shortDescription": {
-                "text": "tsv test could not generate a test for this transition or actor."
+                "text": "tsverify test could not generate a test for this transition or actor."
               }
             }
           ]
@@ -181,7 +181,7 @@
             }
           ],
           "partialFingerprints": {
-            "tsvFindingId/v1": "non-atomic:Order lifecycle:refund"
+            "tsverifyFindingId/v1": "non-atomic:Order lifecycle:refund"
           },
           "properties": {
             "behavior": "Order lifecycle",
@@ -212,7 +212,7 @@
             }
           ],
           "partialFingerprints": {
-            "tsvFindingId/v1": "implementation-property:Order lifecycle:rule:Refund issued at most once per order"
+            "tsverifyFindingId/v1": "implementation-property:Order lifecycle:rule:Refund issued at most once per order"
           },
           "properties": {
             "behavior": "Order lifecycle",
@@ -280,7 +280,7 @@
             }
           ],
           "partialFingerprints": {
-            "tsvFindingId/v1": "implementation-property:Order lifecycle:effect-multiplicity:stripe.refund"
+            "tsverifyFindingId/v1": "implementation-property:Order lifecycle:effect-multiplicity:stripe.refund"
           },
           "properties": {
             "behavior": "Order lifecycle",

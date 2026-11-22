@@ -1,9 +1,9 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { GeneratedFile } from "@tsv/testgen";
+import type { GeneratedFile } from "@tsverify/testgen";
 
-/** Where `tsv test` writes, relative to the project root. Users add `.tsv/` to `.gitignore`. */
-export const GENERATED_ROOT = ".tsv/generated";
+/** Where `tsverify test` writes, relative to the project root. Users add `.tsverify/` to `.gitignore`. */
+export const GENERATED_ROOT = ".tsverify/generated";
 
 /** `Order lifecycle` → `order-lifecycle`. */
 export function specSlug(behavior: string): string {
@@ -17,7 +17,7 @@ export function specSlug(behavior: string): string {
 }
 
 /**
- * Project-relative output directory per spec: `.tsv/generated/<slug>`, with `-2`, `-3`, … for
+ * Project-relative output directory per spec: `.tsverify/generated/<slug>`, with `-2`, `-3`, … for
  * specs of one project whose behavior names give the same slug (in spec file order).
  */
 export function outDirs(behaviors: readonly string[]): string[] {

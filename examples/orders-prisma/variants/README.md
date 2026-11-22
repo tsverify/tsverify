@@ -3,7 +3,7 @@
 The same overlay format as [`examples/orders-app/variants`](../../orders-app/variants/README.md):
 each directory holds only the files it replaces plus a `variant.json` manifest (validated by
 `parseManifest` in `examples/shared/materialize.ts`; `test/materialize.ts` binds the shared helpers
-to this app). B1–B6 are the orders-app bugs written the Prisma way, and `tsv check` reports the
+to this app). B1–B6 are the orders-app bugs written the Prisma way, and `tsverify check` reports the
 same finding ids for them as for the assign app. B7 is Prisma-specific.
 
 | id | Replaces | What changed vs. clean | Expected findings |
@@ -18,4 +18,4 @@ same finding ids for them as for the assign app. B7 is Prisma-specific.
 
 `test/variants.test.ts` materializes and typechecks every variant, and shows that B3 and B7 really
 pay out twice against the stand-in client. The end-to-end suites (`test/check.e2e.test.ts`,
-`test/test-command.e2e.test.ts`) run `tsv check` and `tsv test` on each one.
+`test/test-command.e2e.test.ts`) run `tsverify check` and `tsverify test` on each one.

@@ -8,7 +8,7 @@
  * client `db` inside that scope. Not recognized: clients passed as parameters, stored in fields,
  * destructured (`const { orders } = db`), or reached through element access.
  */
-import type { AtomicScope } from "@tsv/ir";
+import type { AtomicScope } from "@tsverify/ir";
 import { ts } from "ts-morph";
 import type { PersistenceAdapter } from "./adapters/types";
 import { inlineCallbackCall } from "./cfg";

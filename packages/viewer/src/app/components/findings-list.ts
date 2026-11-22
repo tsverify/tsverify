@@ -1,4 +1,4 @@
-import type { Finding, Severity, SourceLocation } from "@tsv/ir";
+import type { Finding, Severity, SourceLocation } from "@tsverify/ir";
 import { type ComponentChild, h } from "preact";
 import { type FindingNode, groupByRootCause } from "../findings-tree";
 

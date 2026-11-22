@@ -1,4 +1,4 @@
-import { check } from "@tsv/checker";
+import { check } from "@tsverify/checker";
 import { type CodeOutcome, checkCode } from "../code-conformance";
 import { type ExitCode, exitCodeFor, UsageError } from "../exit-codes";
 import { type LoadedSpec, loadSpecs, resolveSpecFiles, selectEnforced } from "../inputs";
@@ -21,7 +21,7 @@ export interface CheckCommandOptions {
 }
 
 /**
- * `tsv check [paths…]`, per spec: validate it, model-check it, then (unless `--spec-only`)
+ * `tsverify check [paths…]`, per spec: validate it, model-check it, then (unless `--spec-only`)
  * extract the code model from its project, compare it with the spec and model-check it
  * (`checkCode`). Invalid specs are reported and skipped. `--enforced-only` keeps only
  * `enforced: true` specs (and invalid ones); none left is an empty run (exit 0). Exit 0, 1 on
@@ -38,7 +38,7 @@ export async function checkCommand(
   return exitCodeFor(allFindings(report));
 }
 
-/** What one `tsv check` pipeline run produced, for `check` itself and for `tsv view`. */
+/** What one `tsverify check` pipeline run produced, for `check` itself and for `tsverify view`. */
 export interface CheckRun {
   report: Report;
   /** The specs that were checked (after `--enforced-only`), aligned with `report.specs`. */
@@ -48,7 +48,7 @@ export interface CheckRun {
 }
 
 /**
- * The `tsv check` pipeline without output: validate and model-check every spec under `paths`,
+ * The `tsverify check` pipeline without output: validate and model-check every spec under `paths`,
  * then (unless `--spec-only`) run code conformance. Throws `UsageError` for bad options or paths.
  */
 export async function runCheck(

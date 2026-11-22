@@ -5,18 +5,18 @@
  *
  * A variant (`variants/<id>/`) is an overlay: it holds only the files it replaces, at the same
  * relative paths as in the app, plus a `variant.json` manifest. Used by the apps' own tests and
- * by the `tsv` end-to-end suites.
+ * by the `tsverify` end-to-end suites.
  */
 import { copyFile, cp, mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Finding, FindingCategory } from "@tsv/ir";
+import type { Finding, FindingCategory } from "@tsverify/ir";
 
 export const MANIFEST = "variant.json";
 
 /** Top-level entries of an app directory that are not part of the app under analysis. */
-const NOT_APP: ReadonlySet<string> = new Set(["node_modules", "test", "variants", ".tsv"]);
+const NOT_APP: ReadonlySet<string> = new Set(["node_modules", "test", "variants", ".tsverify"]);
 
 /** Every finding category, checked against `FindingCategory` at compile time. */
 const CATEGORIES: Record<FindingCategory, true> = {

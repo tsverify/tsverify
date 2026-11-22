@@ -1,7 +1,7 @@
 /**
  * Builds a runnable copy of the orders app, optionally with a seeded-bug variant applied: the
  * shared example helpers (`examples/shared/materialize.ts`) bound to this app's directory.
- * Used by the app's own tests and the `tsv` end-to-end suites.
+ * Used by the app's own tests and the `tsverify` end-to-end suites.
  */
 import { exampleApp } from "../../shared/materialize";
 

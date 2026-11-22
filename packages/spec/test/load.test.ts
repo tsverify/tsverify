@@ -51,7 +51,7 @@ describe("findSpecFiles", () => {
   let dir: string;
 
   beforeAll(async () => {
-    dir = await mkdtemp(join(tmpdir(), "tsv-spec-"));
+    dir = await mkdtemp(join(tmpdir(), "tsverify-spec-"));
     const files = [
       "b.behavior.yaml",
       "a/z.behavior.yaml",
@@ -60,7 +60,7 @@ describe("findSpecFiles", () => {
       "a/behavior.yaml.bak",
       "node_modules/pkg/x.behavior.yaml",
       ".git/x.behavior.yaml",
-      ".tsv/x.behavior.yaml",
+      ".tsverify/x.behavior.yaml",
       "dist/x.behavior.yaml",
       "sub/dist/x.behavior.yaml",
     ];

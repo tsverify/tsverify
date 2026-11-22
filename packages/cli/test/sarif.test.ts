@@ -1,7 +1,7 @@
 import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { CATEGORY_DESCRIPTIONS, FINGERPRINT_KEY, type SarifLog } from "../src/output/sarif";
-import { CANONICAL_SPEC, tsv } from "./run";
+import { CANONICAL_SPEC, tsverify } from "./run";
 import { SARIF_SUBSET, validate } from "./sarif-schema";
 import { b6VariantText, invalidSpecText, tempSpecDir } from "./temp-specs";
 
@@ -14,11 +14,11 @@ function parse(stdout: string): SarifLog {
 describe("--format sarif", () => {
   it("check: a spec-model counterexample becomes a located, fingerprinted result", async () => {
     const cwd = await tempSpecDir({ "specs/order.behavior.yaml": await b6VariantText() });
-    const r = await tsv(["check", "--spec-only", "--format", "sarif"], { cwd });
+    const r = await tsverify(["check", "--spec-only", "--format", "sarif"], { cwd });
     expect(r.code).toBe(1);
     expect(r.stderr).toBe("");
     const [run] = parse(r.stdout).runs;
-    expect(run.tool.driver.name).toBe("tsv");
+    expect(run.tool.driver.name).toBe("tsverify");
     expect(run.originalUriBaseIds).toEqual({
       "%SRCROOT%": { uri: `${pathToFileURL(cwd).href}/` },
     });
@@ -50,7 +50,7 @@ describe("--format sarif", () => {
   it("lists every finding category as a rule, and ruleIndex points at the result's rule", async () => {
     const cwd = await tempSpecDir({ "order.behavior.yaml": await b6VariantText() });
     const [run] = parse(
-      (await tsv(["check", "--spec-only", "--format", "sarif"], { cwd })).stdout,
+      (await tsverify(["check", "--spec-only", "--format", "sarif"], { cwd })).stdout,
     ).runs;
     const rules = run.tool.driver.rules;
     expect(rules.map((rule) => rule.id)).toEqual(Object.keys(CATEGORY_DESCRIPTIONS));
@@ -67,7 +67,7 @@ describe("--format sarif", () => {
     );
     const cwd = await tempSpecDir({ "order.behavior.yaml": text });
     const [run] = parse(
-      (await tsv(["check", "--spec-only", "--format", "sarif"], { cwd })).stdout,
+      (await tsverify(["check", "--spec-only", "--format", "sarif"], { cwd })).stdout,
     ).runs;
     expect(run.results.length).toBeGreaterThan(0);
     expect(run.results.every((x) => x.properties.enforced === true)).toBe(true);
@@ -75,7 +75,7 @@ describe("--format sarif", () => {
 
   it("validate: an invalid spec is an error result at its YAML location (exit 2)", async () => {
     const cwd = await tempSpecDir({ "typo.behavior.yaml": await invalidSpecText() });
-    const r = await tsv(["validate", "--format", "sarif"], { cwd });
+    const r = await tsverify(["validate", "--format", "sarif"], { cwd });
     expect(r.code).toBe(2);
     const [run] = parse(r.stdout).runs;
     expect(run.results).toEqual([
@@ -94,11 +94,11 @@ describe("--format sarif", () => {
   });
 
   it("is empty but valid for a clean spec", async () => {
-    const r = await tsv(["check", "--spec-only", "--format", "sarif", CANONICAL_SPEC]);
+    const r = await tsverify(["check", "--spec-only", "--format", "sarif", CANONICAL_SPEC]);
     expect(r.code).toBe(0);
     expect(parse(r.stdout).runs[0].results).toEqual([]);
     // Output never depends on timing: two runs are identical.
-    const again = await tsv(["check", "--spec-only", "--format", "sarif", CANONICAL_SPEC]);
+    const again = await tsverify(["check", "--spec-only", "--format", "sarif", CANONICAL_SPEC]);
     expect(again.stdout).toBe(r.stdout);
   });
 });
@@ -109,7 +109,7 @@ describe("SARIF subset validator", () => {
       version: "2.1.0",
       runs: [
         {
-          tool: { driver: { name: "tsv" } },
+          tool: { driver: { name: "tsverify" } },
           results: [{ ruleId: "x", message: {}, locations: [], level: "fatal" }],
         },
       ],

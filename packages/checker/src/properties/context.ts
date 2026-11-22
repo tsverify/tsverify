@@ -1,4 +1,4 @@
-import type { BehaviorModel, Finding, FindingCategory, Trace } from "@tsv/ir";
+import type { BehaviorModel, Finding, FindingCategory, Trace } from "@tsverify/ir";
 import type { Layout } from "../encode";
 
 /** Everything a property checker needs to know about the model being checked. */

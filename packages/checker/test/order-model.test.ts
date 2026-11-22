@@ -4,8 +4,8 @@ import {
   ruleProperty,
   type Trace,
   type Transition,
-} from "@tsv/ir";
-import { orderModel } from "@tsv/ir/testing";
+} from "@tsverify/ir";
+import { orderModel } from "@tsverify/ir/testing";
 import { describe, expect, it } from "vitest";
 import { check, toItf } from "../src/index";
 

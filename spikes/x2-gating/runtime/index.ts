@@ -1,4 +1,4 @@
-// Prototype of `@tsv/runtime` (spike X2). See ../README.md.
+// Prototype of `@tsverify/runtime` (spike X2). See ../README.md.
 
 export {
   type DivergenceDetails,

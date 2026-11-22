@@ -1,7 +1,7 @@
 /**
  * `planFromTrace`: a model-checker counterexample (`ir.Trace`) → a schedule of code gates.
  *
- * The runtime must not depend on `@tsv/ir` (it runs inside the user's test process), so the input
+ * The runtime must not depend on `@tsverify/ir` (it runs inside the user's test process), so the input
  * types here are **structural**: the subset of `ir.Trace` the planner reads. `test/ir-compat.test.ts`
  * proves an `ir.Trace` is assignable to `TraceInput`.
  */

@@ -1,5 +1,5 @@
-import type { BehaviorDiff, BehaviorModel, ChangeKind } from "@tsv/ir";
-import { compareStrings, diffModels } from "@tsv/ir";
+import type { BehaviorDiff, BehaviorModel, ChangeKind } from "@tsverify/ir";
+import { compareStrings, diffModels } from "@tsverify/ir";
 import { diagramStates, edgeSources, sortedTransitions, transitionLabel } from "./mermaid";
 import { assignMermaidIds, escapeMermaidText } from "./mermaid-text";
 

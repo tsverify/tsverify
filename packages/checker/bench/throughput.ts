@@ -7,7 +7,7 @@
  * readable from two adjacent statuses, so many check-then-act windows overlap. Every transition
  * fires an at-least-once effect, and every third one fires an exactly-once effect.
  */
-import type { BehaviorModel, Transition } from "@tsv/ir";
+import type { BehaviorModel, Transition } from "@tsverify/ir";
 import { check } from "../src/index";
 
 function syntheticModel(transitions: number, concurrency: number, states = 4): BehaviorModel {

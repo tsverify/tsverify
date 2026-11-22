@@ -1,9 +1,9 @@
-import type { Trace, TraceAction, TraceStep, WorkerPhase, WorkerState } from "@tsv/ir";
+import type { Trace, TraceAction, TraceStep, WorkerPhase, WorkerState } from "@tsverify/ir";
 
 /**
  * Hand-built B6 counterexample on the non-atomic refund variant: two refunds both read `paid`
  * before either writes, so `stripe.refund` fires twice. Built here rather than by the checker
- * so render tests do not depend on `@tsv/checker`.
+ * so render tests do not depend on `@tsverify/checker`.
  */
 export function b6DoubleRefundTrace(): Trace {
   const workers: WorkerState[] = [

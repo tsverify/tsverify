@@ -1,6 +1,6 @@
-# @tsv/runtime
+# @tsverify/runtime
 
-Imported by the tests `tsv` generates inside a user's project. It replays a model-checker
+Imported by the tests `tsverify` generates inside a user's project. It replays a model-checker
 counterexample (`ir.Trace`) against the real application code: the app's client modules are
 replaced (`vi.mock`) by instrumented in-memory fakes, and every call on them passes through a
 **gate** that a scheduler opens in the order the counterexample dictates.
@@ -8,12 +8,12 @@ replaced (`vi.mock`) by instrumented in-memory fakes, and every call on them pas
 Proven in [spike X2](../../spikes/x2-gating/README.md); this package is its production port.
 
 - **Zero internal dependencies** (doc 6 §2 rule 5): it runs inside the user's test process. Inputs
-  that come from `@tsv/ir` (`Trace`, `CodeSites`) are declared as structural types;
+  that come from `@tsverify/ir` (`Trace`, `CodeSites`) are declared as structural types;
   `test/ir-compat.test.ts` proves the `ir` types are assignable.
 - **Framework-agnostic.** Nothing here imports vitest. The `vi.mock` wiring lives in the generated
   test.
 - **One copy per process.** The worker identity is an `AsyncLocalStorage` in `src/context.ts`;
-  the test file and the mock factories must load the same `@tsv/runtime`.
+  the test file and the mock factories must load the same `@tsverify/runtime`.
 - **Real timers only.** Generated tests must not enable fake timers. The step timeout uses timers
   captured at import, so fake timers cannot disable it, and a timeout message says when fake
   timers are installed.
@@ -27,7 +27,7 @@ import {
   storeConfigFromCode, prismaConfigFromCode, effectsConfigFromCode, // CodeSites → fake configs
   replayVerdict, replayResult,                             // outcome → verdict
   ReplayDivergence, UninstrumentedCallError, UNTIL_DONE,
-} from "@tsv/runtime";
+} from "@tsverify/runtime";
 
 scheduler(options?: { stepTimeoutMs?: number })   // default 2000 ms
   → Scheduler {
@@ -232,12 +232,12 @@ from JSON sidecars (the trace and the `CodeSites` subset); both import without a
 
 ```ts
 import { expect, test, vi } from "vitest";
-import { instrument, mappingFromCode, planFromTrace, type ReplayResult, replayResult, scheduler } from "@tsv/runtime";
+import { instrument, mappingFromCode, planFromTrace, type ReplayResult, replayResult, scheduler } from "@tsverify/runtime";
 import code from "./refund-race.code.json" with { type: "json" };   // CodeSites subset
 import trace from "./refund-race.trace.json" with { type: "json" };
 
 declare module "vitest" {
-  interface TaskMeta { tsvReplay?: ReplayResult }                 // read back by `tsv test`
+  interface TaskMeta { tsverifyReplay?: ReplayResult }                 // read back by `tsverify test`
 }
 
 // (1) Fakes as plain top-level consts (vi.mock is hoisted, but its factory runs lazily).
@@ -274,13 +274,13 @@ test("replay: Refund issued at most once per order (refund#1 ∥ refund#2)", asy
   await s.drain();
   const refunds = (plan.seedEffects["stripe.refunds.create"] ?? 0) + stripe.calls("refunds.create").length;
   const result = replayResult(outcome, !(refunds <= 1));       // count(effect stripe.refund) <= 1
-  task.meta.tsvReplay = result;
+  task.meta.tsverifyReplay = result;
   expect(result.violated, `${result.verdict}\n${result.divergence?.message ?? ""}`).toBe(false);
 });
 ```
 
-Against the clean app this passes with `tsvReplay.verdict = "replay-disagrees"` (a warning for
-`tsv test` to report); against B3 the assertion fails with the verdict `confirmed`. Per file: no
+Against the clean app this passes with `tsverifyReplay.verdict = "replay-disagrees"` (a warning for
+`tsverify test` to report); against B3 the assertion fails with the verdict `confirmed`. Per file: no
 fake timers, no `setupFiles` that import app code, one run per test. What testgen fills in: the
 fake configs (or `storeConfigFromCode` / `effectsConfigFromCode` on the sidecar), the client
 module paths from `Bindings.clients`, the impl from `InvocationShape.impl`, the call from

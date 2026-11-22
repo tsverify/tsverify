@@ -1,4 +1,4 @@
-import type { Finding } from "@tsv/ir";
+import type { Finding } from "@tsverify/ir";
 import { STATUS } from "../encode";
 import { type CheckContext, type PropertyChecker, propertyFinding } from "./context";
 

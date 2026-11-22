@@ -7,8 +7,8 @@
  * 4. Type queries: entity matching, from-states, link resolution, call graph, guards, effects,
  *    persistence facts; then model assembly (`assemble.ts`).
  */
-import type { BehaviorModel, Finding, PersistenceKind, SourceLocation } from "@tsv/ir";
-import { compareStrings } from "@tsv/ir";
+import type { BehaviorModel, Finding, PersistenceKind, SourceLocation } from "@tsverify/ir";
+import { compareStrings } from "@tsverify/ir";
 import { ts } from "ts-morph";
 import { assignAdapter } from "./adapters/assign";
 import { memoryAdapter } from "./adapters/memory";

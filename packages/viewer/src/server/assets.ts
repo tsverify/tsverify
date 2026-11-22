@@ -77,12 +77,12 @@ export async function pageHtml(): Promise<string> {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>tsv view</title>
+<title>tsverify view</title>
 <style>${css}</style>
 </head>
 <body>
 <div id="app"><p class="loading">Loading…</p></div>
-<noscript>tsv view needs JavaScript.</noscript>
+<noscript>tsverify view needs JavaScript.</noscript>
 <script type="module" src="/app.js"></script>
 </body>
 </html>

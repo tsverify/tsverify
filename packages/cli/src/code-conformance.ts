@@ -1,8 +1,8 @@
 import { posix, resolve } from "node:path";
-import { type CheckStats, check } from "@tsv/checker";
-import { compare } from "@tsv/conformance";
-import { type ExtractStats, extractAll } from "@tsv/extractor";
-import type { BehaviorModel, Finding } from "@tsv/ir";
+import { type CheckStats, check } from "@tsverify/checker";
+import { compare } from "@tsverify/conformance";
+import { type ExtractStats, extractAll } from "@tsverify/extractor";
+import type { BehaviorModel, Finding } from "@tsverify/ir";
 import type { LoadedSpec } from "./inputs";
 import { rebaseFile, rebaseLocations } from "./locations";
 import { findProjectRoot, TSCONFIG } from "./project-root";
@@ -16,7 +16,7 @@ export interface CodeConformanceOptions {
   maxStates?: number;
 }
 
-/** Steps 3–5 of `tsv check` for one spec. */
+/** Steps 3–5 of `tsverify check` for one spec. */
 export interface CodeOutcome {
   /** Project root relative to the cwd (`.` for the cwd); `null` when none was found. */
   project: string | null;
@@ -33,7 +33,7 @@ export interface CodeOutcome {
   root?: string;
   /**
    * The spec model as the extractor saw it (locations relative to `root`). Present when the spec
-   * is valid and its project was extracted. `tsv test` generates tests from it and `code`.
+   * is valid and its project was extracted. `tsverify test` generates tests from it and `code`.
    */
   spec?: BehaviorModel;
   /** The as-implemented model (locations relative to `root`), when the extractor built one. */
@@ -42,8 +42,8 @@ export interface CodeOutcome {
 
 /**
  * Code conformance for every spec, aligned with `specs`: extract the as-implemented model
- * (`@tsv/extractor`, one `extractAll` per project root), compare it with the spec
- * (`@tsv/conformance`), model-check it (`@tsv/checker`), and link the checker's findings to the
+ * (`@tsverify/extractor`, one `extractAll` per project root), compare it with the spec
+ * (`@tsverify/conformance`), model-check it (`@tsverify/checker`), and link the checker's findings to the
  * mismatches behind them (`linkRootCauses`). Specs without a model (invalid
  * input) get no findings here. A spec with no `tsconfig.json` at or above it gets one
  * `broken-link` finding.

@@ -6,7 +6,7 @@ import {
   formatSymbolRef,
   type SourceLocation,
   type Transition,
-} from "@tsv/ir";
+} from "@tsverify/ir";
 import { formatStates, makeFinding, type Pairing } from "./finding";
 
 /** Code transitions grouped by the spec transition whose impl reaches them. */

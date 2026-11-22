@@ -1,6 +1,6 @@
-import { check } from "@tsv/checker";
-import type { BehaviorModel, Finding, FindingCategory, Transition } from "@tsv/ir";
-import { orderModel } from "@tsv/ir/testing";
+import { check } from "@tsverify/checker";
+import type { BehaviorModel, Finding, FindingCategory, Transition } from "@tsverify/ir";
+import { orderModel } from "@tsverify/ir/testing";
 import { describe, expect, it } from "vitest";
 import { linkRootCauses } from "./root-causes";
 

@@ -1,5 +1,5 @@
-import type { CheckStats } from "@tsv/checker";
-import { type Formatter, formatFindings, plainFormatter } from "@tsv/render";
+import type { CheckStats } from "@tsverify/checker";
+import { type Formatter, formatFindings, plainFormatter } from "@tsverify/render";
 import pc from "picocolors";
 import type { Io } from "../io";
 import { allFindings, countSeverity, type Report, type SpecReport } from "../report";
@@ -23,7 +23,7 @@ export function terminalFormatter(io: Io): Formatter {
 }
 
 /**
- * The findings (via `@tsv/render`), then one summary line. `check` reports (specs with a
+ * The findings (via `@tsverify/render`), then one summary line. `check` reports (specs with a
  * `project`) get one section per spec, headed by the spec file and its project root. Findings
  * with `causedBy` are printed under their cause (`groupCauses`); the counts include them.
  */
@@ -37,7 +37,7 @@ export function formatPretty(report: Report, io: Io): string {
       out += `${formatFindings(spec.findings, options)}\n`;
     }
     if (report.command === "test") {
-      out += `${f.dim("Generated-test results only: static findings (model checking, conformance) come from `tsv check`.")}\n`;
+      out += `${f.dim("Generated-test results only: static findings (model checking, conformance) come from `tsverify check`.")}\n`;
     }
   } else {
     const findings = allFindings(report);

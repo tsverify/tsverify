@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
-import type { BehaviorModel, Finding } from "@tsv/ir";
-import { compareStrings } from "@tsv/ir";
+import type { BehaviorModel, Finding } from "@tsverify/ir";
+import { compareStrings } from "@tsverify/ir";
 import { LineCounter, parseDocument } from "yaml";
 import { FindingCollector } from "./findings";
 import { normalize } from "./normalize";
@@ -80,10 +80,10 @@ export async function loadSpec(path: string, options: { root?: string } = {}): P
   return parseSpec(text, file);
 }
 
-const SKIPPED_DIRS: ReadonlySet<string> = new Set(["node_modules", ".git", ".tsv", "dist"]);
+const SKIPPED_DIRS: ReadonlySet<string> = new Set(["node_modules", ".git", ".tsverify", "dist"]);
 
 /**
- * Every `**\/*.behavior.yaml` under `root`, skipping node_modules, .git, .tsv and dist (symlinks
+ * Every `**\/*.behavior.yaml` under `root`, skipping node_modules, .git, .tsverify and dist (symlinks
  * are not followed). Sorted, relative to `root`, with `/` separators.
  */
 export async function findSpecFiles(root: string): Promise<string[]> {

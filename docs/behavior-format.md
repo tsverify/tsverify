@@ -1,17 +1,17 @@
 # Behavior file format (v1)
 
-`*.behavior.yaml` files describe intended behavior. `@tsv/spec` (zod schema in `packages/spec/src/schema.ts`) is the
+`*.behavior.yaml` files describe intended behavior. `@tsverify/spec` (zod schema in `packages/spec/src/schema.ts`) is the
 executable source of truth; this page is its human reference. Canonical example:
 [`packages/spec/test/fixtures/valid/order.behavior.yaml`](../packages/spec/test/fixtures/valid/order.behavior.yaml).
 
 ## Paths
 
 `impl`, `bindings.clients.*.module` and `bindings.guards` paths are relative to the **project root**: the nearest
-directory at or above the behavior file that contains a `tsconfig.json` (overridable with `tsv check --project`).
+directory at or above the behavior file that contains a `tsconfig.json` (overridable with `tsverify check --project`).
 
 ## Top level
 
-| Key | Required | Type | IR (`@tsv/ir` `BehaviorModel`) |
+| Key | Required | Type | IR (`@tsverify/ir` `BehaviorModel`) |
 |---|---|---|---|
 | `behavior` | yes | string | `name` |
 | `summary` | no | string | `summary` |
@@ -29,7 +29,7 @@ Unknown keys are an error (`invalid-spec`), so typos never silently pass.
 
 ### `enforced`
 
-`enforced: true` marks a spec as one the team wants CI to block on. `tsv` never acts on it by itself: exit codes
+`enforced: true` marks a spec as one the team wants CI to block on. `tsverify` never acts on it by itself: exit codes
 are the same with or without it. It is reported as `specs[].enforced` in `--format json`, as
 `properties.enforced` on SARIF results, and `--enforced-only` (on `check`, `test` and `diff`) keeps only enforced
 specs. A pipeline can then block on enforced specs and stay advisory for the rest. See
@@ -117,7 +117,7 @@ state a satisfying state is reachable (AG EF — weaker than LTL with fairness).
 
 ## `fixtures`
 
-Values `tsv test` uses to drive the real code. Opaque YAML values, passed through as JSON.
+Values `tsverify test` uses to drive the real code. Opaque YAML values, passed through as JSON.
 
 | Key | Notes |
 |---|---|

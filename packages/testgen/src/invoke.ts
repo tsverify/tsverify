@@ -2,7 +2,7 @@
  * How a generated test calls an impl: the argument list, from `fixtures.args[t]` (with `$id` /
  * `$actor` substituted) or else from the extractor's `InvocationShape`.
  */
-import type { ArgPath, InvocationShape } from "@tsv/ir";
+import type { ArgPath, InvocationShape } from "@tsverify/ir";
 import { literal, member, propertyKey } from "./emit";
 
 /** Name of the generated const holding the seeded entity's key. */

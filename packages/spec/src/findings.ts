@@ -1,5 +1,5 @@
-import type { Finding, SourceLocation } from "@tsv/ir";
-import { compareStrings } from "@tsv/ir";
+import type { Finding, SourceLocation } from "@tsverify/ir";
+import { compareStrings } from "@tsverify/ir";
 
 export interface SpecIssue {
   severity: "error" | "warning";

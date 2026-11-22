@@ -6,17 +6,17 @@
  *   tests never run;
  * - `config: false`: the user's vitest / vite config is not loaded (no setup files, plugins,
  *   fake timers or environments that the generated tests don't expect);
- * - `@tsv/runtime` is aliased to this installation's runtime entry, so the project needs nothing
- *   installed besides tsv (vitest resolves the generated files' `vitest` import itself);
+ * - `@tsverify/runtime` is aliased to this installation's runtime entry, so the project needs nothing
+ *   installed besides tsverify (vitest resolves the generated files' `vitest` import itself);
  * - no reporters and `silent`, so nothing reaches stdout/stderr: results are read from the
  *   returned test modules, including each test's `task.meta`;
- * - vite's and vitest's caches go to `.tsv/cache/`, not into the project's `node_modules`.
+ * - vite's and vitest's caches go to `.tsverify/cache/`, not into the project's `node_modules`.
  */
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** Caches of the vitest run, relative to the project root (next to `.tsv/generated`). */
-export const CACHE_DIR = ".tsv/cache";
+/** Caches of the vitest run, relative to the project root (next to `.tsverify/generated`). */
+export const CACHE_DIR = ".tsverify/cache";
 
 export interface TestOutcome {
   /** Test file relative to the project root, `/`-separated. */
@@ -34,9 +34,9 @@ export interface TestRunResult {
   unhandled: string[];
 }
 
-/** Absolute path of `@tsv/runtime`'s entry, as resolved from the CLI. */
+/** Absolute path of `@tsverify/runtime`'s entry, as resolved from the CLI. */
 export function runtimeEntry(): string {
-  return fileURLToPath(import.meta.resolve("@tsv/runtime"));
+  return fileURLToPath(import.meta.resolve("@tsverify/runtime"));
 }
 
 /**
@@ -61,7 +61,7 @@ export async function runGeneratedTests(root: string, include: string[]): Promis
     },
     {
       cacheDir: join(root, CACHE_DIR, "vite"),
-      resolve: { alias: { "@tsv/runtime": runtimeEntry() } },
+      resolve: { alias: { "@tsverify/runtime": runtimeEntry() } },
     },
   );
   try {

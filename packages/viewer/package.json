@@ -1,6 +1,7 @@
 {
-  "name": "@tsv/viewer",
+  "name": "@tsverify/viewer",
   "version": "0.0.0",
+  "license": "Apache-2.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -10,8 +11,8 @@
     }
   },
   "dependencies": {
-    "@tsv/ir": "workspace:*",
-    "@tsv/render": "workspace:*",
+    "@tsverify/ir": "workspace:*",
+    "@tsverify/render": "workspace:*",
     "esbuild": "0.28.2",
     "mermaid": "12.3.0",
     "preact": "11.2.0"

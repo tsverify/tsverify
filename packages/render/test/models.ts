@@ -1,5 +1,5 @@
-import type { BehaviorModel, Transition } from "@tsv/ir";
-import { orderModel } from "@tsv/ir/testing";
+import type { BehaviorModel, Transition } from "@tsverify/ir";
+import { orderModel } from "@tsverify/ir/testing";
 
 /** Test-only Order variants, derived from the canonical fixture. */
 

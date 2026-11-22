@@ -1,4 +1,4 @@
-import type { Finding, SourceLocation, Transition } from "@tsv/ir";
+import type { Finding, SourceLocation, Transition } from "@tsverify/ir";
 import { formatStates, type Pairing, pairingFinding } from "./finding";
 
 /** `is 'paid'` / `is one of {draft, paid}`. */

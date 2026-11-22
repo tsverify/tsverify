@@ -591,7 +591,9 @@ function signal(): { promise: Promise<void>; resolve: () => void } {
 }
 
 function internal(w: Worker, action: string): Error {
-  return new Error(`@tsv/runtime internal error: cannot ${action} worker ${w.id} (${w.status})`);
+  return new Error(
+    `@tsverify/runtime internal error: cannot ${action} worker ${w.id} (${w.status})`,
+  );
 }
 
 export function scheduler(options?: SchedulerOptions): Scheduler {

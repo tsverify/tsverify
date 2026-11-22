@@ -22,8 +22,8 @@ export interface RunOptions {
   env?: Record<string, string | undefined>;
 }
 
-/** Runs `tsv <argv>` in-process against a fake `Io` and captures its output. */
-export async function tsv(argv: string[], options: RunOptions = {}): Promise<RunResult> {
+/** Runs `tsverify <argv>` in-process against a fake `Io` and captures its output. */
+export async function tsverify(argv: string[], options: RunOptions = {}): Promise<RunResult> {
   let stdout = "";
   let stderr = "";
   const io: Io = {

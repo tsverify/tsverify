@@ -1,5 +1,5 @@
-import type { BehaviorModel, GuardRef, Transition } from "@tsv/ir";
-import { compareStrings, parseGuardRef } from "@tsv/ir";
+import type { BehaviorModel, GuardRef, Transition } from "@tsverify/ir";
+import { compareStrings, parseGuardRef } from "@tsverify/ir";
 import { type FindingCollector, list, suggest } from "./findings";
 import type { Normalized } from "./normalize";
 import type { Locator, Path } from "./positions";

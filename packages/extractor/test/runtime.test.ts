@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import type { BehaviorModel } from "@tsv/ir";
-import { parseSpec } from "@tsv/spec";
+import type { BehaviorModel } from "@tsverify/ir";
+import { parseSpec } from "@tsverify/spec";
 import { describe, expect, it } from "vitest";
 import { type ExtractResult, extractAll } from "../src/index";
 import { transitionOf } from "./helpers";

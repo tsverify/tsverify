@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
-import type { BehaviorModel, Finding, Trace, WorkerPhase } from "@tsv/ir";
-import { toMermaid } from "@tsv/render";
+import type { BehaviorModel, Finding, Trace, WorkerPhase } from "@tsverify/ir";
+import { toMermaid } from "@tsverify/render";
 import { type ComponentChild, h } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { type EffectCounter, type Frame, type LaneCell, playthrough } from "../frames";

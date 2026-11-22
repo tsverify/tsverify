@@ -34,6 +34,6 @@ function loadMermaid(): Promise<MermaidApi> {
 export async function renderMermaid(source: string): Promise<string> {
   const mermaid = await loadMermaid();
   counter += 1;
-  const { svg } = await mermaid.render(`tsv-diagram-${counter}`, source);
+  const { svg } = await mermaid.render(`tsverify-diagram-${counter}`, source);
   return svg;
 }

@@ -155,7 +155,7 @@ For the fixed code, both the hand-written schedule and the one generated from th
 (`b3-fixed.test.ts`: `[w1,get] [w2,db.transaction] [w1,save] [w2,get] …`) is the closest legal
 interleaving to read/read. It is followed exactly, and w2 reads `refunded` and backs out.
 
-## API sketch for `@tsv/runtime`
+## API sketch for `@tsverify/runtime`
 
 ```ts
 // Scheduler
@@ -207,7 +207,7 @@ Calls inside a transaction use the same labels as calls outside it.
 
 ```ts
 import { vi } from "vitest";
-import { instrument, scheduler } from "@tsv/runtime";
+import { instrument, scheduler } from "@tsverify/runtime";
 
 const s = scheduler();                                   // (1) plain top-level consts
 const db = instrument.store(s, { name: "db", collections: { orders: { key: "id" } } });
@@ -226,7 +226,7 @@ const { refundOrder } = await import("../app/refund-buggy"); // (3) dynamic impo
   "../app/refund-buggy"` the factory runs before `const db = …` has been initialised, and vitest
   fails with `ReferenceError: Cannot access 'db' before initialization` ("There was an error when
   mocking a module…"). This was checked with vitest 4.1.12 during the spike. `vi.hoisted` is the
-  alternative, but it can't use static imports, so it would need `await import("@tsv/runtime")`
+  alternative, but it can't use static imports, so it would need `await import("@tsverify/runtime")`
   inside. Plain consts plus a dynamic import of the code under test is simpler to generate.
 - **Which modules.** Mock the module *where the client is defined* (`app/db.ts`), with the path
   resolved relative to the test file. Every importer of that module, at any depth, gets the fake,
@@ -235,7 +235,7 @@ const { refundOrder } = await import("../app/refund-buggy"); // (3) dynamic impo
   file, so each run starts with `s.reset()` and then `db.seed(...)`. Vitest isolates test files, so
   each file has its own scheduler.
 - **One runtime instance.** The `AsyncLocalStorage` instance lives in the runtime module. The test
-  and the mock factories must load the same copy of `@tsv/runtime`. `tsv test` should bundle it once
+  and the mock factories must load the same copy of `@tsverify/runtime`. `tsverify test` should bundle it once
   and not let the target project resolve its own copy.
 
 ## Results
@@ -296,7 +296,7 @@ on the shared 2-CPU machine. One replay of the refund race takes about 1 ms.
 
 ## What testgen (M6) must emit
 
-For each counterexample, write one file in `.tsv/generated/` that contains:
+For each counterexample, write one file in `.tsverify/generated/` that contains:
 
 1. Top-level `const s = scheduler()`, plus one `instrument.<kind>(s, …)` fake per entry in
    `bindings.clients`.
@@ -315,7 +315,7 @@ For each counterexample, write one file in `.tsv/generated/` that contains:
 7. `tryPlay`, then `drain`, then evaluate the violated property in code terms (effect counts from
    `s.effects(label)`, final status from `fake.rows(...)`), then `replayVerdict`. Assert so that
    `confirmed` / `confirmed-divergent` **fail** the test. Write the verdict and divergence details
-   to a JSON sidecar so `tsv` can report `replay-disagrees` as a warning.
+   to a JSON sidecar so `tsverify` can report `replay-disagrees` as a warning.
 8. No fake timers and no `setupFiles` that import app code. Use one run per test: the replay is
    deterministic, and repeating it only checks for flakiness.
 

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { JsonDiffReport } from "../src/output/diff";
 import { git, initRepo, writeFiles } from "./git-repo";
-import { CANONICAL_SPEC, REPO_ROOT, tsv } from "./run";
+import { CANONICAL_SPEC, REPO_ROOT, tsverify } from "./run";
 import { b6VariantText, invalidSpecText, tempSpecDir } from "./temp-specs";
 
 const canonical = await readFile(join(REPO_ROOT, CANONICAL_SPEC), "utf8");
@@ -26,7 +26,7 @@ function parse(stdout: string): JsonDiffReport {
   return JSON.parse(stdout) as JsonDiffReport;
 }
 
-describe("tsv diff", () => {
+describe("tsverify diff", () => {
   it("pairs specs by path: changed, added, removed and unchanged", async () => {
     const cwd = await repo(
       {
@@ -40,7 +40,7 @@ describe("tsv diff", () => {
         "specs/new.behavior.yaml": named("New"),
       },
     );
-    const r = await tsv(["diff", "--base", "main", "--format", "json"], { cwd });
+    const r = await tsverify(["diff", "--base", "main", "--format", "json"], { cwd });
     expect(r.stderr).toBe("");
     expect(r.code).toBe(0);
     const doc = parse(r.stdout);
@@ -59,10 +59,10 @@ describe("tsv diff", () => {
 
   it("defaults to Markdown and exits 0 when nothing changed", async () => {
     const cwd = await repo({ "order.behavior.yaml": canonical });
-    const r = await tsv(["diff", "--base", "HEAD"], { cwd });
+    const r = await tsverify(["diff", "--base", "HEAD"], { cwd });
     expect(r.code).toBe(0);
     expect(r.stdout).toBe(
-      "<!-- tsv-diff -->\n## Behavior diff\n\n`HEAD` → working tree: no behavior changes (1 behavior file compared).\n",
+      "<!-- tsverify-diff -->\n## Behavior diff\n\n`HEAD` → working tree: no behavior changes (1 behavior file compared).\n",
     );
   });
 
@@ -71,7 +71,7 @@ describe("tsv diff", () => {
       { "order.behavior.yaml": canonical },
       { "order.behavior.yaml": await b6VariantText() },
     );
-    const r = await tsv(["diff", "--base", "HEAD", "--format", "pretty"], { cwd });
+    const r = await tsverify(["diff", "--base", "HEAD", "--format", "pretty"], { cwd });
     expect(r.code).toBe(0);
     expect(r.stdout).toBe(
       [
@@ -91,14 +91,14 @@ describe("tsv diff", () => {
       { "app/specs/order.behavior.yaml": await b6VariantText() },
     );
     const cwd = join(dir, "app");
-    const r = await tsv(["diff", "--base", "HEAD", "specs", "--format", "json"], { cwd });
+    const r = await tsverify(["diff", "--base", "HEAD", "specs", "--format", "json"], { cwd });
     expect(r.code).toBe(0);
     expect(parse(r.stdout).specs.map((s) => s.file)).toEqual(["specs/order.behavior.yaml"]);
   });
 
   it("finds specs that exist only in the base, even in a deleted directory", async () => {
     const cwd = await repo({ "old/a.behavior.yaml": canonical }, { "old/a.behavior.yaml": null });
-    const r = await tsv(["diff", "--base", "HEAD", "old", "--format", "json"], { cwd });
+    const r = await tsverify(["diff", "--base", "HEAD", "old", "--format", "json"], { cwd });
     expect(r.code).toBe(0);
     expect(parse(r.stdout).specs.map((s) => [s.file, s.diff.kind])).toEqual([
       ["old/a.behavior.yaml", "removed"],
@@ -114,7 +114,7 @@ describe("tsv diff", () => {
       },
       { "a.behavior.yaml": named("A"), "b.behavior.yaml": enforced(named("B")) },
     );
-    const r = await tsv(["diff", "--base", "HEAD", "--enforced-only", "--format", "json"], {
+    const r = await tsverify(["diff", "--base", "HEAD", "--enforced-only", "--format", "json"], {
       cwd,
     });
     expect(r.code).toBe(0);
@@ -124,13 +124,13 @@ describe("tsv diff", () => {
       ["b.behavior.yaml", true],
     ]);
     expect(doc.specs[0]?.diff.entity).toEqual([{ field: "enforced", base: "yes", head: "" }]);
-    const md = await tsv(["diff", "--base", "HEAD", "--enforced-only"], { cwd });
+    const md = await tsverify(["diff", "--base", "HEAD", "--enforced-only"], { cwd });
     expect(md.stdout).toContain("\n\n--enforced-only: skipped 1 spec without `enforced: true`.\n");
   });
 
   it("--enforced-only with no enforced spec is an empty diff that says why", async () => {
     const cwd = await repo({ "a.behavior.yaml": canonical });
-    const r = await tsv(["diff", "--base", "HEAD", "--enforced-only", "--format", "pretty"], {
+    const r = await tsverify(["diff", "--base", "HEAD", "--enforced-only", "--format", "pretty"], {
       cwd,
     });
     expect(r.code).toBe(0);
@@ -142,21 +142,21 @@ describe("tsv diff", () => {
   describe("invalid input (exit 2)", () => {
     it("requires --base", async () => {
       const cwd = await repo({ "a.behavior.yaml": canonical });
-      const r = await tsv(["diff"], { cwd });
+      const r = await tsverify(["diff"], { cwd });
       expect(r.code).toBe(2);
       expect(r.stderr).toMatch(/^error: --base <git-ref> is required/);
     });
 
     it("rejects an unknown --format", async () => {
       const cwd = await repo({ "a.behavior.yaml": canonical });
-      const r = await tsv(["diff", "--base", "HEAD", "--format", "sarif"], { cwd });
+      const r = await tsverify(["diff", "--base", "HEAD", "--format", "sarif"], { cwd });
       expect(r.code).toBe(2);
       expect(r.stderr).toMatch(/^error: --format must be one of markdown, json, pretty/);
     });
 
     it("reports an unknown ref", async () => {
       const cwd = await repo({ "a.behavior.yaml": canonical });
-      const r = await tsv(["diff", "--base", "nope/main"], { cwd });
+      const r = await tsverify(["diff", "--base", "nope/main"], { cwd });
       expect(r).toEqual({
         code: 2,
         stdout: "",
@@ -166,7 +166,7 @@ describe("tsv diff", () => {
 
     it("reports a cwd outside any git repository", async () => {
       const cwd = await tempSpecDir({ "a.behavior.yaml": canonical });
-      const r = await tsv(["diff", "--base", "HEAD"], { cwd });
+      const r = await tsverify(["diff", "--base", "HEAD"], { cwd });
       expect(r.code).toBe(2);
       expect(r.stdout).toBe("");
       expect(r.stderr).toMatch(/^error: not in a git repository: /);
@@ -177,7 +177,7 @@ describe("tsv diff", () => {
         { "a.behavior.yaml": await invalidSpecText() },
         { "a.behavior.yaml": canonical },
       );
-      const r = await tsv(["diff", "--base", "HEAD"], { cwd });
+      const r = await tsverify(["diff", "--base", "HEAD"], { cwd });
       expect(r.code).toBe(2);
       expect(r.stdout).toBe("");
       expect(r.stderr).toContain("HEAD:a.behavior.yaml:18:9");
@@ -188,7 +188,7 @@ describe("tsv diff", () => {
         { "a.behavior.yaml": canonical },
         { "a.behavior.yaml": await invalidSpecText() },
       );
-      const r = await tsv(["diff", "--base", "HEAD", "--format", "json"], { cwd });
+      const r = await tsverify(["diff", "--base", "HEAD", "--format", "json"], { cwd });
       expect(r.code).toBe(2);
       expect(r.stdout).toBe("");
       expect(r.stderr).toContain(" a.behavior.yaml:18:9");
@@ -197,7 +197,7 @@ describe("tsv diff", () => {
     it("reports paths with no specs on either side", async () => {
       const cwd = await repo({ "a.behavior.yaml": canonical });
       await mkdir(join(cwd, "empty"));
-      const r = await tsv(["diff", "--base", "HEAD", "empty"], { cwd });
+      const r = await tsverify(["diff", "--base", "HEAD", "empty"], { cwd });
       expect(r.code).toBe(2);
       expect(r.stderr).toMatch(
         /^error: no \*\.behavior\.yaml files in empty \(working tree or HEAD\)/,

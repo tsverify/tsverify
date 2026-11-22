@@ -1,13 +1,13 @@
-# Example GitHub Actions workflow for tsv. Copy it to .github/workflows/tsv.yml in your repository.
+# Example GitHub Actions workflow for tsverify. Copy it to .github/workflows/tsverify.yml in your repository.
 #
-# - `check`: runs `tsv check --format sarif` and uploads the result to GitHub code scanning, so
+# - `check`: runs `tsverify check --format sarif` and uploads the result to GitHub code scanning, so
 #   findings show up as annotations on the PR and in the Security tab. Whether findings fail the
-#   job is up to you: set TSV_MODE below (tsv itself never decides; see docs/workflows.md).
-# - `diff` (pull requests only): runs `tsv diff` against the PR's base branch and posts the
+#   job is up to you: set TSVERIFY_MODE below (tsverify itself never decides; see docs/workflows.md).
+# - `diff` (pull requests only): runs `tsverify diff` against the PR's base branch and posts the
 #   Markdown as one PR comment, updated in place on every push ("sticky" comment).
 #
 # Exit codes: 0 ok · 1 violations · 2 invalid input (bad spec, broken link, bad ref) · 3 internal.
-name: tsv
+name: tsverify
 
 on:
   pull_request:
@@ -22,7 +22,7 @@ env:
   # blocking: fail the job on any violation (exit 1).
   # enforced: fail only on violations in specs marked `enforced: true`.
   # Invalid input (exit 2) and internal errors (exit 3) fail the job in every mode.
-  TSV_MODE: advisory
+  TSVERIFY_MODE: advisory
 
 jobs:
   check:
@@ -37,26 +37,26 @@ jobs:
         with:
           node-version: 22
 
-      # Your project's own dependencies: tsv type-checks your code, so it needs them installed.
+      # Your project's own dependencies: tsverify type-checks your code, so it needs them installed.
       - run: npm ci
 
       # ─── PLACEHOLDER ───────────────────────────────────────────────────────────────────────
-      # tsv is not published yet. Once it is, replace this step with something like
-      #   npm install --global <tsv package>@<version>
-      # (or add it as a devDependency and call it through `npx tsv`).
-      - name: Install tsv (PLACEHOLDER, tsv is not published yet)
+      # tsverify is not published yet. Once it is, replace this step with something like
+      #   npm install --global @tsverify/cli@<version>
+      # (or add it as a devDependency and call it through `npx tsverify`).
+      - name: Install tsverify (PLACEHOLDER, tsverify is not published yet)
         run: |
-          echo "::error::Replace the 'Install tsv' step in .github/workflows/tsv.yml: tsv is not published yet."
+          echo "::error::Replace the 'Install tsverify' step in .github/workflows/tsverify.yml: tsverify is not published yet."
           exit 1
       # ───────────────────────────────────────────────────────────────────────────────────────
 
       # Run from the repository root: SARIF URIs are relative to the cwd, and code scanning
       # resolves them against the root of the checkout.
-      - name: tsv check (SARIF)
+      - name: tsverify check (SARIF)
         id: check
         run: |
           set +e
-          tsv check --format sarif > tsv.sarif
+          tsverify check --format sarif > tsverify.sarif
           code=$?
           echo "exit-code=$code" >> "$GITHUB_OUTPUT"
           # 1 (violations) is decided by the gate below; 2 and 3 mean the run itself is unusable.
@@ -69,19 +69,19 @@ jobs:
         if: always() && steps.check.outputs.exit-code != ''
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: tsv.sarif
-          category: tsv
+          sarif_file: tsverify.sarif
+          category: tsverify
 
-      - name: Gate (TSV_MODE)
+      - name: Gate (TSVERIFY_MODE)
         env:
           CHECK_EXIT: ${{ steps.check.outputs.exit-code }}
         run: |
-          case "$TSV_MODE" in
+          case "$TSVERIFY_MODE" in
             advisory) exit 0 ;;
             blocking) exit "$CHECK_EXIT" ;;
             # Re-checks only the enforced specs; an invalid spec still fails (exit 2).
-            enforced) tsv check --enforced-only ;;
-            *) echo "::error::unknown TSV_MODE '$TSV_MODE'"; exit 2 ;;
+            enforced) tsverify check --enforced-only ;;
+            *) echo "::error::unknown TSVERIFY_MODE '$TSVERIFY_MODE'"; exit 2 ;;
           esac
 
   diff:
@@ -93,7 +93,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # tsv diff reads the base branch's specs with the local git: fetch the history.
+          # tsverify diff reads the base branch's specs with the local git: fetch the history.
           fetch-depth: 0
 
       - uses: actions/setup-node@v4
@@ -101,20 +101,20 @@ jobs:
           node-version: 22
 
       # ─── PLACEHOLDER: same install step as in `check` ──────────────────────────────────────
-      - name: Install tsv (PLACEHOLDER, tsv is not published yet)
+      - name: Install tsverify (PLACEHOLDER, tsverify is not published yet)
         run: |
-          echo "::error::Replace the 'Install tsv' step in .github/workflows/tsv.yml: tsv is not published yet."
+          echo "::error::Replace the 'Install tsverify' step in .github/workflows/tsverify.yml: tsverify is not published yet."
           exit 1
       # ───────────────────────────────────────────────────────────────────────────────────────
 
       # Markdown with a Mermaid diagram per changed behavior. Exit 0 whether or not anything
       # changed; 2 if a spec on either side is invalid or the base ref is missing.
-      - name: tsv diff
+      - name: tsverify diff
         env:
           BASE_REF: ${{ github.base_ref }}
-        run: tsv diff --base "origin/$BASE_REF" > tsv-diff.md
+        run: tsverify diff --base "origin/$BASE_REF" > tsverify-diff.md
 
-      # The Markdown starts with `<!-- tsv-diff -->`. Find the comment carrying that marker and
+      # The Markdown starts with `<!-- tsverify-diff -->`. Find the comment carrying that marker and
       # edit it, so the PR keeps one up-to-date behavior diff instead of one comment per push.
       # It is updated even when nothing changed, so an outdated diff never lingers.
       - name: Post or update the behavior diff comment
@@ -124,9 +124,9 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
         run: |
           id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
-            --jq '.[] | select(.body | startswith("<!-- tsv-diff -->")) | .id' | head -n 1)
+            --jq '.[] | select(.body | startswith("<!-- tsverify-diff -->")) | .id' | head -n 1)
           if [ -n "$id" ]; then
-            gh api --method PATCH "repos/$REPO/issues/comments/$id" -F body=@tsv-diff.md > /dev/null
+            gh api --method PATCH "repos/$REPO/issues/comments/$id" -F body=@tsverify-diff.md > /dev/null
           else
-            gh api --method POST "repos/$REPO/issues/$PR/comments" -F body=@tsv-diff.md > /dev/null
+            gh api --method POST "repos/$REPO/issues/$PR/comments" -F body=@tsverify-diff.md > /dev/null
           fi

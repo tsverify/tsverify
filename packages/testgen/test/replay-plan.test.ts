@@ -3,8 +3,8 @@
  * something drivable to replay, otherwise `replayFrom` the step after the last one the test cannot
  * drive. The sidecar always holds the trace unchanged.
  */
-import type { BehaviorModel, Finding, Trace } from "@tsv/ir";
-import { orderModel } from "@tsv/ir/testing";
+import type { BehaviorModel, Finding, Trace } from "@tsverify/ir";
+import { orderModel } from "@tsverify/ir/testing";
 import { describe, expect, it } from "vitest";
 import specTrace from "../../checker/test/__golden__/b6-refund-race.trace.json" with {
   type: "json",
@@ -122,7 +122,7 @@ describe("generated replay options", () => {
       spec,
       code,
       findings: [multiplicity(trace, "email.receipt")],
-      outDir: ".tsv/generated/order-lifecycle",
+      outDir: ".tsverify/generated/order-lifecycle",
     });
     const test = result.files.find((f) => f.path === "replay-1.test.ts")?.content ?? "";
     expect(test).toContain(
@@ -142,7 +142,7 @@ describe("generated replay options", () => {
       spec,
       code,
       findings: [multiplicity(trace, "email.receipt")],
-      outDir: ".tsv/generated/order-lifecycle",
+      outDir: ".tsverify/generated/order-lifecycle",
     });
     const test = result.files.find((f) => f.path === "replay-1.test.ts")?.content ?? "";
     expect(test).toContain(
@@ -167,7 +167,7 @@ describe("generated replay options", () => {
       spec,
       code: withoutWebhook,
       findings: [multiplicity(trace, "email.receipt")],
-      outDir: ".tsv/generated/order-lifecycle",
+      outDir: ".tsverify/generated/order-lifecycle",
     });
     expect(result.files.some((f) => f.path.startsWith("replay-"))).toBe(false);
     expect(result.skipped.map((f) => f.id)).toContain(
@@ -192,11 +192,11 @@ describe("generated replay options", () => {
           trace: { ...trace, kind: "liveness" },
         },
       ],
-      outDir: ".tsv/generated/order-lifecycle",
+      outDir: ".tsverify/generated/order-lifecycle",
     });
     const test = result.files.find((f) => f.path === "replay-1.test.ts")?.content ?? "";
     expect(test).toContain(
-      "  task.meta.tsvReplay = { ...replayResult(outcome, undefined), status, effects };",
+      "  task.meta.tsverifyReplay = { ...replayResult(outcome, undefined), status, effects };",
     );
     expect(test).not.toContain("inconclusive?: boolean");
     expect(test).not.toContain("expect(result.violated");

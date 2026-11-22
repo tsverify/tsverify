@@ -1,7 +1,7 @@
 import { join } from "node:path";
-import { check } from "@tsv/checker";
-import { type Finding, INPUT_ERROR_CATEGORIES } from "@tsv/ir";
-import { type GeneratedTest, generate } from "@tsv/testgen";
+import { check } from "@tsverify/checker";
+import { type Finding, INPUT_ERROR_CATEGORIES } from "@tsverify/ir";
+import { type GeneratedTest, generate } from "@tsverify/testgen";
 import { checkCode } from "../code-conformance";
 import { type ExitCode, exitCodeFor } from "../exit-codes";
 import { outDirs, writeGenerated } from "../generated-dir";
@@ -33,12 +33,12 @@ interface Job {
 }
 
 /**
- * `tsv test [paths…]`: run the `tsv check` pipeline (spec → checker → extractor → conformance →
+ * `tsverify test [paths…]`: run the `tsverify check` pipeline (spec → checker → extractor → conformance →
  * checker on the code model), generate vitest files per spec into
- * `<project>/.tsv/generated/<spec-slug>/` (the directory is deleted first; the files are kept
+ * `<project>/.tsverify/generated/<spec-slug>/` (the directory is deleted first; the files are kept
  * afterwards), run them with vitest in-process, once per project root, and report the results
  * as findings: `generated-test-failed`, `replay-confirmed`, `replay-disagrees`, plus `info`
- * findings for what could not be generated. Static findings are left to `tsv check`; only input
+ * findings for what could not be generated. Static findings are left to `tsverify check`; only input
  * errors (invalid spec, broken link) are reported as well, since they make the run invalid.
  * Exit 0, 1 on any error finding, 2 on invalid input (which takes precedence).
  */

@@ -1,5 +1,5 @@
 /**
- * End-to-end: `tsv diff` over the demo app (examples/orders-app) in a temporary git repository.
+ * End-to-end: `tsverify diff` over the demo app (examples/orders-app) in a temporary git repository.
  * The clean app is committed, then the working tree gets a reviewed spec change: B6's overlay
  * (`refund` no longer atomic) plus a new `cancel` transition. The goldens are what a PR comment
  * (Markdown) and a CI job (JSON) would see.
@@ -69,7 +69,7 @@ async function diff(...args: string[]): Promise<{ code: number; stdout: string; 
   return { code, stdout: strip(out.stdout), stderr: strip(out.stderr) };
 }
 
-describe("tsv diff on examples/orders-app", { timeout: 60_000 }, () => {
+describe("tsverify diff on examples/orders-app", { timeout: 60_000 }, () => {
   it("renders the spec change as a PR comment", async () => {
     const r = await diff("src");
     expect(r.stderr).toBe("");

@@ -3,7 +3,7 @@ import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { loadSpec } from "@tsv/spec";
+import { loadSpec } from "@tsverify/spec";
 import { describe, expect, it } from "vitest";
 import {
   APP_ROOT,

@@ -1,5 +1,5 @@
-import { orderModel } from "@tsv/ir/testing";
-import { permissionMatrix, permissionMatrixMarkdown } from "@tsv/render";
+import { orderModel } from "@tsverify/ir/testing";
+import { permissionMatrix, permissionMatrixMarkdown } from "@tsverify/render";
 import { describe, expect, it } from "vitest";
 
 describe("permissionMatrix", () => {

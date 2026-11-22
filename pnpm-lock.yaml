@@ -26,70 +26,70 @@ importers:
 
   examples/orders-app:
     devDependencies:
-      '@tsv/cli':
+      '@tsverify/cli':
         specifier: workspace:*
         version: link:../../packages/cli
-      '@tsv/ir':
+      '@tsverify/ir':
         specifier: workspace:*
         version: link:../../packages/ir
-      '@tsv/spec':
+      '@tsverify/spec':
         specifier: workspace:*
         version: link:../../packages/spec
 
   examples/orders-prisma:
     devDependencies:
-      '@tsv-examples/shared':
+      '@tsverify-examples/shared':
         specifier: workspace:*
         version: link:../shared
-      '@tsv/cli':
+      '@tsverify/cli':
         specifier: workspace:*
         version: link:../../packages/cli
-      '@tsv/ir':
+      '@tsverify/ir':
         specifier: workspace:*
         version: link:../../packages/ir
-      '@tsv/spec':
+      '@tsverify/spec':
         specifier: workspace:*
         version: link:../../packages/spec
 
   examples/shared:
     devDependencies:
-      '@tsv/ir':
+      '@tsverify/ir':
         specifier: workspace:*
         version: link:../../packages/ir
 
   packages/checker:
     dependencies:
-      '@tsv/ir':
+      '@tsverify/ir':
         specifier: workspace:*
         version: link:../ir
 
   packages/cli:
     dependencies:
-      '@tsv/checker':
+      '@tsverify/checker':
         specifier: workspace:*
         version: link:../checker
-      '@tsv/conformance':
+      '@tsverify/conformance':
         specifier: workspace:*
         version: link:../conformance
-      '@tsv/extractor':
+      '@tsverify/extractor':
         specifier: workspace:*
         version: link:../extractor
-      '@tsv/ir':
+      '@tsverify/ir':
         specifier: workspace:*
         version: link:../ir
-      '@tsv/render':
+      '@tsverify/render':
         specifier: workspace:*
         version: link:../render
-      '@tsv/runtime':
+      '@tsverify/runtime':
         specifier: workspace:*
         version: link:../runtime
-      '@tsv/spec':
+      '@tsverify/spec':
         specifier: workspace:*
         version: link:../spec
-      '@tsv/testgen':
+      '@tsverify/testgen':
         specifier: workspace:*
         version: link:../testgen
-      '@tsv/viewer':
+      '@tsverify/viewer':
         specifier: workspace:*
         version: link:../viewer
       cac:
@@ -107,20 +107,20 @@ importers:
 
   packages/conformance:
     dependencies:
-      '@tsv/ir':
+      '@tsverify/ir':
         specifier: workspace:*
         version: link:../ir
 
   packages/extractor:
     dependencies:
-      '@tsv/ir':
+      '@tsverify/ir':
         specifier: workspace:*
         version: link:../ir
       ts-morph:
         specifier: 28.0.0
         version: 28.0.0
     devDependencies:
-      '@tsv/spec':
+      '@tsverify/spec':
         specifier: workspace:*
         version: link:../spec
 
@@ -128,19 +128,19 @@ importers:
 
   packages/render:
     dependencies:
-      '@tsv/ir':
+      '@tsverify/ir':
         specifier: workspace:*
         version: link:../ir
 
   packages/runtime:
     devDependencies:
-      '@tsv/ir':
+      '@tsverify/ir':
         specifier: workspace:*
         version: link:../ir
 
   packages/spec:
     dependencies:
-      '@tsv/ir':
+      '@tsverify/ir':
         specifier: workspace:*
         version: link:../ir
       yaml:
@@ -152,20 +152,20 @@ importers:
 
   packages/testgen:
     dependencies:
-      '@tsv/ir':
+      '@tsverify/ir':
         specifier: workspace:*
         version: link:../ir
     devDependencies:
-      '@tsv/runtime':
+      '@tsverify/runtime':
         specifier: workspace:*
         version: link:../runtime
 
   packages/viewer:
     dependencies:
-      '@tsv/ir':
+      '@tsverify/ir':
         specifier: workspace:*
         version: link:../ir
-      '@tsv/render':
+      '@tsverify/render':
         specifier: workspace:*
         version: link:../render
       esbuild:
@@ -190,7 +190,7 @@ importers:
 
   spikes/x2-gating:
     devDependencies:
-      '@tsv/ir':
+      '@tsverify/ir':
         specifier: workspace:*
         version: link:../../packages/ir
 

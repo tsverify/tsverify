@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { JsonReport } from "../src/output/json";
-import { CANONICAL_SPEC, REPO_ROOT, tsv } from "./run";
+import { CANONICAL_SPEC, REPO_ROOT, tsverify } from "./run";
 import { invalidSpecText, tempSpecDir } from "./temp-specs";
 
 const canonical = await readFile(join(REPO_ROOT, CANONICAL_SPEC), "utf8");
@@ -20,13 +20,13 @@ describe("enforced specs", () => {
       "a.behavior.yaml": enforced,
       "b.behavior.yaml": renamed(canonical, "Other"),
     });
-    const r = await tsv(["check", "--spec-only", "--format", "json"], { cwd });
+    const r = await tsverify(["check", "--spec-only", "--format", "json"], { cwd });
     expect(r.code).toBe(0);
     expect(parse(r.stdout).specs.map((s) => [s.file, s.enforced])).toEqual([
       ["a.behavior.yaml", true],
       ["b.behavior.yaml", undefined],
     ]);
-    const pretty = await tsv(["check", "--spec-only"], { cwd });
+    const pretty = await tsverify(["check", "--spec-only"], { cwd });
     expect(pretty.stdout).toContain("a.behavior.yaml  spec only · enforced\n");
     expect(pretty.stdout).toContain("b.behavior.yaml  spec only\n");
   });
@@ -36,12 +36,12 @@ describe("enforced specs", () => {
       "a.behavior.yaml": enforced,
       "b.behavior.yaml": renamed(canonical, "Other"),
     });
-    const json = await tsv(["check", "--spec-only", "--enforced-only", "--format", "json"], {
+    const json = await tsverify(["check", "--spec-only", "--enforced-only", "--format", "json"], {
       cwd,
     });
     expect(json.code).toBe(0);
     expect(parse(json.stdout).specs.map((s) => s.file)).toEqual(["a.behavior.yaml"]);
-    const pretty = await tsv(["check", "--spec-only", "--enforced-only"], { cwd });
+    const pretty = await tsverify(["check", "--spec-only", "--enforced-only"], { cwd });
     expect(pretty.stdout).toContain(
       "--enforced-only: skipped 1 spec without `enforced: true`.\n✓ 1 spec,",
     );
@@ -49,12 +49,12 @@ describe("enforced specs", () => {
 
   it("--enforced-only with no enforced spec is an empty run that exits 0 and says why", async () => {
     const cwd = await tempSpecDir({ "a.behavior.yaml": canonical });
-    const pretty = await tsv(["check", "--spec-only", "--enforced-only"], { cwd });
+    const pretty = await tsverify(["check", "--spec-only", "--enforced-only"], { cwd });
     expect(pretty.code).toBe(0);
     expect(pretty.stdout).toBe(
       "No enforced specs: --enforced-only keeps only specs with `enforced: true`, and none of the 1 spec found has it.\n✓ 0 specs, 0 errors, 0 warnings\n",
     );
-    const json = await tsv(["check", "--spec-only", "--enforced-only", "--format", "json"], {
+    const json = await tsverify(["check", "--spec-only", "--enforced-only", "--format", "json"], {
       cwd,
     });
     expect(json.code).toBe(0);
@@ -71,14 +71,16 @@ describe("enforced specs", () => {
       "a.behavior.yaml": canonical,
       "bad.behavior.yaml": await invalidSpecText(),
     });
-    const r = await tsv(["check", "--spec-only", "--enforced-only", "--format", "json"], { cwd });
+    const r = await tsverify(["check", "--spec-only", "--enforced-only", "--format", "json"], {
+      cwd,
+    });
     expect(r.code).toBe(2);
     expect(parse(r.stdout).specs.map((s) => s.file)).toEqual(["bad.behavior.yaml"]);
   });
 
   it("test --enforced-only with no enforced spec generates and runs nothing", async () => {
     const cwd = await tempSpecDir({ "a.behavior.yaml": canonical });
-    const r = await tsv(["test", "--enforced-only"], { cwd });
+    const r = await tsverify(["test", "--enforced-only"], { cwd });
     expect(r.code).toBe(0);
     expect(r.stdout).toContain("No enforced specs: --enforced-only keeps only specs");
   });

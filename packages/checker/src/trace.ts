@@ -1,4 +1,4 @@
-import type { Trace, TraceAction, TraceState, TraceStep, WorkerState } from "@tsv/ir";
+import type { Trace, TraceAction, TraceState, TraceStep, WorkerState } from "@tsverify/ir";
 import type { StateStore } from "./explore";
 import type { CheckContext } from "./properties/context";
 import type { Action } from "./semantics";

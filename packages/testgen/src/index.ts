@@ -1,5 +1,5 @@
-// @tsv/testgen: generated vitest files (doc 6 §3.7). Depends only on @tsv/ir; the generated code
-// imports @tsv/runtime at test time. Pure: no filesystem, deterministic output.
+// @tsverify/testgen: generated vitest files (doc 6 §3.7). Depends only on @tsverify/ir; the generated code
+// imports @tsverify/runtime at test time. Pure: no filesystem, deterministic output.
 import { buildContext } from "./context";
 import { forbiddenFile } from "./forbidden";
 import { guardsFile } from "./guards";
@@ -23,7 +23,7 @@ export type {
  * - `forbidden.test.ts`: from every other state, the state is unchanged and no declared effect fires
  * - `guards.test.ts`: as an actor (with a fixture) not in `by`, the state is unchanged
  * - `replay-<n>.test.ts` + `replay-<n>.json`: each finding with a counterexample, replayed
- *   against the real code; the verdict is recorded in `task.meta.tsvReplay`
+ *   against the real code; the verdict is recorded in `task.meta.tsverifyReplay`
  *
  * Whatever cannot be generated (no fixtures, no invocation shape, a persistence without fakes, a
  * counterexample with nothing drivable left to replay, …) is explained by an `info` finding in

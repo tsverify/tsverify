@@ -1,6 +1,6 @@
-import type { CheckStats } from "@tsv/checker";
-import type { ExtractStats } from "@tsv/extractor";
-import type { Finding } from "@tsv/ir";
+import type { CheckStats } from "@tsverify/checker";
+import type { ExtractStats } from "@tsverify/extractor";
+import type { Finding } from "@tsverify/ir";
 import { allFindings, countSeverity, type Report } from "../report";
 import type { TestCounts } from "../test-findings";
 

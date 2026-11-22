@@ -1,4 +1,4 @@
-// An executable example of the replay test `tsv` should generate (README "Shape of a generated
+// An executable example of the replay test `tsverify` should generate (README "Shape of a generated
 // replay test"), against the real orders app. A generated test FAILS when the bug is confirmed;
 // the B3 case here asserts that the generated assertion throws, so CI stays green.
 import { expect, test, vi } from "vitest";
@@ -15,7 +15,7 @@ import {
 
 declare module "vitest" {
   interface TaskMeta {
-    tsvReplay?: ReplayResult;
+    tsverifyReplay?: ReplayResult;
   }
 }
 
@@ -72,9 +72,9 @@ test("clean app: replay of 'Refund issued at most once per order' (replay-disagr
   task,
 }) => {
   const result = await replayRefundRace(clean.refundOrder);
-  task.meta.tsvReplay = result;
+  task.meta.tsverifyReplay = result;
   expect(result.violated, `${result.verdict}\n${result.divergence?.message ?? ""}`).toBe(false);
-  expect(task.meta.tsvReplay).toMatchObject({
+  expect(task.meta.tsverifyReplay).toMatchObject({
     verdict: "replay-disagrees",
     divergence: { kind: "blocked", stepIndex: 1, worker: "refund#2" },
   });
@@ -82,7 +82,7 @@ test("clean app: replay of 'Refund issued at most once per order' (replay-disagr
 
 test("B3 variant: the same generated assertion fails (confirmed)", async ({ task }) => {
   const result = await replayRefundRace(b3.refundOrder);
-  task.meta.tsvReplay = result;
+  task.meta.tsverifyReplay = result;
   expect(result).toEqual({ verdict: "confirmed", followed: true, violated: true });
   // The generated test's own assertion, which must fail for a confirmed bug:
   expect(() =>

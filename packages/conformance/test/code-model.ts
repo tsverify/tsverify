@@ -9,14 +9,14 @@ import {
   parseGuardRef,
   type SourceLocation,
   type Transition,
-} from "@tsv/ir";
-import { orderModel } from "@tsv/ir/testing";
+} from "@tsverify/ir";
+import { orderModel } from "@tsverify/ir/testing";
 
 /**
  * Test-only spec and code models for the Order app (`examples/orders-app`). The clean code
  * model is what the extractor should build from the clean app; each variant applies a small
  * mutation mirroring one seeded bug in `examples/orders-app/variants`. Locations are the real
- * positions in those files, so findings read like the ones `tsv check` prints.
+ * positions in those files, so findings read like the ones `tsverify check` prints.
  */
 
 const SPEC_FILE = "src/orders/order.behavior.yaml";
@@ -121,7 +121,7 @@ function from(state: string[]): FromState {
   return { values: state, unconstrained: false };
 }
 
-/** Follows the conventions documented on `ModelOrigin` in `@tsv/ir`. */
+/** Follows the conventions documented on `ModelOrigin` in `@tsverify/ir`. */
 function buildTransition(spec: BehaviorModel, w: Write): Transition {
   const linked = spec.transitions.find((t) => t.name === w.specTransition);
   const specEffects = spec.transitions.flatMap((t) => t.effects);

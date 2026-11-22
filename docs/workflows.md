@@ -1,11 +1,11 @@
-# Using `tsv` in CI
+# Using `tsverify` in CI
 
-`tsv` never decides policy. It returns a fixed exit code and machine-readable output, and your CI decides what
+`tsverify` never decides policy. It returns a fixed exit code and machine-readable output, and your CI decides what
 blocks a merge ([decision D4](../idea/3.%20decisions-and-answers.md)). This page covers the three recommended
 workflows, the exit codes they build on, and where each output format goes.
 
 A ready-to-copy GitHub Actions workflow that does all of this is in
-[`examples/ci/github/tsv.yml`](../examples/ci/github/tsv.yml).
+[`examples/ci/github/tsverify.yml`](../examples/ci/github/tsverify.yml).
 
 ## Exit codes
 
@@ -14,10 +14,10 @@ explicitly.
 
 | Code | Meaning | Typical CI reaction |
 |---|---|---|
-| `0` | No error-severity findings (warnings and info never fail a run). For `tsv diff`: the diff was computed, whether or not anything changed | pass |
+| `0` | No error-severity findings (warnings and info never fail a run). For `tsverify diff`: the diff was computed, whether or not anything changed | pass |
 | `1` | Violations: behavior bugs or conformance mismatches (`check`, `test`) | your choice: see the workflows below |
-| `2` | Invalid input: a spec that doesn't parse or validate, a broken `impl` link, bad CLI usage; for `tsv diff` also an unknown ref or no git repository | fail: the run could not do its job |
-| `3` | Internal error in `tsv` | fail, and please report it |
+| `2` | Invalid input: a spec that doesn't parse or validate, a broken `impl` link, bad CLI usage; for `tsverify diff` also an unknown ref or no git repository | fail: the run could not do its job |
+| `3` | Internal error in `tsverify` | fail, and please report it |
 
 Invalid input (2) takes precedence over violations (1).
 
@@ -34,26 +34,26 @@ Invalid input (2) takes precedence over violations (1).
   `category`, `severity`, `message`, and `specAt` / `codeAt` locations relative to the cwd. `specs[].enforced` is
   present (and `true`) for specs marked `enforced: true`. Bumping `version` is a breaking change.
 - **JSON** (`diff`): `{ version: 1, base: { ref, commit }, head: "working tree", specs: [{ file, enforced?, diff }],
-  summary }`, where `diff` is the `BehaviorDiff` from `@tsv/ir` (field changes as `base` / `head` strings).
-- **SARIF 2.1.0**: one run, tool `tsv`, one rule per finding category. Each result's primary location is the code
+  summary }`, where `diff` is the `BehaviorDiff` from `@tsverify/ir` (field changes as `base` / `head` strings).
+- **SARIF 2.1.0**: one run, tool `tsverify`, one rule per finding category. Each result's primary location is the code
   site when there is one, else the spec; the other one is a related location. URIs are relative to the cwd under
-  `%SRCROOT%`, so **run `tsv` from the repository root** (or set `checkout_path` on the upload). The finding id is
-  the `partialFingerprints` entry `tsvFindingId/v1`, so code scanning tracks a finding across pushes.
+  `%SRCROOT%`, so **run `tsverify` from the repository root** (or set `checkout_path` on the upload). The finding id is
+  the `partialFingerprints` entry `tsverifyFindingId/v1`, so code scanning tracks a finding across pushes.
   `properties` carry `behavior`, `transition`, `property`, `enforced`, `causedBy` (ids of the findings this one is
   a consequence of) and a compact `trace` (one line per step).
 - **Markdown** (`diff`): one section per added, removed or changed behavior, with a one-line summary
   (`+1 transition, ~1 transition, −1 rule`), a Mermaid diagram of the head state machine with added (`+`, thick),
   removed (`−`, dotted) and changed (`~`) edges and states, and a `base → head` table per kind of change. The
-  markers are text, so the diff reads the same in any GitHub theme. The first line is `<!-- tsv-diff -->`, which
+  markers are text, so the diff reads the same in any GitHub theme. The first line is `<!-- tsverify-diff -->`, which
   lets CI find and update its own comment.
 
 ## Workflow 1: advisory (never block)
 
-Run everything, show the results, never fail on findings. Good for adopting `tsv` on an existing codebase.
+Run everything, show the results, never fail on findings. Good for adopting `tsverify` on an existing codebase.
 
 ```sh
-tsv check --format sarif > tsv.sarif || [ $? -eq 1 ]   # upload tsv.sarif to code scanning
-tsv diff --base origin/main > tsv-diff.md              # post as a PR comment
+tsverify check --format sarif > tsverify.sarif || [ $? -eq 1 ]   # upload tsverify.sarif to code scanning
+tsverify diff --base origin/main > tsverify-diff.md              # post as a PR comment
 ```
 
 `|| [ $? -eq 1 ]` turns "violations found" into success while still failing on invalid input (2) and internal
@@ -64,11 +64,11 @@ errors (3).
 Any violation fails the job:
 
 ```sh
-tsv check --format sarif > tsv.sarif    # exit 1 fails the step
+tsverify check --format sarif > tsverify.sarif    # exit 1 fails the step
 ```
 
 Upload the SARIF in a step that runs even when this one fails (`if: always()` on GitHub), so reviewers see why.
-Add `tsv test` as a second blocking step to also run the generated tests (paths, forbidden states, guards and
+Add `tsverify test` as a second blocking step to also run the generated tests (paths, forbidden states, guards and
 counterexample replays); its findings are generated-test results only.
 
 ## Workflow 3: blocking only for enforced specs
@@ -77,8 +77,8 @@ Mark the specs your team wants CI to block on with `enforced: true` at the top l
 [`behavior-format.md`](behavior-format.md#enforced)). Then report everything, but gate on the enforced ones:
 
 ```sh
-tsv check --format sarif > tsv.sarif || [ $? -eq 1 ]   # advisory: every spec, uploaded
-tsv check --enforced-only                               # blocking: enforced specs only
+tsverify check --format sarif > tsverify.sarif || [ $? -eq 1 ]   # advisory: every spec, uploaded
+tsverify check --enforced-only                               # blocking: enforced specs only
 ```
 
 `--enforced-only` (on `check`, `test` and `diff`) keeps only specs with `enforced: true`:
@@ -94,11 +94,11 @@ SARIF results carry `properties.enforced: true` as well, for tools that filter o
 ## The behavior diff on pull requests
 
 ```sh
-tsv diff --base origin/main [paths…] [--format markdown|json|pretty] [--enforced-only]
+tsverify diff --base origin/main [paths…] [--format markdown|json|pretty] [--enforced-only]
 ```
 
 - **Head** is the working tree: specs are found the way `check` finds them (`**/*.behavior.yaml` under the given
-  paths, default the cwd, skipping `node_modules`, `.git`, `.tsv` and `dist`).
+  paths, default the cwd, skipping `node_modules`, `.git`, `.tsverify` and `dist`).
 - **Base** is the same paths at `<ref>`, read with the local `git` binary (`git ls-tree`, `git show`); no network.
   The ref must exist locally, so CI needs the base branch's history (`fetch-depth: 0` on `actions/checkout`, or a
   `git fetch origin <base>`).
@@ -111,4 +111,4 @@ tsv diff --base origin/main [paths…] [--format markdown|json|pretty] [--enforc
   a git repository.
 
 The example workflow posts the Markdown as a single PR comment and edits it on every push (found by its
-`<!-- tsv-diff -->` marker) instead of adding a new comment each time.
+`<!-- tsverify-diff -->` marker) instead of adding a new comment each time.

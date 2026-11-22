@@ -4,7 +4,7 @@ import {
   type Finding,
   type GuardRef,
   type Transition,
-} from "@tsv/ir";
+} from "@tsverify/ir";
 import { earliest, type Pairing, pairingFinding } from "./finding";
 
 interface RequiredGuard {
@@ -22,7 +22,7 @@ export function requiredGuards(spec: BehaviorModel, t: Transition): RequiredGuar
     byRaw.set(guard.raw, entry);
   };
   for (const g of t.requires) add(g, `${t.name}.requires`);
-  // An actor missing from `actors` is an invalid spec, reported by @tsv/spec; skip it here.
+  // An actor missing from `actors` is an invalid spec, reported by @tsverify/spec; skip it here.
   for (const name of t.by)
     for (const g of spec.actors[name]?.requires ?? []) add(g, `actor ${name}`);
   return [...byRaw.values()].sort((a, b) => compareStrings(a.guard.raw, b.guard.raw));

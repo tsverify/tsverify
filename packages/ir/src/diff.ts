@@ -4,7 +4,7 @@ import { formatSymbolRef } from "./refs";
 
 /**
  * Structural behavior diff between two spec models of the same behavior file (e.g. the PR base
- * and head), for `tsv diff`. Every value is pre-formatted as a short string, so renderers never
+ * and head), for `tsverify diff`. Every value is pre-formatted as a short string, so renderers never
  * re-derive formatting and the result is deterministic: items are sorted by name, fields keep
  * the fixed order of `*_FIELDS` below. Locations are ignored.
  */

@@ -1,4 +1,4 @@
-import type { SourceLocation } from "@tsv/ir";
+import type { SourceLocation } from "@tsverify/ir";
 import { type Document, isMap, isNode, isScalar, isSeq, type LineCounter, type Node } from "yaml";
 
 /** A path into the YAML document, e.g. `["transitions", "refund", "effects", 0]`. */

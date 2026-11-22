@@ -1,8 +1,8 @@
-import type { Trace, TraceActionKind } from "@tsv/ir";
+import type { Trace, TraceActionKind } from "@tsverify/ir";
 import { type Step, UNTIL_DONE } from "./scheduler";
 
 /**
- * What a replay needs to turn model actions into code gates. In `tsv` this comes from the
+ * What a replay needs to turn model actions into code gates. In `tsverify` this comes from the
  * extractor (`Transition.sites`) and the spec's `bindings`. See README "What CodeSites must contain".
  */
 export interface ReplayMapping {

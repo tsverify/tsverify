@@ -15,12 +15,12 @@ export interface Watcher {
 }
 
 /** Directory names never worth a rebuild. */
-const IGNORED_DIRS: ReadonlySet<string> = new Set(["node_modules", ".git", ".tsv"]);
+const IGNORED_DIRS: ReadonlySet<string> = new Set(["node_modules", ".git", ".tsverify"]);
 
 /**
  * Watches files and directories (directories recursively) and calls `onChange` once per burst of
  * changes. A file is watched through its directory, so editors that save by renaming a new file
- * over the old one keep triggering. Changes under `node_modules`, `.git` and `.tsv` are ignored.
+ * over the old one keep triggering. Changes under `node_modules`, `.git` and `.tsverify` are ignored.
  * Paths that do not exist are skipped. Uses `fs.watch`; falls back to polling a path whose
  * watcher cannot be created or fails.
  */

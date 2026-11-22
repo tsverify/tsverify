@@ -1,4 +1,4 @@
-# `@tsv/render` tests
+# `@tsverify/render` tests
 
 Golden outputs live in `__golden__/` and are compared with vitest's `toMatchFileSnapshot`.
 After an intentional output change, regenerate them with:
@@ -20,7 +20,7 @@ The `.mmd` files are plain Mermaid source. To see them rendered:
   and reports parse errors with line numbers.
 - **GitHub**: open the `.mmd` file in the GitHub file view, which renders Mermaid files. In an
   issue, PR comment or Markdown file, wrap the contents in a ` ```mermaid ` fenced block. That is
-  the same form the `tsv diff` PR comment uses.
+  the same form the `tsverify diff` PR comment uses.
 - **VS Code**: any Mermaid preview extension can open `.mmd` files directly.
 
 Things to check by eye: state order and edge order are stable, `[*]` start and end markers are

@@ -3,7 +3,7 @@ import type { CAC } from "cac";
 /**
  * Works around a cac 7 bug: boolean options are registered with mri under their camelCased name
  * (`specOnly`), but mri sees the raw `--spec-only`, so it doesn't know the flag is boolean and
- * takes the next argument as its value (`tsv check --spec-only specs/` would lose `specs/`).
+ * takes the next argument as its value (`tsverify check --spec-only specs/` would lose `specs/`).
  * Rewriting the kebab-case spelling of known boolean flags to camelCase before parsing avoids it.
  */
 export function camelCaseBooleanFlags(argv: readonly string[], cli: CAC): string[] {

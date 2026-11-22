@@ -2,11 +2,11 @@ import { writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join, resolve } from "node:path";
-import type { ViewData } from "@tsv/viewer";
+import type { ViewData } from "@tsverify/viewer";
 import { afterEach, describe, expect, it } from "vitest";
 import { formatUrls, watchList } from "../src/commands/view";
 import { type Io, main } from "../src/main";
-import { tsv } from "./run";
+import { tsverify } from "./run";
 import { tempSpecDir } from "./temp-specs";
 
 const SPEC = `behavior: Light
@@ -47,7 +47,7 @@ function project(): Promise<string> {
   });
 }
 
-/** `tsv view` running in-process: its output so far, and a way to interrupt it. */
+/** `tsverify view` running in-process: its output so far, and a way to interrupt it. */
 interface Running {
   url: Promise<string>;
   stderr(): string;
@@ -125,7 +125,7 @@ describe("formatUrls", () => {
   it("prints the local URL and the SSH command for other machines, no network addresses", () => {
     expect(formatUrls("http://127.0.0.1:4400/", 4400)).toBe(
       [
-        "tsv view",
+        "tsverify view",
         "  Local:    http://127.0.0.1:4400/",
         "  Remote:   ssh -N -L 4400:127.0.0.1:4400 <user>@<this machine>, then open http://localhost:4400/",
         "",
@@ -134,11 +134,11 @@ describe("formatUrls", () => {
   });
 });
 
-describe("tsv view", () => {
+describe("tsverify view", () => {
   it("documents its flags", async () => {
-    const r = await tsv(["view", "--help"]);
+    const r = await tsverify(["view", "--help"]);
     expect(r.code).toBe(0);
-    expect(r.stdout).toContain("$ tsv view [...paths] [options]");
+    expect(r.stdout).toContain("$ tsverify view [...paths] [options]");
     expect(r.stdout).toMatch(/--port <n> +Port to listen on; 0 picks a free one \(default: 0\)/);
     expect(r.stdout).toMatch(/--host <address> .*\(default: 127\.0\.0\.1\)/);
     expect(r.stdout).toMatch(/--open +Open the viewer in the default browser/);
@@ -147,7 +147,7 @@ describe("tsv view", () => {
   });
 
   it("refuses a non-loopback --host with exit 2 and points to SSH forwarding", async () => {
-    const r = await tsv(["view", "--host", "0.0.0.0"]);
+    const r = await tsverify(["view", "--host", "0.0.0.0"]);
     expect(r.code).toBe(2);
     expect(r.stderr).toContain("--host must be a loopback address");
     expect(r.stderr).toContain("forward the port over SSH");
@@ -173,14 +173,14 @@ describe("tsv view", () => {
 
     // Drop the guard: the rebuilt data has the conformance finding.
     await writeFile(join(dir, "src/light.ts"), CODE.replace(/ {2}if \(light.*\n/, ""));
-    await r.waitForStderr("tsv view: rebuilt (build 2");
+    await r.waitForStderr("tsverify view: rebuilt (build 2");
     const rebuilt = await getData(url);
     expect(rebuilt.version).toBe(2);
     expect(rebuilt.specs[0]?.findings.map((f) => f.category)).toContain("from-state-unconstrained");
 
     r.interrupt();
     expect(await r.exit).toBe(0);
-    expect(r.stderr()).toContain("tsv view: stopped");
+    expect(r.stderr()).toContain("tsverify view: stopped");
     await expect(fetch(`${url}api/data`)).rejects.toThrow();
   });
 
@@ -195,10 +195,10 @@ describe("tsv view", () => {
 
   it("rejects a bad port and a directory without specs with exit 2", async () => {
     const dir = await tempSpecDir({ "README.md": "nothing here\n" });
-    const bad = await tsv(["view", "--port", "70000"], { cwd: dir });
+    const bad = await tsverify(["view", "--port", "70000"], { cwd: dir });
     expect(bad.code).toBe(2);
     expect(bad.stderr).toContain("--port must be an integer from 0 to 65535");
-    const empty = await tsv(["view", "."], { cwd: dir });
+    const empty = await tsverify(["view", "."], { cwd: dir });
     expect(empty.code).toBe(2);
     expect(empty.stderr).toContain("no *.behavior.yaml files found");
   });
@@ -209,7 +209,7 @@ describe("tsv view", () => {
     await new Promise<void>((done) => taken.listen(0, "127.0.0.1", done));
     try {
       const port = (taken.address() as AddressInfo).port;
-      const r = await tsv(["view", "--spec-only", "--port", String(port)], { cwd: dir });
+      const r = await tsverify(["view", "--spec-only", "--port", String(port)], { cwd: dir });
       expect(r.code).toBe(2);
       expect(r.stderr).toContain(`cannot listen on 127.0.0.1:${port} (EADDRINUSE)`);
     } finally {

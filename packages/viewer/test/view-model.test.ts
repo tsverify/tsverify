@@ -1,5 +1,5 @@
-import type { Finding } from "@tsv/ir";
-import { summarize } from "@tsv/render";
+import type { Finding } from "@tsverify/ir";
+import { summarize } from "@tsverify/render";
 import { describe, expect, it } from "vitest";
 import { flattenNodes, groupByRootCause, severityCounts } from "../src/app/findings-tree";
 import { actionLabel, playthrough } from "../src/app/frames";
