@@ -386,5 +386,41 @@
       "email.receipt": "email.send",
       "stripe.refund": "stripe.refunds.create"
     }
+  },
+  "fixtures": {
+    "entity": {
+      "id": "o1",
+      "ownerId": "c1",
+      "email": "c1@example.com",
+      "chargeId": "ch_1"
+    },
+    "actors": {
+      "customer": {
+        "id": "c1",
+        "roles": []
+      },
+      "admin": {
+        "id": "a1",
+        "roles": [
+          "admin"
+        ]
+      }
+    },
+    "args": {
+      "payment_succeeded": [
+        {
+          "id": "evt_1",
+          "orderId": "$id",
+          "chargeId": "ch_1"
+        }
+      ]
+    },
+    "at": {
+      "file": "test/fixtures/valid/order.behavior.yaml",
+      "line": 87,
+      "column": 1,
+      "endLine": 93,
+      "endColumn": 69
+    }
   }
 }

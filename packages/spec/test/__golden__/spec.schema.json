@@ -312,7 +312,8 @@
           "enum": [
             "assign",
             "prisma",
-            "drizzle"
+            "drizzle",
+            "memory"
           ]
         },
         "clients": {
@@ -367,6 +368,42 @@
       },
       "additionalProperties": false,
       "description": "Links from spec names to code"
+    },
+    "fixtures": {
+      "type": "object",
+      "properties": {
+        "entity": {
+          "description": "Fields of a seeded entity, apart from the state field",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "actors": {
+          "description": "Value per actor, passed where the impl takes an actor",
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          },
+          "additionalProperties": {}
+        },
+        "args": {
+          "description": "Per-transition argument list; \"$id\" and \"$actor\" are substituted",
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          },
+          "additionalProperties": {
+            "type": "array",
+            "items": {}
+          }
+        }
+      },
+      "additionalProperties": false,
+      "description": "Test fixtures for generated tests"
     }
   },
   "required": [

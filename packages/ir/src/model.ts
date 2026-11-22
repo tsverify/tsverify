@@ -52,7 +52,8 @@ export interface CallSite {
 
 /** The construct that makes a transition's state check and write indivisible. */
 export interface AtomicScope {
-  kind: "transaction" | "conditional-update" | "lock";
+  /** `synchronous`: `memory` persistence, no `await`/`yield` between the check and the write. */
+  kind: "transaction" | "conditional-update" | "lock" | "synchronous";
   at: SourceLocation;
   /** Gate of the call that opens the scope, e.g. `db.transaction`. */
   gate?: string;
@@ -140,7 +141,12 @@ export interface EntityDecl {
   at?: SourceLocation;
 }
 
-export type PersistenceKind = "assign" | "prisma" | "drizzle";
+/**
+ * - `assign`: repository fakes (`db.orders.get/save`, `db.transaction`) with plain assignment
+ * - `prisma` / `drizzle`: ORM calls (M9+)
+ * - `memory`: in-process objects with no client; atomic = no `await`/`yield` between check and write
+ */
+export type PersistenceKind = "assign" | "prisma" | "drizzle" | "memory";
 
 export interface ClientBinding {
   module: string;
@@ -181,6 +187,21 @@ export interface Bindings {
  *   - spec transitions without `impl` are copied unchanged and without `sites` (assumed to behave
  *     as specified), so the code model stays complete; conformance skips them
  */
+/**
+ * Values generated tests use to drive the real code. Opaque JSON, passed through verbatim, except
+ * that the strings `"$id"` and `"$actor"` inside `args` are replaced by the seeded entity's key and
+ * the acting actor's fixture.
+ */
+export interface Fixtures {
+  /** Fields of a seeded entity, apart from the state field (which each test sets). */
+  entity: Record<string, unknown>;
+  /** Value per spec actor name, passed where the impl takes an actor (`InvocationShape.actor`). */
+  actors: Record<string, unknown>;
+  /** Per-transition argument list, overriding the default built from `InvocationShape`. */
+  args: Record<string, unknown[]>;
+  at?: SourceLocation;
+}
+
 export type ModelOrigin = "spec" | "code";
 
 export interface BehaviorModel {
@@ -202,4 +223,6 @@ export interface BehaviorModel {
    */
   concurrency: Record<string, number>;
   bindings: Bindings;
+  /** Test fixtures for generated tests (spec models only; optional). */
+  fixtures?: Fixtures;
 }
