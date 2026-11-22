@@ -133,8 +133,8 @@ export function extractAll(
           spec.name,
           "tsconfig",
           undefined,
-          `cannot load the TypeScript project: ${loaded.error}`,
-          undefined,
+          `cannot load the TypeScript project: ${loaded.error}, so the code behind \`impl\` and \`bindings\` can't be located`,
+          spec.file === undefined ? undefined : { file: spec.file, line: 1, column: 1 },
           {
             hint: "Pass the project root that contains tsconfig.json, or set the tsconfig path.",
           },

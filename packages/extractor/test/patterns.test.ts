@@ -488,6 +488,26 @@ describe("extractAll", () => {
     ]);
   });
 
+  it("names the project directory and points at the spec file", () => {
+    const spec = { ...orderSpec([]), file: "../specs/order.behavior.yaml" };
+    const { results } = extractAll([spec], { projectRoot: fixtureRoot("nope") });
+    const finding = results[0]?.findings[0];
+    expect(finding?.message).toBe(
+      `cannot load the TypeScript project: no tsconfig.json in the project directory ${fixtureRoot("nope")}, so the code behind \`impl\` and \`bindings\` can't be located`,
+    );
+    expect(finding?.specAt).toEqual({ file: "../specs/order.behavior.yaml", line: 1, column: 1 });
+  });
+
+  it("names an explicit tsconfig path that does not exist", () => {
+    const { results } = extractAll([orderSpec([])], {
+      projectRoot: fixtureRoot("transaction-atomic"),
+      tsconfig: "tsconfig.missing.json",
+    });
+    expect(results[0]?.findings[0]?.message).toContain(
+      `no tsconfig at ${fixtureRoot("transaction-atomic")}/tsconfig.missing.json`,
+    );
+  });
+
   it("does not extract with an adapter that does not exist yet", () => {
     const spec = orderSpec([]);
     spec.bindings.persistence = "prisma";
