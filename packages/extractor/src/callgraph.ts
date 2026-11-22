@@ -10,21 +10,22 @@
  * (bound client calls: never descend into a client's implementation; bound guard calls) and at
  * `MAX_DEPTH` call levels below the impl.
  */
-import { ts } from "ts-morph";
+import type * as TS from "@typescript/typescript6";
 import { type FunctionLike, inlineCallbackCall, isFunctionLike } from "./cfg";
 import type { ProjectContext } from "./project";
 import { functionOfDeclaration, symbolOf } from "./resolve";
+import { ts } from "./typescript";
 
 export const MAX_DEPTH = 8;
 
-function hasEnclosingFunction(n: ts.Node): boolean {
+function hasEnclosingFunction(n: TS.Node): boolean {
   for (let p = n.parent; p; p = p.parent) if (isFunctionLike(p)) return true;
   return false;
 }
 
 /** The frame a node belongs to: its nearest enclosing function-like that is not an inline callback. */
-export function frameOf(node: ts.Node): FunctionLike | undefined {
-  for (let n: ts.Node | undefined = node.parent; n; n = n.parent) {
+export function frameOf(node: TS.Node): FunctionLike | undefined {
+  for (let n: TS.Node | undefined = node.parent; n; n = n.parent) {
     if (!isFunctionLike(n)) continue;
     if (inlineCallbackCall(n) && hasEnclosingFunction(n)) continue;
     return n;
@@ -32,7 +33,7 @@ export function frameOf(node: ts.Node): FunctionLike | undefined {
   return undefined;
 }
 
-function nameText(name: ts.Node | undefined): string | undefined {
+function nameText(name: TS.Node | undefined): string | undefined {
   if (!name) return undefined;
   if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isPrivateIdentifier(name)) {
     return name.text;
@@ -40,7 +41,7 @@ function nameText(name: ts.Node | undefined): string | undefined {
   return undefined;
 }
 
-function containerName(member: ts.Node): string | undefined {
+function containerName(member: TS.Node): string | undefined {
   const parent = member.parent;
   if (ts.isClassLike(parent)) return nameText(parent.name) ?? "anonymous";
   if (ts.isObjectLiteralExpression(parent)) {
@@ -53,8 +54,8 @@ function containerName(member: ts.Node): string | undefined {
 }
 
 /** The identifier that names a frame, and its display name (`refundOrder`, `Repo.save`). */
-export function frameNaming(fn: FunctionLike): { name: string; node: ts.Node } {
-  const qualified = (member: ts.Node, n: string) => {
+export function frameNaming(fn: FunctionLike): { name: string; node: TS.Node } {
+  const qualified = (member: TS.Node, n: string) => {
     const c = containerName(member);
     return c === undefined ? n : `${c}.${n}`;
   };
@@ -70,7 +71,7 @@ export function frameNaming(fn: FunctionLike): { name: string; node: ts.Node } {
     return { name: qualified(fn, nameText(fn.name) ?? "anonymous"), node: fn.name };
   }
   // Function expression: named by what holds it, walking out of wrappers and HOF calls.
-  let child: ts.Node = fn;
+  let child: TS.Node = fn;
   for (let p = fn.parent; p; child = p, p = p.parent) {
     if (ts.isVariableDeclaration(p) && nameText(p.name))
       return { name: nameText(p.name) as string, node: p.name };
@@ -96,14 +97,14 @@ export function frameNaming(fn: FunctionLike): { name: string; node: ts.Node } {
   return { name: "anonymous", node: fn };
 }
 
-const callsMemo = new WeakMap<FunctionLike, ts.CallExpression[]>();
+const callsMemo = new WeakMap<FunctionLike, TS.CallExpression[]>();
 
 /** Calls in a frame (including its inline callbacks), in source order. */
-export function frameCalls(fn: FunctionLike): ts.CallExpression[] {
+export function frameCalls(fn: FunctionLike): TS.CallExpression[] {
   const cached = callsMemo.get(fn);
   if (cached) return cached;
-  const out: ts.CallExpression[] = [];
-  const visit = (n: ts.Node): void => {
+  const out: TS.CallExpression[] = [];
+  const visit = (n: TS.Node): void => {
     if ((isFunctionLike(n) && !inlineCallbackCall(n)) || ts.isClassLike(n)) return;
     if (ts.isCallExpression(n)) out.push(n);
     ts.forEachChild(n, visit);
@@ -115,11 +116,11 @@ export function frameCalls(fn: FunctionLike): ts.CallExpression[] {
 
 /** Resolves calls to project-local functions with bodies. Shared by every spec. */
 export class Callees {
-  private readonly memo = new Map<ts.CallExpression, FunctionLike | null>();
+  private readonly memo = new Map<TS.CallExpression, FunctionLike | null>();
 
   constructor(private readonly ctx: ProjectContext) {}
 
-  of(call: ts.CallExpression): FunctionLike | undefined {
+  of(call: TS.CallExpression): FunctionLike | undefined {
     const cached = this.memo.get(call);
     if (cached !== undefined) return cached ?? undefined;
     const fn = this.resolve(call);
@@ -127,9 +128,9 @@ export class Callees {
     return fn;
   }
 
-  private resolve(call: ts.CallExpression): FunctionLike | undefined {
+  private resolve(call: TS.CallExpression): FunctionLike | undefined {
     const checker = this.ctx.checker;
-    let decl: ts.Declaration | undefined = checker.getResolvedSignature(call)?.declaration;
+    let decl: TS.Declaration | undefined = checker.getResolvedSignature(call)?.declaration;
     if (!decl || ts.isJSDocSignature(decl)) {
       decl = symbolOf(call.expression, checker)?.valueDeclaration;
     }
@@ -142,7 +143,7 @@ export class Callees {
 
 export interface CallEdge {
   caller: FunctionLike;
-  call: ts.CallExpression;
+  call: TS.CallExpression;
   callee: FunctionLike;
 }
 
@@ -156,7 +157,7 @@ export interface Reach {
 export function reach(
   root: FunctionLike,
   callees: Callees,
-  isStop: (call: ts.CallExpression) => boolean,
+  isStop: (call: TS.CallExpression) => boolean,
 ): Reach {
   const frames: FunctionLike[] = [root];
   const depth = new Map<FunctionLike, number>([[root, 0]]);
@@ -181,7 +182,7 @@ export function reach(
 
 /** A node of a frame that leads to a write: the write itself, or a call into a frame that leads to it. */
 export interface LeadGroup {
-  node: ts.Node;
+  node: TS.Node;
   callee?: FunctionLike;
 }
 
@@ -193,7 +194,7 @@ export interface LeadGroup {
 export function leadsTo(
   root: Reach,
   writeFrame: FunctionLike,
-  write: ts.Node,
+  write: TS.Node,
 ): (fn: FunctionLike) => LeadGroup[] {
   const memo = new Map<FunctionLike, LeadGroup[]>();
   const leads = (fn: FunctionLike, stack: Set<FunctionLike>): LeadGroup[] => {

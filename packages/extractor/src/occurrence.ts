@@ -4,13 +4,13 @@
  * not count), plus, for a call inside a helper, the most counted at any of the helper's call
  * sites in its callers. Same-gate calls inside *other* helpers are not counted.
  */
-import type { ts } from "ts-morph";
+import type * as TS from "@typescript/typescript6";
 import { frameCalls, type Reach } from "./callgraph";
 import { type FunctionLike, reachable } from "./cfg";
 import type { ClientCalls } from "./client-calls";
 import { cfgOf } from "./dominance";
 
-function localCount(frame: FunctionLike, node: ts.Node, gate: string, calls: ClientCalls): number {
+function localCount(frame: FunctionLike, node: TS.Node, gate: string, calls: ClientCalls): number {
   const cfg = cfgOf(frame);
   const targets = cfg.idsOf(node);
   let n = 0;
@@ -23,13 +23,13 @@ function localCount(frame: FunctionLike, node: ts.Node, gate: string, calls: Cli
 }
 
 export function occurrenceOf(
-  call: ts.CallExpression,
+  call: TS.CallExpression,
   frame: FunctionLike,
   gate: string,
   reach: Reach,
   calls: ClientCalls,
 ): number {
-  const visit = (fn: FunctionLike, node: ts.Node, stack: Set<FunctionLike>): number => {
+  const visit = (fn: FunctionLike, node: TS.Node, stack: Set<FunctionLike>): number => {
     if (stack.has(fn)) return 0;
     stack.add(fn);
     let before = 0;

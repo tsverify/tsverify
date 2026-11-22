@@ -22,12 +22,13 @@
  *
  * Never auto-detected: set `bindings.persistence: memory`.
  */
-import { ts } from "ts-morph";
+import type * as TS from "@typescript/typescript6";
 import { suspensionBefore } from "../atomicity";
 import { symbolOf } from "../resolve";
+import { ts } from "../typescript";
 import type { AdapterInput, PersistenceAdapter, PersistenceFacts } from "./types";
 
-function strip(e: ts.Expression): ts.Expression {
+function strip(e: TS.Expression): TS.Expression {
   let cur = e;
   while (
     ts.isParenthesizedExpression(cur) ||
@@ -40,14 +41,14 @@ function strip(e: ts.Expression): ts.Expression {
   return cur;
 }
 
-function keyOfLookup(e: ts.Expression): ts.Expression | undefined {
+function keyOfLookup(e: TS.Expression): TS.Expression | undefined {
   if (
     ts.isCallExpression(e) &&
     ts.isPropertyAccessExpression(e.expression) &&
     e.expression.name.text === "get" &&
     e.arguments.length === 1
   ) {
-    const arg = e.arguments[0] as ts.Expression;
+    const arg = e.arguments[0] as TS.Expression;
     return ts.isSpreadElement(arg) ? undefined : arg;
   }
   if (ts.isElementAccessExpression(e)) return e.argumentExpression;
@@ -55,7 +56,7 @@ function keyOfLookup(e: ts.Expression): ts.Expression | undefined {
 }
 
 /** The id expression of a keyed lookup the entity reference comes from, if any. */
-function entityKeyOf(ref: ts.Expression, checker: ts.TypeChecker): ts.Expression | undefined {
+function entityKeyOf(ref: TS.Expression, checker: TS.TypeChecker): TS.Expression | undefined {
   const e = strip(ref);
   if (!ts.isIdentifier(e)) return keyOfLookup(e);
   const decl = symbolOf(e, checker)?.valueDeclaration;

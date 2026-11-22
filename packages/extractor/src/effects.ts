@@ -23,7 +23,7 @@
  */
 import type { BehaviorModel, EffectMultiplicity, Transition } from "@tsverify/ir";
 import { compareStrings } from "@tsverify/ir";
-import type { ts } from "ts-morph";
+import type * as TS from "@typescript/typescript6";
 import { frameCalls, leadsTo, type Reach } from "./callgraph";
 import { type Cfg, type FunctionLike, reachable } from "./cfg";
 import type { ClientCall, ClientCalls } from "./client-calls";
@@ -53,16 +53,16 @@ function reachingAny(cfg: Cfg, targets: readonly number[]): Uint8Array {
 export function effectCalls(
   reach: Reach,
   writeFrame: FunctionLike,
-  write: ts.Node,
+  write: TS.Node,
   calls: ClientCalls,
   persistenceClients: ReadonlySet<string>,
 ): ClientCall[] {
   const leads = leadsTo(reach, writeFrame, write);
   const out: ClientCall[] = [];
-  const seen = new Set<ts.CallExpression>();
+  const seen = new Set<TS.CallExpression>();
   const whole = new Set<FunctionLike>();
   const pending: FunctionLike[] = [];
-  const attribute = (fn: FunctionLike, call: ts.CallExpression): void => {
+  const attribute = (fn: FunctionLike, call: TS.CallExpression): void => {
     for (const e of reach.edges) {
       if (e.caller === fn && e.call === call && !whole.has(e.callee)) {
         whole.add(e.callee);

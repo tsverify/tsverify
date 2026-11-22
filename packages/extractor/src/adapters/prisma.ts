@@ -56,11 +56,12 @@
  * through helpers when the update's `where` does not use `X.id`.
  */
 import type { EntityDecl, FromState } from "@tsverify/ir";
-import { ts } from "ts-morph";
+import type * as TS from "@typescript/typescript6";
 import { sharedScope } from "../atomicity";
 import type { ClientCall, ClientCalls } from "../client-calls";
 import { symbolOf } from "../resolve";
 import { literalsOf } from "../type-facts";
+import { ts } from "../typescript";
 import { propertyNamed, unwrapArgument, type WriteNode } from "../writes";
 import { findRead } from "./assign";
 import type { AdapterInput, AtomicityNote, PersistenceAdapter, PersistenceFacts } from "./types";
@@ -69,7 +70,7 @@ const TRANSACTION = "$transaction";
 const SERIALIZABLE = "Serializable";
 const LOGICAL = new Set(["AND", "OR", "NOT"]);
 
-function strip(e: ts.Expression): ts.Expression {
+function strip(e: TS.Expression): TS.Expression {
   let cur = e;
   while (
     ts.isParenthesizedExpression(cur) ||
@@ -83,17 +84,17 @@ function strip(e: ts.Expression): ts.Expression {
   return cur;
 }
 
-function objectArg(call: ts.CallExpression, index: number): ts.ObjectLiteralExpression | undefined {
+function objectArg(call: TS.CallExpression, index: number): TS.ObjectLiteralExpression | undefined {
   const a = call.arguments[index];
   if (!a) return undefined;
-  const e = strip(unwrapArgument(a) as ts.Expression);
+  const e = strip(unwrapArgument(a) as TS.Expression);
   return ts.isObjectLiteralExpression(e) ? e : undefined;
 }
 
 function objectProp(
-  o: ts.ObjectLiteralExpression | undefined,
+  o: TS.ObjectLiteralExpression | undefined,
   name: string,
-): ts.ObjectLiteralExpression | undefined {
+): TS.ObjectLiteralExpression | undefined {
   const p = o && propertyNamed(o, name);
   if (!p || !ts.isPropertyAssignment(p)) return undefined;
   const e = strip(p.initializer);
@@ -102,9 +103,9 @@ function objectProp(
 
 /** The value of a property; for `{ id }`, the declaration name of what `id` refers to. */
 function propertyValue(
-  p: ts.PropertyAssignment | ts.ShorthandPropertyAssignment,
-  checker: ts.TypeChecker,
-): ts.Expression | undefined {
+  p: TS.PropertyAssignment | TS.ShorthandPropertyAssignment,
+  checker: TS.TypeChecker,
+): TS.Expression | undefined {
   if (ts.isPropertyAssignment(p)) return p.initializer;
   const decl = checker.getShorthandAssignmentValueSymbol(p)?.valueDeclaration;
   if (
@@ -121,14 +122,14 @@ function propertyValue(
 
 type Condition = { values: string[] } | { reason: string };
 
-function literalValues(e: ts.Expression, checker: ts.TypeChecker): string[] | undefined {
+function literalValues(e: TS.Expression, checker: TS.TypeChecker): string[] | undefined {
   const s = strip(e);
   if (ts.isStringLiteral(s) || ts.isNoSubstitutionTemplateLiteral(s)) return [s.text];
   const lits = literalsOf(checker.getTypeAtLocation(s), checker);
   return lits === "*" ? undefined : [...lits];
 }
 
-function listValues(e: ts.Expression, checker: ts.TypeChecker): string[] | undefined {
+function listValues(e: TS.Expression, checker: TS.TypeChecker): string[] | undefined {
   const s = strip(e);
   if (ts.isArrayLiteralExpression(s)) {
     const out: string[] = [];
@@ -147,9 +148,9 @@ function listValues(e: ts.Expression, checker: ts.TypeChecker): string[] | undef
   return lits === "*" ? undefined : [...lits];
 }
 
-function mentions(node: ts.Node, field: string): boolean {
+function mentions(node: TS.Node, field: string): boolean {
   let found = false;
-  const visit = (n: ts.Node): void => {
+  const visit = (n: TS.Node): void => {
     if (found) return;
     if (
       (ts.isPropertyAssignment(n) || ts.isShorthandPropertyAssignment(n)) &&
@@ -168,10 +169,10 @@ function mentions(node: ts.Node, field: string): boolean {
 
 /** The from-states a `where` admits through its state-field condition; undefined: no condition. */
 function statusCondition(
-  where: ts.ObjectLiteralExpression | undefined,
+  where: TS.ObjectLiteralExpression | undefined,
   field: string,
   entity: EntityDecl,
-  checker: ts.TypeChecker,
+  checker: TS.TypeChecker,
 ): Condition | undefined {
   if (!where) return undefined;
   const prop = propertyNamed(where, field);
@@ -223,11 +224,11 @@ function statusCondition(
 // --- $transaction -------------------------------------------------------------------------
 
 /** The `isolationLevel` an interactive `$transaction(fn, options)` call passes, if readable. */
-function isolationLevel(call: ts.CallExpression, checker: ts.TypeChecker): string | undefined {
+function isolationLevel(call: TS.CallExpression, checker: TS.TypeChecker): string | undefined {
   const options = call.arguments[1];
   if (!options) return undefined;
   const o = strip(options);
-  let value: ts.Expression | undefined;
+  let value: TS.Expression | undefined;
   if (ts.isObjectLiteralExpression(o)) {
     const p = propertyNamed(o, "isolationLevel");
     value = p && propertyValue(p, checker);
@@ -246,8 +247,8 @@ function isolationLevel(call: ts.CallExpression, checker: ts.TypeChecker): strin
 }
 
 /** The array-form `$transaction([…])` call an update call is an element of. */
-function arrayTransaction(call: ts.CallExpression, calls: ClientCalls): ClientCall | undefined {
-  let n: ts.Node = call;
+function arrayTransaction(call: TS.CallExpression, calls: ClientCalls): ClientCall | undefined {
+  let n: TS.Node = call;
   while (ts.isParenthesizedExpression(n.parent) || ts.isAwaitExpression(n.parent)) n = n.parent;
   const array = n.parent;
   if (!array || !ts.isArrayLiteralExpression(array)) return undefined;
@@ -255,7 +256,7 @@ function arrayTransaction(call: ts.CallExpression, calls: ClientCalls): ClientCa
   if (
     !outer ||
     !ts.isCallExpression(outer) ||
-    unwrapArgument(outer.arguments[0] as ts.Node) !== array
+    unwrapArgument(outer.arguments[0] as TS.Node) !== array
   ) {
     return undefined;
   }
@@ -266,27 +267,27 @@ function arrayTransaction(call: ts.CallExpression, calls: ClientCalls): ClientCa
 // --- the adapter ----------------------------------------------------------------------------
 
 function storageKey(
-  where: ts.ObjectLiteralExpression | undefined,
+  where: TS.ObjectLiteralExpression | undefined,
   field: string,
-  checker: ts.TypeChecker,
-): { key: string; value: ts.Expression } | undefined {
+  checker: TS.TypeChecker,
+): { key: string; value: TS.Expression } | undefined {
   if (!where) return undefined;
   const plain = where.properties.filter(
-    (p): p is ts.PropertyAssignment | ts.ShorthandPropertyAssignment =>
+    (p): p is TS.PropertyAssignment | TS.ShorthandPropertyAssignment =>
       (ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p)) &&
       ts.isIdentifier(p.name) &&
       p.name.text !== field &&
       !LOGICAL.has(p.name.text) &&
       !(ts.isPropertyAssignment(p) && ts.isObjectLiteralExpression(strip(p.initializer))),
   );
-  const chosen = plain.find((p) => (p.name as ts.Identifier).text === "id") ?? plain[0];
+  const chosen = plain.find((p) => (p.name as TS.Identifier).text === "id") ?? plain[0];
   const value = chosen && propertyValue(chosen, checker);
-  return chosen && value ? { key: (chosen.name as ts.Identifier).text, value } : undefined;
+  return chosen && value ? { key: (chosen.name as TS.Identifier).text, value } : undefined;
 }
 
 function analyze(input: AdapterInput): PersistenceFacts {
   const { write, calls, checker, entity } = input;
-  const call = write.call as ts.CallExpression;
+  const call = write.call as TS.CallExpression;
   const commit = calls.classify(call) as ClientCall;
   const [model = "", method = ""] = commit.path.split(".");
   const args = objectArg(call, 0);

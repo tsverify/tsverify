@@ -24,17 +24,18 @@
  * Storage: the read's client, its path minus the method (`orders.get` → `orders`), and key `id`
  * when the entity type has an `id` property.
  */
-import { ts } from "ts-morph";
+import type * as TS from "@typescript/typescript6";
 import { sharedScope } from "../atomicity";
 import { MAX_DEPTH } from "../callgraph";
 import { type FunctionLike, isFunctionLike } from "../cfg";
 import type { ClientCall, ScopeRef } from "../client-calls";
 import { symbolOf } from "../resolve";
 import { declaredTypeOfRef } from "../type-facts";
+import { ts } from "../typescript";
 import { parentSkippingWrappers, referenceText, unwrapArgument } from "../writes";
 import type { AdapterInput, PersistenceAdapter, PersistenceFacts } from "./types";
 
-function strip(e: ts.Expression): ts.Expression {
+function strip(e: TS.Expression): TS.Expression {
   let cur = e;
   while (
     ts.isParenthesizedExpression(cur) ||
@@ -52,7 +53,7 @@ function scopeKind(path: string, argIndex: number): ScopeRef["kind"] | undefined
   return path === "transaction" && argIndex === 0 ? "transaction" : undefined;
 }
 
-function contains(outer: ts.Node, inner: ts.Node): boolean {
+function contains(outer: TS.Node, inner: TS.Node): boolean {
   return (
     outer.getSourceFile() === inner.getSourceFile() &&
     inner.pos >= outer.pos &&
@@ -63,13 +64,13 @@ function contains(outer: ts.Node, inner: ts.Node): boolean {
 /** A helper being followed: `fn`, called at `call`, so its parameters are that call's arguments. */
 interface HelperFrame {
   fn: FunctionLike;
-  call: ts.CallExpression;
+  call: TS.CallExpression;
   outer?: HelperFrame;
 }
 
 /** The client a property chain is rooted at, plus the chain; helper parameters are substituted. */
 function chainRoot(
-  e: ts.Expression,
+  e: TS.Expression,
   helper: HelperFrame | undefined,
   input: AdapterInput,
 ): { client: string; scope?: ScopeRef; segments: string[] } | undefined {
@@ -90,11 +91,11 @@ function chainRoot(
 }
 
 /** Expressions `fn` returns (its expression body, or its `return`s outside nested functions). */
-function returnedExpressions(fn: FunctionLike): ts.Expression[] {
+function returnedExpressions(fn: FunctionLike): TS.Expression[] {
   if (!fn.body) return [];
   if (!ts.isBlock(fn.body)) return [fn.body];
-  const out: ts.Expression[] = [];
-  const visit = (n: ts.Node): void => {
+  const out: TS.Expression[] = [];
+  const visit = (n: TS.Node): void => {
     if (isFunctionLike(n) || ts.isClassLike(n)) return;
     if (ts.isReturnStatement(n) && n.expression) out.push(n.expression);
     ts.forEachChild(n, visit);
@@ -104,7 +105,7 @@ function returnedExpressions(fn: FunctionLike): ts.Expression[] {
 }
 
 /** A returned local variable of `fn`, replaced by its initializer. */
-function throughLocal(e: ts.Expression, fn: FunctionLike, checker: ts.TypeChecker): ts.Expression {
+function throughLocal(e: TS.Expression, fn: FunctionLike, checker: TS.TypeChecker): TS.Expression {
   if (!ts.isIdentifier(e)) return e;
   const decl = symbolOf(e, checker)?.valueDeclaration;
   if (decl && ts.isVariableDeclaration(decl) && decl.initializer && contains(fn, decl)) {
@@ -115,7 +116,7 @@ function throughLocal(e: ts.Expression, fn: FunctionLike, checker: ts.TypeChecke
 
 /** The client read `call` performs: itself, or the read a helper it calls returns. */
 function readThrough(
-  call: ts.CallExpression,
+  call: TS.CallExpression,
   helper: HelperFrame | undefined,
   depth: number,
   input: AdapterInput,
@@ -147,7 +148,7 @@ function readThrough(
 /** The client read the reference was initialized with, directly or through helpers. */
 export function findRead(
   input: AdapterInput,
-  refSym: ts.Symbol | undefined,
+  refSym: TS.Symbol | undefined,
 ): ClientCall | undefined {
   const decl = refSym?.valueDeclaration;
   if (!decl || !ts.isVariableDeclaration(decl) || !decl.initializer) return undefined;
@@ -158,7 +159,7 @@ export function findRead(
 
 function findCommit(
   input: AdapterInput,
-  refSym: ts.Symbol | undefined,
+  refSym: TS.Symbol | undefined,
   read: ClientCall | undefined,
 ): ClientCall | undefined {
   const { write, calls, checker } = input;
@@ -173,7 +174,7 @@ function findCommit(
     const cc = calls.classify(call);
     if (!cc || (read && cc.client !== read.client)) continue;
     const passesRef = call.arguments.some((a) => {
-      const arg = strip(unwrapArgument(a) as ts.Expression);
+      const arg = strip(unwrapArgument(a) as TS.Expression);
       return ts.isIdentifier(arg) && symbolOf(arg, checker) === refSym;
     });
     if (passesRef) return cc;

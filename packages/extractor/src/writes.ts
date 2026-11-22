@@ -20,7 +20,8 @@
  *
  * Whether a candidate belongs to a spec's entity is decided later, with types (`entity.ts`).
  */
-import { ts } from "ts-morph";
+import type * as TS from "@typescript/typescript6";
+import { ts } from "./typescript";
 
 export type WriteKind = "assign" | "spread" | "data";
 
@@ -40,15 +41,15 @@ export interface WriteNode {
   kind: WriteKind;
   field: string;
   /** The assignment, or the object literal. */
-  expr: ts.Expression;
+  expr: TS.Expression;
   /** The reported write site: the assignment, or the `field: v` property. */
-  site: ts.Node;
+  site: TS.Node;
   /** The entity reference: assignment target object, or the spread expression. */
-  ref: ts.Expression;
+  ref: TS.Expression;
   /** The written value expression (`undefined` for a shorthand property: its identifier). */
-  value: ts.Expression;
+  value: TS.Expression;
   /** `data` writes: the update call (`prisma.order.update(…)`). */
-  call?: ts.CallExpression;
+  call?: TS.CallExpression;
   /** `data` writes: whether `ref` is the probe's reference (else it is the update object). */
   probed?: boolean;
 }
@@ -69,20 +70,20 @@ export const FIND_METHODS: ReadonlySet<string> = new Set([
   "findFirstOrThrow",
 ]);
 
-function forEachDescendant(node: ts.Node, visit: (n: ts.Node) => void): void {
+function forEachDescendant(node: TS.Node, visit: (n: TS.Node) => void): void {
   ts.forEachChild(node, (c) => {
     visit(c);
     forEachDescendant(c, visit);
   });
 }
 
-function skipParens(n: ts.Node): ts.Node {
+function skipParens(n: TS.Node): TS.Node {
   let cur = n;
   while (ts.isParenthesizedExpression(cur)) cur = cur.expression;
   return cur;
 }
 
-function isCommaRight(p: ts.Node, child: ts.Node): boolean {
+function isCommaRight(p: TS.Node, child: TS.Node): boolean {
   return (
     ts.isBinaryExpression(p) &&
     p.operatorToken.kind === ts.SyntaxKind.CommaToken &&
@@ -91,7 +92,7 @@ function isCommaRight(p: ts.Node, child: ts.Node): boolean {
 }
 
 /** Parent, skipping parentheses and the `(probe, W)` comma a probe wraps `W` in. */
-export function parentSkippingWrappers(n: ts.Node): ts.Node {
+export function parentSkippingWrappers(n: TS.Node): TS.Node {
   let child = n;
   let p = n.parent;
   while (p && (ts.isParenthesizedExpression(p) || isCommaRight(p, child))) {
@@ -102,7 +103,7 @@ export function parentSkippingWrappers(n: ts.Node): ts.Node {
 }
 
 /** Strips parentheses and `(probe, W)` commas from an argument. */
-export function unwrapArgument(a: ts.Node): ts.Node {
+export function unwrapArgument(a: TS.Node): TS.Node {
   let cur = a;
   for (;;) {
     if (ts.isParenthesizedExpression(cur)) cur = cur.expression;
@@ -113,7 +114,7 @@ export function unwrapArgument(a: ts.Node): ts.Node {
 }
 
 /** `a`, `this`, `a.b.c` → canonical text; anything else (calls, element access, `?.`) → undefined. */
-export function referenceText(expr: ts.Expression): string | undefined {
+export function referenceText(expr: TS.Expression): string | undefined {
   const e = skipParens(expr);
   if (ts.isIdentifier(e)) return e.text;
   if (e.kind === ts.SyntaxKind.ThisKeyword) return "this";
@@ -124,7 +125,7 @@ export function referenceText(expr: ts.Expression): string | undefined {
   return undefined;
 }
 
-function propertyName(p: ts.ObjectLiteralElementLike): string | undefined {
+function propertyName(p: TS.ObjectLiteralElementLike): string | undefined {
   if (!ts.isPropertyAssignment(p) && !ts.isShorthandPropertyAssignment(p)) return undefined;
   const name = p.name;
   if (ts.isIdentifier(name) || ts.isStringLiteral(name)) return name.text;
@@ -132,16 +133,16 @@ function propertyName(p: ts.ObjectLiteralElementLike): string | undefined {
 }
 
 /** `this.<field> = v` directly in a constructor body initializes a new object: not a transition. */
-function isConstructorInit(target: ts.PropertyAccessExpression): boolean {
+function isConstructorInit(target: TS.PropertyAccessExpression): boolean {
   if (target.expression.kind !== ts.SyntaxKind.ThisKeyword) return false;
-  for (let p: ts.Node | undefined = target.parent; p; p = p.parent) {
+  for (let p: TS.Node | undefined = target.parent; p; p = p.parent) {
     if (ts.isConstructorDeclaration(p)) return true;
     if (ts.isFunctionLike(p) && !ts.isArrowFunction(p)) return false;
   }
   return false;
 }
 
-function stripValue(e: ts.Expression): ts.Expression {
+function stripValue(e: TS.Expression): TS.Expression {
   let cur = e;
   while (
     ts.isParenthesizedExpression(cur) ||
@@ -157,9 +158,9 @@ function stripValue(e: ts.Expression): ts.Expression {
 
 /** The property `name` of an object literal (a plain or shorthand property assignment). */
 export function propertyNamed(
-  o: ts.ObjectLiteralExpression,
+  o: TS.ObjectLiteralExpression,
   name: string,
-): ts.PropertyAssignment | ts.ShorthandPropertyAssignment | undefined {
+): TS.PropertyAssignment | TS.ShorthandPropertyAssignment | undefined {
   for (const p of o.properties) {
     if (!ts.isPropertyAssignment(p) && !ts.isShorthandPropertyAssignment(p)) continue;
     if (propertyName(p) === name) return p;
@@ -169,8 +170,8 @@ export function propertyNamed(
 
 /** `data`-write context of an object literal: the update call and its first argument. */
 function dataContext(
-  n: ts.ObjectLiteralExpression,
-): { call: ts.CallExpression; args: ts.ObjectLiteralExpression } | undefined {
+  n: TS.ObjectLiteralExpression,
+): { call: TS.CallExpression; args: TS.ObjectLiteralExpression } | undefined {
   const prop = parentSkippingWrappers(n);
   if (!prop || !ts.isPropertyAssignment(prop) || unwrapArgument(prop.initializer) !== n) {
     return undefined;
@@ -189,7 +190,7 @@ function dataContext(
 }
 
 /** The model segment of an ORM call: `order` in `prisma.order.update(…)`. */
-export function modelOf(call: ts.CallExpression): string | undefined {
+export function modelOf(call: TS.CallExpression): string | undefined {
   const callee = skipParens(call.expression);
   if (!ts.isPropertyAccessExpression(callee)) return undefined;
   const target = skipParens(callee.expression);
@@ -198,7 +199,7 @@ export function modelOf(call: ts.CallExpression): string | undefined {
 }
 
 /** `X` in `where: { id: X.id }` (any key whose value is `X.<same key>`). */
-function whereRef(args: ts.ObjectLiteralExpression): string | undefined {
+function whereRef(args: TS.ObjectLiteralExpression): string | undefined {
   const where = propertyNamed(args, "where");
   if (!where || !ts.isPropertyAssignment(where)) return undefined;
   const w = skipParens(where.initializer);
@@ -219,7 +220,7 @@ function whereRef(args: ts.ObjectLiteralExpression): string | undefined {
 }
 
 /** Whether `init` is `await <chain>.<model>.find…(…)`. */
-function isFindOn(init: ts.Expression, model: string): boolean {
+function isFindOn(init: TS.Expression, model: string): boolean {
   const e = stripValue(init);
   if (!ts.isCallExpression(e)) return false;
   const callee = skipParens(e.expression);
@@ -231,14 +232,14 @@ function isFindOn(init: ts.Expression, model: string): boolean {
 }
 
 /** The closest `const X = await <chain>.<model>.find…(…)` before `call` in an enclosing block. */
-function precedingFind(call: ts.CallExpression, model: string): string | undefined {
-  let child: ts.Node = call;
-  for (let p: ts.Node | undefined = call.parent; p; child = p, p = p.parent) {
+function precedingFind(call: TS.CallExpression, model: string): string | undefined {
+  let child: TS.Node = call;
+  for (let p: TS.Node | undefined = call.parent; p; child = p, p = p.parent) {
     if (!ts.isBlock(p) && !ts.isSourceFile(p) && !ts.isCaseClause(p) && !ts.isDefaultClause(p)) {
       continue;
     }
-    const statements: readonly ts.Statement[] = p.statements;
-    for (let i = statements.indexOf(child as ts.Statement) - 1; i >= 0; i--) {
+    const statements: readonly TS.Statement[] = p.statements;
+    for (let i = statements.indexOf(child as TS.Statement) - 1; i >= 0; i--) {
       const st = statements[i];
       if (!st || !ts.isVariableStatement(st)) continue;
       for (const d of st.declarationList.declarations) {
@@ -252,8 +253,8 @@ function precedingFind(call: ts.CallExpression, model: string): string | undefin
 }
 
 /** Phase 1: the entity reference a `data` write's probe reads (see the module comment). */
-function dataRefText(call: ts.CallExpression): string | undefined {
-  const args = unwrapArgument(call.arguments[0] as ts.Node);
+function dataRefText(call: TS.CallExpression): string | undefined {
+  const args = unwrapArgument(call.arguments[0] as TS.Node);
   if (!ts.isObjectLiteralExpression(args)) return undefined;
   const model = modelOf(call);
   return whereRef(args) ?? (model === undefined ? undefined : precedingFind(call, model));
@@ -261,7 +262,7 @@ function dataRefText(call: ts.CallExpression): string | undefined {
 
 /** A `data` write: the update object of an ORM update call that sets one of `fields`. */
 function matchDataWrite(
-  n: ts.ObjectLiteralExpression,
+  n: TS.ObjectLiteralExpression,
   fields: ReadonlySet<string>,
 ): WriteNode | undefined {
   const context = dataContext(n);
@@ -270,7 +271,7 @@ function matchDataWrite(
     if (!ts.isPropertyAssignment(p) && !ts.isShorthandPropertyAssignment(p)) continue;
     const name = propertyName(p);
     if (name === undefined || !fields.has(name)) continue;
-    let value: ts.Expression = ts.isPropertyAssignment(p) ? p.initializer : p.name;
+    let value: TS.Expression = ts.isPropertyAssignment(p) ? p.initializer : p.name;
     const inner = skipParens(value);
     if (ts.isObjectLiteralExpression(inner)) {
       const set = propertyNamed(inner, "set");
@@ -300,7 +301,7 @@ function matchDataWrite(
 }
 
 /** Matches one node; shared by both phases so they find identical writes in identical order. */
-function matchWrite(n: ts.Node, fields: ReadonlySet<string>): WriteNode | undefined {
+function matchWrite(n: TS.Node, fields: ReadonlySet<string>): WriteNode | undefined {
   if (
     ts.isBinaryExpression(n) &&
     n.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
@@ -323,7 +324,7 @@ function matchWrite(n: ts.Node, fields: ReadonlySet<string>): WriteNode | undefi
     if (parent && ts.isPropertyAssignment(parent)) return matchDataWrite(n, fields);
     if (!parent || !(ts.isCallExpression(parent) || ts.isNewExpression(parent))) return undefined;
     if (!parent.arguments?.some((a) => unwrapArgument(a) === n)) return undefined;
-    let spread: ts.SpreadAssignment | undefined;
+    let spread: TS.SpreadAssignment | undefined;
     for (const p of n.properties) {
       if (ts.isSpreadAssignment(p)) {
         spread = p;
@@ -333,14 +334,14 @@ function matchWrite(n: ts.Node, fields: ReadonlySet<string>): WriteNode | undefi
       if (name === undefined || !fields.has(name) || !spread) continue;
       const value = ts.isPropertyAssignment(p)
         ? p.initializer
-        : (p as ts.ShorthandPropertyAssignment).name;
+        : (p as TS.ShorthandPropertyAssignment).name;
       return { kind: "spread", field: name, expr: n, site: p, ref: spread.expression, value };
     }
   }
   return undefined;
 }
 
-function findWrites(sf: ts.SourceFile, fields: ReadonlySet<string>): WriteNode[] {
+function findWrites(sf: TS.SourceFile, fields: ReadonlySet<string>): WriteNode[] {
   const out: WriteNode[] = [];
   forEachDescendant(sf, (n) => {
     const w = matchWrite(n, fields);
@@ -351,7 +352,7 @@ function findWrites(sf: ts.SourceFile, fields: ReadonlySet<string>): WriteNode[]
 
 /** Phase 1, syntax only: candidate writes of any of `fields` in the original files. */
 export function findCandidateWrites(
-  files: readonly ts.SourceFile[],
+  files: readonly TS.SourceFile[],
   fields: ReadonlySet<string>,
 ): CandidateWrite[] {
   const out: CandidateWrite[] = [];
@@ -377,7 +378,7 @@ export function findCandidateWrites(
 export function rebindWrites(
   candidates: readonly CandidateWrite[],
   fields: ReadonlySet<string>,
-  sourceFile: (file: string) => ts.SourceFile | undefined,
+  sourceFile: (file: string) => TS.SourceFile | undefined,
   toOriginal: (file: string, offset: number) => number,
 ): WriteNode[] {
   const perFile = new Map<string, WriteNode[]>();

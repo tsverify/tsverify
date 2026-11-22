@@ -1,12 +1,13 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import { loadTypeScript } from "../src/index";
 import { FIXTURES } from "./helpers";
 
+const SRC = fileURLToPath(new URL("../src/", import.meta.url));
 const require = createRequire(import.meta.url);
 /** Real package directories, linked into temp projects. */
 const TS59 = dirname(require.resolve("typescript59/package.json"));
@@ -107,5 +108,18 @@ describe("loadTypeScript", () => {
     expect(loaded).toEqual({
       error: `${HEADLINE} No TypeScript is installed for ${root}: add \`@typescript/typescript6\` as a devDependency (\`npm i -D @typescript/typescript6\`), or \`typescript\` 5.4–6.x.`,
     });
+  });
+});
+
+describe("extractor sources", () => {
+  it("import TypeScript for types only: the module comes from loadTypeScript", async () => {
+    const files = (await readdir(SRC, { recursive: true })).filter((f) => f.endsWith(".ts"));
+    const offending: string[] = [];
+    for (const file of files) {
+      const text = await readFile(join(SRC, file), "utf8");
+      const value = /^import (?!type )[^;]*from "(typescript|@typescript\/[^"]+|ts-morph)";/m;
+      if (value.test(text)) offending.push(file);
+    }
+    expect(offending).toEqual([]);
   });
 });
