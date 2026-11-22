@@ -92,6 +92,7 @@ describe("planFromTrace (b6-refund-race)", () => {
       property: "rule:Refund issued at most once per order",
       startIndex: 3,
       seedStatus: "paid",
+      seedEffects: { "email.send": 1, "stripe.refunds.create": 0 }, // the receipt was sent in the prefix
       skipped: [
         { index: 1, worker: "checkout#1", transition: "checkout", kind: "atomic" },
         {
@@ -120,7 +121,12 @@ describe("planFromTrace (b6-refund-race)", () => {
 
   test("without fast-forward the whole trace is replayed (atomic actions: read then commit)", () => {
     const plan = planFromTrace(refundRaceTrace, mapping, { fastForward: false });
-    expect(plan).toMatchObject({ startIndex: 1, seedStatus: "draft", skipped: [] });
+    expect(plan).toMatchObject({
+      startIndex: 1,
+      seedStatus: "draft",
+      seedEffects: { "email.send": 0, "stripe.refunds.create": 0 },
+      skipped: [],
+    });
     expect(plan.schedule.slice(0, 4)).toEqual([
       ["checkout#1", "db.orders.get"],
       ["checkout#1", "db.orders.save"],

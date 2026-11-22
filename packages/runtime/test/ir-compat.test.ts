@@ -30,6 +30,15 @@ describe("ir types are assignable to the runtime's structural inputs", () => {
     expectTypeOf(input).not.toBeAny();
   });
 
+  test("the golden JSON files, imported as modules, fit without a cast (what generated tests do)", () => {
+    type TraceJson = typeof import("../../checker/test/__golden__/b6-refund-race.trace.json");
+    type CodeJson = typeof import("../../extractor/test/__golden__/orders-app.code.json");
+    expectTypeOf<TraceJson>().toExtend<TraceInput>();
+    expectTypeOf<CodeJson>().toExtend<CodeModelInput>();
+    expectTypeOf<TraceJson>().not.toBeAny();
+    expectTypeOf<CodeJson>().not.toBeAny();
+  });
+
   test("the structural inputs are not trivially wide", () => {
     expectTypeOf<{ property: string }>().not.toExtend<TraceInput>();
     expectTypeOf<{ effects: [] }>().toExtend<CodeSitesInput>();

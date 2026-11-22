@@ -11,13 +11,17 @@ import { UNTIL_DONE } from "./scheduler";
 /** `ir.TraceActionKind`. */
 export type ModelActionKind = "atomic" | "read" | "write";
 
-/** The subset of `ir.TraceStep` the planner reads. */
+/**
+ * The subset of `ir.TraceStep` the planner reads. `kind` is a `ModelActionKind`, typed `string`
+ * so that a trace imported from JSON (where TypeScript widens literals) is accepted as is; an
+ * unknown kind fails with the "no code mapping" error.
+ */
 export interface TraceStepInput {
   index: number;
   action?: {
     worker: string;
     transition: string;
-    kind: ModelActionKind;
+    kind: string;
     duplicate?: boolean;
   };
   state: {
@@ -68,8 +72,13 @@ export interface ReplayPlan {
   startIndex: number;
   /** Entity status to seed: the model state just before `startIndex`. */
   seedStatus: string;
+  /**
+   * Effect counts the fast-forwarded prefix already produced, keyed by effect gate label. A rule
+   * such as `count(effect stripe.refund) <= 1` is evaluated as seed count + calls in the replay.
+   */
+  seedEffects: Record<string, number>;
   /** The fast-forwarded actions, for the report. */
-  skipped: { index: number; worker: string; transition: string; kind: ModelActionKind }[];
+  skipped: { index: number; worker: string; transition: string; kind: string }[];
   /** Workers to spawn, in order of first appearance. */
   workers: PlannedWorker[];
   schedule: Step[];
@@ -80,6 +89,12 @@ export interface ReplayPlan {
    * sorted by label.
    */
   expectedEffects: Record<string, number>;
+}
+
+const ACTION_KINDS: ReadonlySet<string> = new Set<ModelActionKind>(["atomic", "read", "write"]);
+
+function isActionKind(kind: string): kind is ModelActionKind {
+  return ACTION_KINDS.has(kind);
 }
 
 /** Turns a counterexample into a schedule. Throws (with the fix) when it cannot. */
@@ -129,7 +144,7 @@ export function planFromTrace(
   for (const step of trace.steps.slice(startIndex)) {
     const a = step.action;
     if (!a) continue;
-    const gates = mapping.transitions[a.transition]?.[a.kind];
+    const gates = isActionKind(a.kind) ? mapping.transitions[a.transition]?.[a.kind] : undefined;
     if (!gates) {
       throw new Error(
         `trace step ${step.index} (${a.worker}: ${a.transition}.${a.kind}) has no code mapping; ` +
@@ -153,22 +168,23 @@ export function planFromTrace(
     origins.push(-1);
   }
 
-  const expectedEffects: Record<string, number> = {};
-  const deltas = Object.entries(last.effects).map(
-    ([effect, count]) =>
-      [mapping.effects[effect] ?? effect, count - (before.effects[effect] ?? 0)] as const,
-  );
-  deltas.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  for (const [label, delta] of deltas) expectedEffects[label] = delta;
+  const byLabel = (count: (effect: string, n: number) => number): Record<string, number> => {
+    const entries = Object.entries(last.effects).map(
+      ([effect, n]) => [mapping.effects[effect] ?? effect, count(effect, n)] as const,
+    );
+    entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return Object.fromEntries(entries);
+  };
 
   return {
     property: trace.property,
     startIndex,
     seedStatus: before.status,
+    seedEffects: byLabel((effect) => before.effects[effect] ?? 0),
     skipped,
     workers,
     schedule,
     origins,
-    expectedEffects,
+    expectedEffects: byLabel((effect, n) => n - (before.effects[effect] ?? 0)),
   };
 }

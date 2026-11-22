@@ -68,9 +68,12 @@ async function replay(refundOrder: RefundOrder, actor: Actor = admin) {
   for (const w of plan.workers) s.spawn(w.id, () => refundOrder({ actor }, "o1"));
   const outcome = await s.tryPlay(plan.schedule);
   await s.drain();
-  // The violated property, in code terms: "Refund issued at most once per order".
+  // The violated property in code terms, "count(effect stripe.refund) <= 1": the prefix's count
+  // (plan.seedEffects) plus the calls made during the replay.
+  const label = "stripe.refunds.create";
   const refunds = stripe.calls("refunds.create").length;
-  const { divergence, ...result } = replayResult(outcome, refunds > 1);
+  const violated = !((plan.seedEffects[label] ?? 0) + refunds <= 1);
+  const { divergence, ...result } = replayResult(outcome, violated);
   return {
     ...result,
     divergence: divergence && { kind: divergence.kind, stepIndex: divergence.stepIndex },
