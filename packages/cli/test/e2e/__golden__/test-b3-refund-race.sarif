@@ -1,0 +1,322 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "tsv",
+          "version": "0.0.0",
+          "rules": [
+            {
+              "id": "invalid-spec",
+              "name": "InvalidSpec",
+              "shortDescription": {
+                "text": "The behavior file does not parse or validate."
+              }
+            },
+            {
+              "id": "broken-link",
+              "name": "BrokenLink",
+              "shortDescription": {
+                "text": "An impl, client or guard binding in the spec does not resolve to code."
+              }
+            },
+            {
+              "id": "spec-property",
+              "name": "SpecProperty",
+              "shortDescription": {
+                "text": "The behavior spec itself violates a property: model checking found a counterexample."
+              }
+            },
+            {
+              "id": "implementation-property",
+              "name": "ImplementationProperty",
+              "shortDescription": {
+                "text": "The code, as extracted, violates a property of its spec: model checking the code model found a counterexample."
+              }
+            },
+            {
+              "id": "undeclared-transition",
+              "name": "UndeclaredTransition",
+              "shortDescription": {
+                "text": "The code changes the state in a way the spec does not declare."
+              }
+            },
+            {
+              "id": "missing-transition",
+              "name": "MissingTransition",
+              "shortDescription": {
+                "text": "A spec transition's impl never writes the transition's target state."
+              }
+            },
+            {
+              "id": "from-state-mismatch",
+              "name": "FromStateMismatch",
+              "shortDescription": {
+                "text": "The code allows a transition from other states than the spec does."
+              }
+            },
+            {
+              "id": "from-state-unconstrained",
+              "name": "FromStateUnconstrained",
+              "shortDescription": {
+                "text": "The code writes the state without checking the current state."
+              }
+            },
+            {
+              "id": "guard-not-dominating",
+              "name": "GuardNotDominating",
+              "shortDescription": {
+                "text": "A guard the spec requires does not run on every path to the state write."
+              }
+            },
+            {
+              "id": "undeclared-effect",
+              "name": "UndeclaredEffect",
+              "shortDescription": {
+                "text": "The code performs an effect the transition does not declare."
+              }
+            },
+            {
+              "id": "missing-effect",
+              "name": "MissingEffect",
+              "shortDescription": {
+                "text": "An effect the transition declares is never performed by the code."
+              }
+            },
+            {
+              "id": "non-atomic",
+              "name": "NonAtomic",
+              "shortDescription": {
+                "text": "The spec says atomic, but the code's state check and write are not one atomic step."
+              }
+            },
+            {
+              "id": "generated-test-failed",
+              "name": "GeneratedTestFailed",
+              "shortDescription": {
+                "text": "A test generated from the spec failed against the code."
+              }
+            },
+            {
+              "id": "replay-confirmed",
+              "name": "ReplayConfirmed",
+              "shortDescription": {
+                "text": "Replaying a counterexample against the real code reproduced the violation."
+              }
+            },
+            {
+              "id": "replay-disagrees",
+              "name": "ReplayDisagrees",
+              "shortDescription": {
+                "text": "Replaying a counterexample against the real code did not reproduce it."
+              }
+            },
+            {
+              "id": "unanalyzable",
+              "name": "Unanalyzable",
+              "shortDescription": {
+                "text": "tsv could not analyze this part of the code or spec."
+              }
+            },
+            {
+              "id": "not-generated",
+              "name": "NotGenerated",
+              "shortDescription": {
+                "text": "tsv test could not generate a test for this transition or actor."
+              }
+            }
+          ]
+        }
+      },
+      "originalUriBaseIds": {
+        "%SRCROOT%": {
+          "uri": "file://<root>/"
+        }
+      },
+      "columnKind": "utf16CodeUnits",
+      "results": [
+        {
+          "ruleId": "not-generated",
+          "ruleIndex": 16,
+          "level": "note",
+          "message": {
+            "text": "tsv test generated no guard tests for `expire`: expireOrder takes no actor, so the actors not allowed to perform it (customer, admin) cannot be passed in"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/orders/order.behavior.yaml",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 37,
+                  "startColumn": 3,
+                  "endLine": 43,
+                  "endColumn": 48
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "tsvFindingId/v1": "not-generated:Order lifecycle:testgen:guards:expire"
+          },
+          "properties": {
+            "behavior": "Order lifecycle",
+            "transition": "expire"
+          }
+        },
+        {
+          "ruleId": "not-generated",
+          "ruleIndex": 16,
+          "level": "note",
+          "message": {
+            "text": "tsv test generated no guard tests for `payment_succeeded`: onPaymentSucceeded takes no actor, so the actors not allowed to perform it (customer, admin) cannot be passed in"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/orders/order.behavior.yaml",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 27,
+                  "startColumn": 3,
+                  "endLine": 35,
+                  "endColumn": 53
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "tsvFindingId/v1": "not-generated:Order lifecycle:testgen:guards:payment_succeeded"
+          },
+          "properties": {
+            "behavior": "Order lifecycle",
+            "transition": "payment_succeeded"
+          }
+        },
+        {
+          "ruleId": "replay-confirmed",
+          "ruleIndex": 13,
+          "level": "error",
+          "message": {
+            "text": "Replay confirmed in the real code: Rule \"Refund issued at most once per order\" (always: count(effect stripe.refund) <= 1) is violated: a reachable state breaks it. Observed: final state refunded; email.send ×1, stripe.refunds.create ×2.\nHint: The replay test is kept in .tsv/generated/order-lifecycle/replay-1.test.ts; it fails until the code is fixed."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/orders/order.behavior.yaml",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 62,
+                  "startColumn": 5,
+                  "endLine": 63,
+                  "endColumn": 45
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "tsvFindingId/v1": "replay-confirmed:Order lifecycle:rule:Refund issued at most once per order:code-model"
+          },
+          "properties": {
+            "behavior": "Order lifecycle",
+            "property": "rule:Refund issued at most once per order",
+            "causedBy": [
+              "implementation-property:Order lifecycle:rule:Refund issued at most once per order"
+            ],
+            "trace": {
+              "model": "code",
+              "property": "rule:Refund issued at most once per order",
+              "kind": "invariant",
+              "steps": [
+                "step 0  status=draft",
+                "step 1  checkout#1 atomic → proceed  status=pending_payment",
+                "step 2  payment_succeeded#1 atomic → proceed  status=paid  email.receipt=1",
+                "step 3  refund#1 read → proceed  status=paid",
+                "step 4  refund#2 read → proceed  status=paid",
+                "step 5  refund#1 write  status=refunded  stripe.refund=1",
+                "step 6  refund#2 write  status=refunded  stripe.refund=2  ✗ rule:Refund issued at most once per order"
+              ]
+            }
+          }
+        },
+        {
+          "ruleId": "replay-confirmed",
+          "ruleIndex": 13,
+          "level": "error",
+          "message": {
+            "text": "Replay confirmed in the real code: Exactly-once effect `stripe.refund` fires 2 times for one Order. Observed: final state refunded; email.send ×1, stripe.refunds.create ×2.\nHint: The replay test is kept in .tsv/generated/order-lifecycle/replay-2.test.ts; it fails until the code is fixed."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/orders/refund.ts",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 13,
+                  "startColumn": 24,
+                  "endLine": 13,
+                  "endColumn": 73
+                }
+              }
+            }
+          ],
+          "relatedLocations": [
+            {
+              "id": 1,
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/orders/order.behavior.yaml",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 52,
+                  "startColumn": 3,
+                  "endLine": 59,
+                  "endColumn": 43
+                }
+              },
+              "message": {
+                "text": "Behavior spec"
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "tsvFindingId/v1": "replay-confirmed:Order lifecycle:effect-multiplicity:stripe.refund:code-model"
+          },
+          "properties": {
+            "behavior": "Order lifecycle",
+            "transition": "refund",
+            "property": "effect-multiplicity",
+            "causedBy": [
+              "implementation-property:Order lifecycle:effect-multiplicity:stripe.refund"
+            ],
+            "trace": {
+              "model": "code",
+              "property": "effect-multiplicity",
+              "kind": "invariant",
+              "steps": [
+                "step 0  status=draft",
+                "step 1  checkout#1 atomic → proceed  status=pending_payment",
+                "step 2  payment_succeeded#1 atomic → proceed  status=paid  email.receipt=1",
+                "step 3  refund#1 read → proceed  status=paid",
+                "step 4  refund#2 read → proceed  status=paid",
+                "step 5  refund#1 write  status=refunded  stripe.refund=1",
+                "step 6  refund#2 write  status=refunded  stripe.refund=2  ✗ effect-multiplicity"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

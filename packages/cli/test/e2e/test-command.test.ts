@@ -24,6 +24,8 @@ import type { Finding } from "@tsv/ir";
 import { describe, expect, it } from "vitest";
 import { materialize } from "../../../../examples/orders-app/test/materialize";
 import type { JsonReport } from "../../src/output/json";
+import type { SarifLog } from "../../src/output/sarif";
+import { SARIF_SUBSET, validate } from "../sarif-schema";
 
 const BIN = fileURLToPath(new URL("../../bin/tsv.js", import.meta.url));
 const GENERATED = ".tsv/generated/order-lifecycle";
@@ -127,6 +129,30 @@ describe("tsv test on examples/orders-app", { timeout: 60_000 }, () => {
     expect(confirmed.trace?.model).toBe("code");
     expect(run.files).toContain("replay-2.test.ts");
     expect(run.files).toContain("replay-2.json");
+  });
+
+  it("B3 refund race as SARIF: the confirmed replay, at the code, with its cause", async () => {
+    const run = await tsvTest("b3-refund-race", "sarif");
+    expect(run.stderr).toBe("");
+    expect(run.code).toBe(1);
+    // The absolute temp dir only appears as the %SRCROOT% base.
+    const stdout = run.stdout.replace(/"file:\/\/[^"]*\/"/, '"file://<root>/"');
+    const log = JSON.parse(stdout) as SarifLog;
+    expect(validate(log, SARIF_SUBSET)).toEqual([]);
+    const confirmed = log.runs[0].results.find(
+      (r) =>
+        r.partialFingerprints["tsvFindingId/v1"] ===
+        "replay-confirmed:Order lifecycle:effect-multiplicity:stripe.refund:code-model",
+    );
+    expect(confirmed).toMatchObject({
+      ruleId: "replay-confirmed",
+      level: "error",
+      properties: {
+        transition: "refund",
+        causedBy: ["implementation-property:Order lifecycle:effect-multiplicity:stripe.refund"],
+      },
+    });
+    await expect(stdout).toMatchFileSnapshot("__golden__/test-b3-refund-race.sarif");
   });
 
   it("B4 webhook redelivery: the replay confirms the second receipt", async () => {
