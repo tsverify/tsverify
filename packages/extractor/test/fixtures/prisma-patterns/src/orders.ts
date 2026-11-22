@@ -164,3 +164,10 @@ export async function refundHelperRead(orderId: string): Promise<void> {
   if (order.status !== "paid") throw new Error("not paid");
   await prisma.order.update({ where: { id: order.id }, data: { status: "refunded" } });
 }
+
+/** findUnique, a membership guard, then an update whose `where` names the read. */
+export async function refundIncludes(orderId: string): Promise<void> {
+  const order = await prisma.order.findUnique({ where: { id: orderId } });
+  if (!order || !["paid", "shipped"].includes(order.status)) throw new Error("no");
+  await prisma.order.update({ where: { id: order.id }, data: { status: "refunded" } });
+}

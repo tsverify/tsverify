@@ -1,6 +1,13 @@
 import type { Bindings } from "@tsverify/ir";
 import { describe, expect, it } from "vitest";
-import { extractFixture, guardKeys, orderSpec, type TransitionSpec, transitionOf } from "./helpers";
+import {
+  expectOneUnanalyzablePerUnknownFrom,
+  extractFixture,
+  guardKeys,
+  orderSpec,
+  type TransitionSpec,
+  transitionOf,
+} from "./helpers";
 
 const STATES = ["cancelled", "draft", "paid", "pending_payment", "refunded", "shipped"];
 
@@ -54,6 +61,7 @@ const transitions: TransitionSpec[] = [
   at("payBlind", "paid", ["pending_payment"]),
   at("shipUpsert", "shipped"),
   at("refundHelperRead", "refunded"),
+  at("refundIncludes", "refunded"),
 ];
 
 describe("prisma adapter", () => {
@@ -114,6 +122,10 @@ describe("prisma adapter", () => {
       expect(t("refundEquals").to).toBe("refunded");
     });
 
+    it("reports each unknown from-state once, as the extractor's unanalyzable", () => {
+      expectOneUnanalyzablePerUnknownFrom(result);
+    });
+
     it("a status condition inside OR: atomic, from-state unknown", () => {
       const r = t("refundOr");
       expect(r.atomic).toBe(true);
@@ -130,6 +142,12 @@ describe("prisma adapter", () => {
   });
 
   describe("read, then update", () => {
+    it("a membership guard on the read narrows the update's from-state", () => {
+      const r = t("refundIncludes");
+      expect(r).toMatchObject({ atomic: false, from: ["paid", "shipped"] });
+      expect(r.sites?.fromState).toEqual({ values: ["paid", "shipped"], unconstrained: false });
+    });
+
     it("findUnique → check → update outside a transaction: not atomic, narrowed from-state", () => {
       const r = t("refundRace");
       expect(r.atomic).toBe(false);

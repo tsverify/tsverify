@@ -201,6 +201,11 @@
             "dominates": true
           }
         ],
+        "guardSets": [
+          [
+            "owner"
+          ]
+        ],
         "effects": [],
         "invocation": {
           "impl": {
@@ -301,6 +306,9 @@
           "gate": "prisma.order.updateMany"
         },
         "guards": [],
+        "guardSets": [
+          []
+        ],
         "effects": [],
         "invocation": {
           "impl": {
@@ -400,6 +408,9 @@
           "gate": "prisma.order.updateMany"
         },
         "guards": [],
+        "guardSets": [
+          []
+        ],
         "effects": [
           {
             "at": {
@@ -549,6 +560,11 @@
             "dominates": true
           }
         ],
+        "guardSets": [
+          [
+            "role(admin)"
+          ]
+        ],
         "effects": [
           {
             "at": {
@@ -696,6 +712,11 @@
             },
             "dominates": true
           }
+        ],
+        "guardSets": [
+          [
+            "role(admin)"
+          ]
         ],
         "effects": [],
         "invocation": {

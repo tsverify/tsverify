@@ -174,6 +174,243 @@ export function sameSet(a: LiteralSet, b: LiteralSet): boolean {
   return a.length === b.length && a.every((v, i) => v === b[i]);
 }
 
+// --- membership guards (X1 L9: TS does not narrow through `.includes` / `.has`) -----------
+
+/** Allowed field values (`undefined`: no information). */
+type Allowed = ReadonlySet<string> | undefined;
+
+function intersect(a: Allowed, b: Allowed): Allowed {
+  if (!a) return b;
+  if (!b) return a;
+  return new Set([...a].filter((v) => b.has(v)));
+}
+
+function union(a: Allowed, b: Allowed): Allowed {
+  return a && b ? new Set([...a, ...b]) : undefined;
+}
+
+function stripExpr(e: ts.Expression): ts.Expression {
+  let cur = e;
+  while (
+    ts.isParenthesizedExpression(cur) ||
+    ts.isAsExpression(cur) ||
+    ts.isSatisfiesExpression(cur) ||
+    ts.isNonNullExpression(cur) ||
+    ts.isTypeAssertionExpression(cur)
+  ) {
+    cur = cur.expression;
+  }
+  return cur;
+}
+
+/** `a`, `this`, `a.b`, also through `?.` and `!`: canonical text, else undefined. */
+function refText(e: ts.Expression): string | undefined {
+  const x = stripExpr(e);
+  if (ts.isIdentifier(x)) return x.text;
+  if (x.kind === ts.SyntaxKind.ThisKeyword) return "this";
+  if (ts.isPropertyAccessExpression(x) && ts.isIdentifier(x.name)) {
+    const inner = refText(x.expression);
+    return inner === undefined ? undefined : `${inner}.${x.name.text}`;
+  }
+  return undefined;
+}
+
+/** The `const` initializer an identifier stands for (through imports), if it has one. */
+function constInitializer(id: ts.Identifier, checker: ts.TypeChecker): ts.Expression | undefined {
+  let sym = checker.getSymbolAtLocation(id);
+  if (sym && sym.flags & ts.SymbolFlags.Alias) sym = checker.getAliasedSymbol(sym);
+  const decl = sym?.valueDeclaration;
+  if (!decl || !ts.isVariableDeclaration(decl) || !decl.initializer) return undefined;
+  const list = decl.parent;
+  if (!ts.isVariableDeclarationList(list) || !(list.flags & ts.NodeFlags.Const)) return undefined;
+  return decl.initializer;
+}
+
+/** The string literals of an array literal (all elements must be literals). */
+function arrayLiterals(
+  e: ts.Expression,
+  checker: ts.TypeChecker,
+  depth: number,
+): string[] | undefined {
+  const x = stripExpr(e);
+  if (ts.isIdentifier(x) && depth < 4) {
+    const init = constInitializer(x, checker);
+    return init && arrayLiterals(init, checker, depth + 1);
+  }
+  if (!ts.isArrayLiteralExpression(x)) return undefined;
+  const out: string[] = [];
+  for (const el of x.elements) {
+    if (!ts.isStringLiteral(el) && !ts.isNoSubstitutionTemplateLiteral(el)) return undefined;
+    out.push(el.text);
+  }
+  return out;
+}
+
+/** The literals of `new Set([...])` (or a `const` bound to one). */
+function setLiterals(
+  e: ts.Expression,
+  checker: ts.TypeChecker,
+  depth: number,
+): string[] | undefined {
+  const x = stripExpr(e);
+  if (ts.isIdentifier(x) && depth < 4) {
+    const init = constInitializer(x, checker);
+    return init && setLiterals(init, checker, depth + 1);
+  }
+  if (!ts.isNewExpression(x) || !ts.isIdentifier(x.expression) || x.expression.text !== "Set") {
+    return undefined;
+  }
+  const arg = x.arguments?.[0];
+  return x.arguments?.length === 1 && arg ? arrayLiterals(arg, checker, depth + 1) : undefined;
+}
+
+interface MembershipTarget {
+  /** Canonical text of the entity reference (`order`, `this`, `ctx.order`). */
+  ref: string;
+  field: string;
+  /** The field's finite domain, needed to read a negative test (`!L.includes(x)`); else undefined. */
+  domain: readonly string[] | undefined;
+  checker: ts.TypeChecker;
+}
+
+/**
+ * Values `cond` allows for the field when it evaluates to `holds`. Only membership tests decide
+ * anything (`L.includes(ref.field)` for a literal array `L`, `S.has(ref.field)` for a literal
+ * `Set`); `!`, `&&` and `||` combine them; any other operand gives no information.
+ */
+function allowedBy(cond: ts.Expression, holds: boolean, t: MembershipTarget): Allowed {
+  const e = stripExpr(cond);
+  if (ts.isPrefixUnaryExpression(e) && e.operator === ts.SyntaxKind.ExclamationToken) {
+    return allowedBy(e.operand, !holds, t);
+  }
+  if (ts.isBinaryExpression(e)) {
+    const op = e.operatorToken.kind;
+    const and = op === ts.SyntaxKind.AmpersandAmpersandToken;
+    if (and || op === ts.SyntaxKind.BarBarToken) {
+      const l = allowedBy(e.left, holds, t);
+      const r = allowedBy(e.right, holds, t);
+      // a && b holds / a || b fails: both sides do. Otherwise either side may.
+      return and === holds ? intersect(l, r) : union(l, r);
+    }
+    return undefined;
+  }
+  if (!ts.isCallExpression(e) || e.arguments.length !== 1) return undefined;
+  const callee = stripExpr(e.expression);
+  if (!ts.isPropertyAccessExpression(callee) || !ts.isIdentifier(callee.name)) return undefined;
+  const arg = stripExpr(e.arguments[0] as ts.Expression);
+  if (
+    !ts.isPropertyAccessExpression(arg) ||
+    !ts.isIdentifier(arg.name) ||
+    arg.name.text !== t.field ||
+    refText(arg.expression) !== t.ref
+  ) {
+    return undefined;
+  }
+  const method = callee.name.text;
+  const list =
+    method === "includes"
+      ? arrayLiterals(callee.expression, t.checker, 0)
+      : method === "has"
+        ? setLiterals(callee.expression, t.checker, 0)
+        : undefined;
+  if (!list) return undefined;
+  if (holds) return new Set(list);
+  return t.domain ? new Set(t.domain.filter((v) => !list.includes(v))) : undefined;
+}
+
+/** A statement after which the rest of its block does not run (`throw`, `return`, …). */
+function alwaysExits(st: ts.Statement): boolean {
+  if (
+    ts.isThrowStatement(st) ||
+    ts.isReturnStatement(st) ||
+    ts.isBreakStatement(st) ||
+    ts.isContinueStatement(st)
+  ) {
+    return true;
+  }
+  if (ts.isBlock(st)) return st.statements.some(alwaysExits);
+  if (ts.isIfStatement(st)) {
+    return (
+      st.elseStatement !== undefined &&
+      alwaysExits(st.thenStatement) &&
+      alwaysExits(st.elseStatement)
+    );
+  }
+  return false;
+}
+
+function blockStatements(n: ts.Node): readonly ts.Statement[] | undefined {
+  if (ts.isBlock(n) || ts.isSourceFile(n) || ts.isModuleBlock(n)) return n.statements;
+  if (ts.isCaseClause(n) || ts.isDefaultClause(n)) return n.statements;
+  return undefined;
+}
+
+/**
+ * The field values membership guards allow at `at`, read syntactically from the statements that
+ * enclose it in its function (TS's own narrowing ignores them):
+ * - `if (cond) { …at… } else { … }`: `cond` holds (or fails, in the `else` branch);
+ * - an earlier `if (cond) throw | return | continue | break;` in an enclosing block: `cond` fails
+ *   after it (and holds after `if (cond) { … } else return;`);
+ * - `cond && …at…` and `cond ? …at… : …`.
+ * Undefined when no membership guard applies.
+ */
+export function membershipAllowed(
+  at: ts.Node,
+  t: MembershipTarget,
+): ReadonlySet<string> | undefined {
+  let allowed: Allowed;
+  for (let node = at; node.parent && !ts.isFunctionLike(node); node = node.parent) {
+    const parent = node.parent;
+    if (ts.isIfStatement(parent) && node !== parent.expression) {
+      allowed = intersect(allowed, allowedBy(parent.expression, node === parent.thenStatement, t));
+    } else if (ts.isConditionalExpression(parent) && node !== parent.condition) {
+      allowed = intersect(allowed, allowedBy(parent.condition, node === parent.whenTrue, t));
+    } else if (
+      ts.isBinaryExpression(parent) &&
+      node === parent.right &&
+      parent.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
+    ) {
+      allowed = intersect(allowed, allowedBy(parent.left, true, t));
+    } else {
+      const statements = blockStatements(parent);
+      for (const st of statements ?? []) {
+        if (st === node) break;
+        if (!ts.isIfStatement(st)) continue;
+        const thenExits = alwaysExits(st.thenStatement);
+        const elseExits = st.elseStatement !== undefined && alwaysExits(st.elseStatement);
+        if (thenExits !== elseExits)
+          allowed = intersect(allowed, allowedBy(st.expression, elseExits, t));
+      }
+    }
+  }
+  return allowed;
+}
+
+/**
+ * `n` refined by the membership guards on the write's path (`membershipAllowed`): the narrowed
+ * values (or, for a `string` field, nothing yet) intersected with what the guards allow.
+ */
+export function withMembershipGuards(
+  n: Narrowed,
+  at: ts.Node,
+  ref: ts.Expression,
+  field: string,
+  checker: ts.TypeChecker,
+): Narrowed {
+  const text = refText(ref);
+  if (text === undefined) return n;
+  const base = n.values !== "*" ? n.values : n.declared !== "*" ? n.declared : undefined;
+  const allowed = membershipAllowed(at, { ref: text, field, domain: base, checker });
+  if (!allowed) return n;
+  const values = (base ? base.filter((v) => allowed.has(v)) : [...allowed]).sort();
+  return {
+    ...n,
+    values,
+    unconstrained: n.declared !== "*" && sameSet(values, n.declared),
+    typeText: values.length === 0 ? "never" : values.map((v) => JSON.stringify(v)).join(" | "),
+  };
+}
+
 // --- ts-morph implementation --------------------------------------------------------------
 
 interface Insertion {

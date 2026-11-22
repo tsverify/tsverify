@@ -79,16 +79,14 @@ function chainRoot(
     segments.unshift(cur.name.text);
     cur = strip(cur.expression);
   }
-  if (!ts.isIdentifier(cur)) return undefined;
-  const decl = helper && symbolOf(cur, input.checker)?.valueDeclaration;
+  const decl = helper && ts.isIdentifier(cur) && symbolOf(cur, input.checker)?.valueDeclaration;
   if (helper && decl && ts.isParameter(decl) && decl.parent === helper.fn) {
     const arg = helper.call.arguments[helper.fn.parameters.indexOf(decl)];
     if (!arg || ts.isSpreadElement(arg)) return undefined;
     const inner = chainRoot(arg, helper.outer, input);
     return inner && { ...inner, segments: [...inner.segments, ...segments] };
   }
-  const root = input.calls.rootOf(cur);
-  return root && { ...root, segments };
+  return input.calls.chainRoot(e);
 }
 
 /** Expressions `fn` returns (its expression body, or its `return`s outside nested functions). */

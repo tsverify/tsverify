@@ -1,6 +1,7 @@
+import { audit } from "../../_lib/clients";
 import { db } from "../../_lib/db";
 import { requireOwner, requireRole } from "../../_lib/guards";
-import type { Actor } from "../../_lib/order";
+import type { Actor, Order } from "../../_lib/order";
 
 interface Ctx {
   actor: Actor;
@@ -120,4 +121,79 @@ export async function guardBypassedByEarlyReturn(ctx: Ctx, orderId: string): Pro
   }
   requireRole(ctx.actor, "admin");
   return ship(orderId);
+}
+
+// --- guard sets ---------------------------------------------------------------------------
+
+function isAdmin(actor: Actor): boolean {
+  return actor.roles.includes("admin");
+}
+
+export async function adminOrOwner(ctx: Ctx, orderId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    const order = await tx.orders.get(orderId);
+    if (isAdmin(ctx.actor)) requireRole(ctx.actor, "admin");
+    else requireOwner(ctx.actor, order);
+    if (order.status !== "paid") throw new Error("not paid");
+    order.status = "shipped";
+    await tx.orders.save(order);
+  });
+}
+
+export async function adminAndOwner(ctx: Ctx, orderId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    const order = await tx.orders.get(orderId);
+    requireRole(ctx.actor, "admin");
+    requireOwner(ctx.actor, order);
+    if (order.status !== "paid") throw new Error("not paid");
+    order.status = "shipped";
+    await tx.orders.save(order);
+  });
+}
+
+async function shipAsOwner(ctx: Ctx, orderId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    const order = await tx.orders.get(orderId);
+    requireOwner(ctx.actor, order);
+    if (order.status !== "paid") throw new Error("not paid");
+    order.status = "shipped";
+    await tx.orders.save(order);
+  });
+}
+
+/** The helper's own guard on every call; the caller's on one call path only. */
+export async function adminThenHelperOwner(ctx: Ctx, orderId: string): Promise<void> {
+  if (ctx.internal) {
+    requireRole(ctx.actor, "admin");
+    await shipAsOwner(ctx, orderId);
+    return;
+  }
+  await shipAsOwner(ctx, orderId);
+}
+
+function assertAdminOrOwner(ctx: Ctx, order: Order): void {
+  if (isAdmin(ctx.actor)) requireRole(ctx.actor, "admin");
+  else requireOwner(ctx.actor, order);
+}
+
+/** A wrapper that passes one guard or the other contributes each alternative. */
+export async function viaEitherWrapper(ctx: Ctx, orderId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    const order = await tx.orders.get(orderId);
+    assertAdminOrOwner(ctx, order);
+    if (order.status !== "paid") throw new Error("not paid");
+    order.status = "shipped";
+    await tx.orders.save(order);
+  });
+}
+
+/** A guard inside `try` whose `catch` rethrows still passes on every path that goes on. */
+export async function guardRethrown(ctx: Ctx, orderId: string): Promise<void> {
+  try {
+    requireRole(ctx.actor, "admin");
+  } catch (err) {
+    await audit.log("denied");
+    throw err;
+  }
+  await ship(orderId);
 }

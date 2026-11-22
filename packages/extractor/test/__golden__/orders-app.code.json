@@ -158,6 +158,11 @@
             "dominates": true
           }
         ],
+        "guardSets": [
+          [
+            "owner"
+          ]
+        ],
         "effects": [],
         "invocation": {
           "impl": {
@@ -271,6 +276,9 @@
           "gate": "db.transaction"
         },
         "guards": [],
+        "guardSets": [
+          []
+        ],
         "effects": [],
         "invocation": {
           "impl": {
@@ -383,6 +391,9 @@
           "gate": "db.transaction"
         },
         "guards": [],
+        "guardSets": [
+          []
+        ],
         "effects": [
           {
             "at": {
@@ -532,6 +543,11 @@
             "dominates": true
           }
         ],
+        "guardSets": [
+          [
+            "role(admin)"
+          ]
+        ],
         "effects": [
           {
             "at": {
@@ -679,6 +695,11 @@
             },
             "dominates": true
           }
+        ],
+        "guardSets": [
+          [
+            "role(admin)"
+          ]
         ],
         "effects": [],
         "invocation": {
