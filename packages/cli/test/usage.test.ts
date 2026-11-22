@@ -28,7 +28,7 @@ describe("usage", () => {
   it("prints the version", async () => {
     const r = await tsverify(["--version"]);
     expect(r.code).toBe(0);
-    expect(r.stdout).toMatch(/^\d+\.\d+\.\d+\n$/);
+    expect(r.stdout).toMatch(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?\n$/);
   });
 
   it("rejects an unknown command with exit 2 and usage on stderr", async () => {
