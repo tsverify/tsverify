@@ -1,9 +1,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { ViewData } from "../view-data";
-import { exposedHosts, type ViewerUrls, viewerUrls } from "./addresses";
 import { appBundle, MERMAID_PREFIX, mermaidAsset, pageHtml } from "./assets";
-import { allowedHosts, type HostRules, isAllowedHost, urlHost } from "./host-guard";
+import { isAllowedHost, isLoopback, urlHost } from "./host-guard";
 import { type Watcher, watchPaths } from "./watch";
 
 export const DEFAULT_HOST = "127.0.0.1";
@@ -18,10 +17,8 @@ export interface ViewerOptions {
   watch: readonly string[] | ((data: ViewData) => readonly string[]);
   /** 0 (the default) picks a free port. */
   port?: number;
-  /** Default `127.0.0.1`. */
+  /** Default `127.0.0.1`. Must be a loopback address: the viewer never listens on the network. */
   host?: string;
-  /** Extra `Host` names to answer on any port (see `host-guard.ts`), e.g. this machine's name. */
-  allowHosts?: readonly string[];
   /** Quiet period before a rebuild (default 150 ms). */
   debounceMs?: number;
   /** Poll instead of `fs.watch`. */
@@ -38,10 +35,8 @@ export interface ReloadEvent {
 }
 
 export interface Viewer {
-  /** The URL to open: `urls.local`, else the first network URL. */
+  /** `http://<host>:<port>/` */
   url: string;
-  /** Local and network URLs to print, like Next/Vite (`addresses.ts`). */
-  urls: ViewerUrls;
   host: string;
   port: number;
   /** The data currently served. */
@@ -69,18 +64,20 @@ const HEARTBEAT_MS = 25_000;
  * - `GET /api/data` the current `ViewData` as JSON
  * - `GET /api/events` server-sent events: `reload` after watched files change and the data is rebuilt
  *
- * Requests whose `Host` is not loopback, `host:port` or an `allowHosts` name get 403 (DNS
- * rebinding, `host-guard.ts`); anything
+ * Loopback only: a non-loopback `host` is rejected. Requests whose `Host` is not a loopback name
+ * get 403 (DNS rebinding, `host-guard.ts`); anything
  * but GET/HEAD gets 405. Rejects when the first `load()` throws or the port is taken.
  */
 export async function startViewer(options: ViewerOptions): Promise<Viewer> {
   const host = options.host ?? DEFAULT_HOST;
+  if (!isLoopback(host)) {
+    throw new Error(`startViewer: ${host} is not a loopback address; the viewer is local-only`);
+  }
   let data: ViewData = { ...(await options.load()), version: 1 };
   // Start the bundle build now so the first page load doesn't wait for all of it.
   appBundle().catch(() => {});
 
   const streams = new Set<ServerResponse>();
-  let allowed: HostRules = { exact: new Set(), names: new Set() };
   let closed = false;
 
   const server = createServer((req, res) => {
@@ -91,7 +88,7 @@ export async function startViewer(options: ViewerOptions): Promise<Viewer> {
   });
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    if (!isAllowedHost(req.headers.host, allowed)) {
+    if (!isAllowedHost(req.headers.host)) {
       send(res, 403, "text/plain; charset=utf-8", "forbidden: unexpected Host header\n");
       return;
     }
@@ -199,14 +196,11 @@ export async function startViewer(options: ViewerOptions): Promise<Viewer> {
     for (const s of streams) s.write(": ping\n\n");
   }, HEARTBEAT_MS);
   heartbeat.unref();
-  allowed = allowedHosts(host, port, options.allowHosts, exposedHosts(host, port));
-  const urls = viewerUrls(host, port);
   rewatch();
 
   let closing: Promise<void> | undefined;
   return {
-    url: urls.local ?? urls.network[0] ?? `http://${urlHost(host)}:${port}/`,
-    urls,
+    url: `http://${urlHost(host)}:${port}/`,
     host,
     port,
     data: () => data,

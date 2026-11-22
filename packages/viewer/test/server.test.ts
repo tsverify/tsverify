@@ -3,7 +3,7 @@ import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { allowedHosts, isAllowedHost, isLoopback } from "../src/server/host-guard";
+import { isAllowedHost, isLoopback } from "../src/server/host-guard";
 import { openBrowser, openerCommand } from "../src/server/open";
 import { startViewer, type Viewer, type ViewerOptions } from "../src/server/server";
 import { watchPaths } from "../src/server/watch";
@@ -146,13 +146,10 @@ describe("startViewer", () => {
     }
   });
 
-  it("answers --allow-host names on any port", async () => {
-    const viewer = await start({ allowHosts: ["T3-Sessions"] });
-    expect((await get(viewer, "/api/data", { host: `t3-sessions:${viewer.port}` })).status).toBe(
-      200,
-    );
-    expect((await get(viewer, "/api/data", { host: "t3-sessions:8443" })).status).toBe(200);
-    expect((await get(viewer, "/api/data", { host: "other-box:8443" })).status).toBe(403);
+  it("refuses to listen beyond loopback", async () => {
+    for (const host of ["0.0.0.0", "::", "10.0.0.5"]) {
+      await expect(start({ host })).rejects.toThrow(/not a loopback address/);
+    }
   });
 
   it("serves the page, the app bundle and Mermaid from the package, with a strict CSP", async () => {
@@ -298,18 +295,27 @@ describe("watchPaths", () => {
 });
 
 describe("host guard", () => {
-  it("allows loopback on any port, the bound host:port, and extra names", () => {
-    const allowed = allowedHosts("0.0.0.0", 4000, ["Build-Box"]);
-    expect(isAllowedHost("0.0.0.0:4000", allowed)).toBe(true);
-    expect(isAllowedHost("0.0.0.0:4001", allowed)).toBe(false);
-    expect(isAllowedHost("LOCALHOST:9000", allowed)).toBe(true);
-    expect(isAllowedHost("localhost", allowed)).toBe(true);
-    expect(isAllowedHost("[::1]:4000", allowed)).toBe(true);
-    expect(isAllowedHost("build-box:8080", allowed)).toBe(true);
-    expect(isAllowedHost("build-box.evil.example:4000", allowed)).toBe(false);
-    expect(isAllowedHost("evil.example:4000", allowed)).toBe(false);
-    expect(isAllowedHost("localhost:4000@evil", allowed)).toBe(false);
-    expect(isAllowedHost(undefined, allowed)).toBe(false);
+  it("allows loopback names on any port, nothing else", () => {
+    for (const h of [
+      "127.0.0.1:4000",
+      "LOCALHOST:9000",
+      "localhost",
+      "[::1]:4000",
+      "127.1.2.3:1",
+    ]) {
+      expect(isAllowedHost(h), h).toBe(true);
+    }
+    for (const h of [
+      "0.0.0.0:4000",
+      "10.0.0.5:4000",
+      "t3-sessions:4000",
+      "localhost.evil.example:4000",
+      "evil.example",
+      "localhost:4000@evil",
+    ]) {
+      expect(isAllowedHost(h), h).toBe(false);
+    }
+    expect(isAllowedHost(undefined)).toBe(false);
   });
 
   it("knows loopback addresses", () => {

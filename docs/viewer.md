@@ -18,33 +18,29 @@ stop, and 2 for bad options or paths without specs, as with `check`.
 | Flag | Default | Meaning |
 |---|---|---|
 | `--port <n>` | `0` | Port to listen on; `0` picks a free one |
-| `--host <address>` | `127.0.0.1` | Address to listen on. Anything other than loopback prints a warning |
-| `--allow-host <name>` | none | Also answer requests addressed to this host name, on any port (repeatable). For `--host 0.0.0.0` or a forwarding proxy |
+| `--host <address>` | `127.0.0.1` | Loopback address to listen on: `127.0.0.1`, `::1` or `localhost`. Anything else is refused (exit 2) |
 | `--open` | off | Open the page in the default browser (`open`, `xdg-open` or `start`). Never done by default |
 | `--spec-only`, `--project <dir>`, `--max-states <n>`, `--enforced-only` | | As for `tsv check` |
 
 ## Viewing from another machine
 
-`tsv view` prints its addresses like Next or Vite:
+The viewer never listens on the network. `tsv view` prints its local address and the SSH command for reaching it
+from another machine:
 
 ```
 tsv view
   Local:    http://127.0.0.1:4400/
-  Network:  not exposed (use --host 0.0.0.0, or forward the port: see docs/viewer.md)
+  Remote:   ssh -N -L 4400:127.0.0.1:4400 <user>@<this machine>, then open http://localhost:4400/
 ```
 
 When `tsv` runs on a remote box (SSH, a dev VM, a container) and your browser is on your laptop, `127.0.0.1` in the
-printed URL means the **laptop**, so the browser says "unable to connect". Two ways in:
+URL means the **laptop**. Forward the port over SSH:
 
-1. **Forward the port (recommended: the viewer stays private).** On the remote box, pick a fixed port:
-   `tsv view --port 4400`. On the laptop: `ssh -N -L 4400:127.0.0.1:4400 <user>@<remote-host>`. Then open
-   `http://localhost:4400/`. A different local port also works (`-L 9000:127.0.0.1:4400` →
+1. On the remote box, pick a fixed port: `tsv view --port 4400`.
+2. On the laptop: `ssh -N -L 4400:127.0.0.1:4400 <user>@<remote-host>`. If the box is only reachable through
+   another host (a hypervisor, a bastion), add `-J <user>@<jump-host>`.
+3. Open `http://localhost:4400/`. A different local port also works (`-L 9000:127.0.0.1:4400` →
    `http://localhost:9000/`). VS Code Remote and similar tools forward ports the same way.
-2. **Listen on the network.** `tsv view --host 0.0.0.0 --port 4400` prints a `Network:` URL for each of the
-   machine's addresses (like Next or Vite), and also answers on the machine's own name
-   (`http://<remote-host>:4400/`). Use `--allow-host <name>` for any other name it is reached by (a DNS alias, a
-   proxy). Anyone who can reach that port can read your specs and code locations, so use
-   this only on a trusted network.
 
 ## What the page shows
 
@@ -78,10 +74,11 @@ because every spec was deleted), the page keeps showing the last good build with
 
 The viewer is for your machine only.
 
-- It listens on `127.0.0.1` by default.
-- It answers only requests whose `Host` header is a loopback name (`localhost`, `127.x.x.x`, `[::1]`, any port, so
-  port-forwarding tunnels work), the address it listens on, or a name given with `--allow-host`; anything else gets
-  `403`. This blocks DNS-rebinding pages, whose requests carry the attacker's host name, from reading your specs.
+- It listens on loopback only (`127.0.0.1` by default); a non-loopback `--host` is refused. Other machines reach
+  it through an SSH tunnel, never over the network.
+- It answers only requests whose `Host` header is a loopback name (`localhost`, `127.x.x.x`, `[::1]`, on any port,
+  so SSH tunnels work); anything else gets `403`. This blocks DNS-rebinding pages, whose requests carry the
+  attacker's host name, from reading your specs.
 - It serves only `GET` and `HEAD`, and has no endpoint that writes anything.
 - Responses carry a strict Content-Security-Policy (scripts from the viewer itself only), `nosniff`, and
   `no-store`.

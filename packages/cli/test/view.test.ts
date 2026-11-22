@@ -122,26 +122,14 @@ async function getData(url: string): Promise<ViewData> {
 }
 
 describe("formatUrls", () => {
-  it("prints Local and Network like Next/Vite", () => {
-    expect(
-      formatUrls({
-        local: "http://127.0.0.1:4400/",
-        network: ["http://10.0.0.5:4400/", "http://192.168.1.20:4400/"],
-      }),
-    ).toBe(
+  it("prints the local URL and the SSH command for other machines, no network addresses", () => {
+    expect(formatUrls("http://127.0.0.1:4400/", 4400)).toBe(
       [
         "tsv view",
         "  Local:    http://127.0.0.1:4400/",
-        "  Network:  http://10.0.0.5:4400/",
-        "            http://192.168.1.20:4400/",
+        "  Remote:   ssh -N -L 4400:127.0.0.1:4400 <user>@<this machine>, then open http://localhost:4400/",
         "",
       ].join("\n"),
-    );
-  });
-
-  it("says how to reach a loopback-only viewer from elsewhere", () => {
-    expect(formatUrls({ local: "http://127.0.0.1:4400/", network: [] })).toContain(
-      "  Network:  not exposed (use --host 0.0.0.0, or forward the port: see docs/viewer.md)",
     );
   });
 });
@@ -153,10 +141,16 @@ describe("tsv view", () => {
     expect(r.stdout).toContain("$ tsv view [...paths] [options]");
     expect(r.stdout).toMatch(/--port <n> +Port to listen on; 0 picks a free one \(default: 0\)/);
     expect(r.stdout).toMatch(/--host <address> .*\(default: 127\.0\.0\.1\)/);
-    expect(r.stdout).toMatch(/--allow-host <name>/);
     expect(r.stdout).toMatch(/--open +Open the viewer in the default browser/);
     expect(r.stdout).toMatch(/--spec-only/);
     expect(r.stdout).toMatch(/--project <dir>/);
+  });
+
+  it("refuses a non-loopback --host with exit 2 and points to SSH forwarding", async () => {
+    const r = await tsv(["view", "--host", "0.0.0.0"]);
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain("--host must be a loopback address");
+    expect(r.stderr).toContain("forward the port over SSH");
   });
 
   it("serves check's results, rebuilds on a code change, and stops when interrupted", async () => {
