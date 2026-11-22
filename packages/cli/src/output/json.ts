@@ -1,4 +1,5 @@
 import type { CheckStats } from "@tsv/checker";
+import type { ExtractStats } from "@tsv/extractor";
 import type { Finding } from "@tsv/ir";
 import { allFindings, countSeverity, type Report } from "../report";
 
@@ -20,22 +21,34 @@ export interface JsonSpec {
   behavior: string | null;
   /** Present when the spec was model-checked. */
   stats?: JsonStats;
+  /**
+   * `check` only: the spec's project root relative to the cwd (`.` for the cwd); null with
+   * `--spec-only` or when no tsconfig.json was found.
+   */
+  project?: string | null;
+  /** Present when the code model extracted from the project was model-checked. */
+  codeStats?: JsonStats;
+  /** Present when the spec's project was extracted (the same for every spec of a project). */
+  extract?: JsonExtractStats;
 }
 
 /** `CheckStats` without `durationMs`, which would make the document non-deterministic. */
 export type JsonStats = Omit<CheckStats, "durationMs">;
+
+/** `ExtractStats` without `durationMs`. */
+export type JsonExtractStats = Omit<ExtractStats, "durationMs">;
 
 export function toJsonReport(report: Report): JsonReport {
   const findings = allFindings(report);
   return {
     version: 1,
     findings,
-    specs: report.specs.map(({ file, behavior, stats }) => {
+    specs: report.specs.map(({ file, behavior, stats, project, codeStats, extract }) => {
       const spec: JsonSpec = { file, behavior: behavior ?? null };
-      if (stats) {
-        const { durationMs: _, ...rest } = stats;
-        spec.stats = rest;
-      }
+      if (stats) spec.stats = withoutDuration(stats);
+      if (project !== undefined) spec.project = project;
+      if (codeStats) spec.codeStats = withoutDuration(codeStats);
+      if (extract) spec.extract = withoutDuration(extract);
       return spec;
     }),
     summary: {
@@ -43,6 +56,11 @@ export function toJsonReport(report: Report): JsonReport {
       warnings: countSeverity(findings, "warning"),
     },
   };
+}
+
+function withoutDuration<T extends { durationMs: number }>(stats: T): Omit<T, "durationMs"> {
+  const { durationMs: _, ...rest } = stats;
+  return rest;
 }
 
 export function formatJson(report: Report): string {

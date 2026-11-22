@@ -44,6 +44,12 @@ importers:
       '@tsv/checker':
         specifier: workspace:*
         version: link:../checker
+      '@tsv/conformance':
+        specifier: workspace:*
+        version: link:../conformance
+      '@tsv/extractor':
+        specifier: workspace:*
+        version: link:../extractor
       '@tsv/ir':
         specifier: workspace:*
         version: link:../ir

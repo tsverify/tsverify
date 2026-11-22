@@ -17,6 +17,14 @@ describe("usage", () => {
     expect(r.stdout).toContain("$ tsv schema [options]");
   });
 
+  it("documents check's code conformance flags", async () => {
+    const r = await tsv(["check", "--help"]);
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("then check that the code conforms to them");
+    expect(r.stdout).toMatch(/--spec-only +Check the specs only: skip code extraction/);
+    expect(r.stdout).toMatch(/--project <dir> +TypeScript project root for all specs/);
+  });
+
   it("prints the version", async () => {
     const r = await tsv(["--version"]);
     expect(r.code).toBe(0);

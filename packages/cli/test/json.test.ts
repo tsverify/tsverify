@@ -9,7 +9,7 @@ function parse(stdout: string): JsonReport {
 
 describe("--format json", () => {
   it("check: a clean canonical spec", async () => {
-    const r = await tsv(["check", "--format", "json", CANONICAL_DIR]);
+    const r = await tsv(["check", "--spec-only", "--format", "json", CANONICAL_DIR]);
     expect(r.code).toBe(0);
     expect(r.stderr).toBe("");
     expect(parse(r.stdout)).toEqual({
@@ -20,6 +20,7 @@ describe("--format json", () => {
           file: CANONICAL_SPEC,
           behavior: "Order lifecycle",
           stats: { states: 6, edges: 5, complete: true, boundLimitedDeadlocks: 0 },
+          project: null,
         },
       ],
       summary: { errors: 0, warnings: 0 },
@@ -28,13 +29,18 @@ describe("--format json", () => {
 
   it("check: the B6 variant reports effect multiplicity with a trace, and nothing else on stdout", async () => {
     const cwd = await tempSpecDir({ "order.behavior.yaml": await b6VariantText() });
-    const r = await tsv(["check", "--format", "json"], { cwd, isTTY: true });
+    const r = await tsv(["check", "--spec-only", "--format", "json"], { cwd, isTTY: true });
     expect(r.code).toBe(1);
     const doc = parse(r.stdout);
     expect(doc.version).toBe(1);
     expect(doc.summary).toEqual({ errors: 2, warnings: 0 });
     expect(doc.specs).toEqual([
-      { file: "order.behavior.yaml", behavior: "Order lifecycle", stats: expect.any(Object) },
+      {
+        file: "order.behavior.yaml",
+        behavior: "Order lifecycle",
+        stats: expect.any(Object),
+        project: null,
+      },
     ]);
 
     const multiplicity = doc.findings.find((f) => f.property === "effect-multiplicity");
@@ -56,7 +62,7 @@ describe("--format json", () => {
       "a/order.behavior.yaml": await b6VariantText(),
       "b/typo.behavior.yaml": await invalidSpecText(),
     });
-    const r = await tsv(["check", "--format", "json"], { cwd });
+    const r = await tsv(["check", "--spec-only", "--format", "json"], { cwd });
     expect(r.code).toBe(2);
     const doc = parse(r.stdout);
     expect(doc.specs.map((s) => [s.file, s.behavior, s.stats !== undefined])).toEqual([
@@ -86,8 +92,8 @@ describe("--format json", () => {
   });
 
   it("is deterministic", async () => {
-    const a = await tsv(["check", "--format", "json", CANONICAL_DIR]);
-    const b = await tsv(["check", "--format", "json", CANONICAL_DIR]);
+    const a = await tsv(["check", "--spec-only", "--format", "json", CANONICAL_DIR]);
+    const b = await tsv(["check", "--spec-only", "--format", "json", CANONICAL_DIR]);
     expect(a.stdout).toBe(b.stdout);
   });
 

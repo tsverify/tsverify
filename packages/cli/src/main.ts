@@ -70,12 +70,19 @@ function program(io: Io): CAC {
     );
 
   cli
-    .command("check [...paths]", "Validate and model-check behavior specs")
+    .command(
+      "check [...paths]",
+      "Validate and model-check behavior specs, then check that the code conforms to them",
+    )
     .option("--format <format>", FORMAT_HELP, { default: "pretty" })
-    .option("--max-states <n>", "Stop exploring a spec after this many states", {
+    .option("--max-states <n>", "Stop exploring a model after this many states", {
       default: DEFAULT_MAX_STATES,
     })
-    .option("--spec-only", "Check the specs only (the only mode until code extraction lands)")
+    .option("--spec-only", "Check the specs only: skip code extraction and conformance")
+    .option(
+      "--project <dir>",
+      "TypeScript project root for all specs (default: per spec, the nearest tsconfig.json dir)",
+    )
     .action((paths: string[], options: CheckCommandOptions) => checkCommand(io, paths, options));
 
   cli
