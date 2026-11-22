@@ -113,6 +113,16 @@ export interface CodeSites {
   atomicNote?: { message: string; hint: string; at: SourceLocation };
   /** Bound guards called on some path to the write; `dominates` = called on every path. */
   guards: { guard: string; at: SourceLocation; dominates: boolean }[];
+  /**
+   * The distinct sets of bound guard keys passed on the paths from the impl's entry to the write
+   * (across helper calls). Each set sorted, the list sorted and deduplicated, e.g.
+   * `[["owner"], ["role(admin)"]]` for `if (isAdminUser) requireRole(…) else requireOwner(…)`.
+   * `[[]]` means some path passes no guard. Absent when the extractor could not enumerate them
+   * (too many combinations); conformance then falls back to `guards[].dominates`. Used for
+   * `by: [a, b]`, where each listed actor is an alternative: every set must contain the
+   * transition's own `requires` plus all of some listed actor's `requires`.
+   */
+  guardSets?: string[][];
   /** Effect calls attributed to this transition. `effect` is the spec effect name, or the gate when unmapped. */
   effects: (CallSite & { effect: string })[];
   invocation?: InvocationShape;
