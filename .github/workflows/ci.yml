@@ -3,6 +3,9 @@ on:
   push:
     branches: [main]
   pull_request:
+# Read-only token: CI only checks out code and runs tests.
+permissions:
+  contents: read
 jobs:
   ci:
     runs-on: ubuntu-latest

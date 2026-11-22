@@ -139,7 +139,7 @@ describe("startViewer", () => {
       `evil.example:${viewer.port}`,
       "evil.example",
       `localhost.evil.example:${viewer.port}`,
-      `t3-sessions:${viewer.port}`,
+      `build-box:${viewer.port}`,
     ]) {
       const res = await get(viewer, "/api/data", { host });
       expect(res.status, host).toBe(403);
@@ -365,7 +365,7 @@ describe("host guard", () => {
     for (const h of [
       "0.0.0.0:4000",
       "10.0.0.5:4000",
-      "t3-sessions:4000",
+      "build-box:4000",
       "localhost.evil.example:4000",
       "evil.example",
       "localhost:4000@evil",

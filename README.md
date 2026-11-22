@@ -108,6 +108,10 @@ pnpm install
 pnpm run ci      # lint + typecheck + test
 ```
 
+## Security
+
+See [SECURITY.md](SECURITY.md) for what tsverify does on your machine and how to report a vulnerability.
+
 ## License
 
 [Apache License 2.0](LICENSE). Copyright 2026 The tsverify Authors; see [`NOTICE`](NOTICE).
