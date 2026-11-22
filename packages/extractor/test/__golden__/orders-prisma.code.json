@@ -1,0 +1,920 @@
+{
+  "kind": "entity",
+  "name": "Order lifecycle",
+  "origin": "code",
+  "file": "src/orders/order.behavior.yaml",
+  "entity": {
+    "name": "Order",
+    "stateField": "status",
+    "states": [
+      "draft",
+      "pending_payment",
+      "paid",
+      "shipped",
+      "refunded",
+      "cancelled"
+    ],
+    "initial": "draft",
+    "terminal": [
+      "shipped",
+      "refunded",
+      "cancelled"
+    ],
+    "at": {
+      "file": "src/orders/order.behavior.yaml",
+      "line": 6,
+      "column": 1,
+      "endLine": 11,
+      "endColumn": 43
+    }
+  },
+  "actors": {
+    "admin": {
+      "name": "admin",
+      "trust": "authenticated",
+      "requires": [
+        {
+          "name": "role",
+          "args": [
+            "admin"
+          ],
+          "raw": "role(admin)",
+          "at": {
+            "file": "src/orders/order.behavior.yaml",
+            "line": 15,
+            "column": 44,
+            "endLine": 15,
+            "endColumn": 55
+          }
+        }
+      ],
+      "at": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 15,
+        "column": 3,
+        "endLine": 15,
+        "endColumn": 57
+      }
+    },
+    "customer": {
+      "name": "customer",
+      "trust": "untrusted",
+      "requires": [],
+      "at": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 14,
+        "column": 3,
+        "endLine": 14,
+        "endColumn": 33
+      }
+    },
+    "stripe": {
+      "name": "stripe",
+      "trust": "signed-webhook",
+      "requires": [],
+      "at": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 16,
+        "column": 3,
+        "endLine": 16,
+        "endColumn": 36
+      }
+    },
+    "system": {
+      "name": "system",
+      "trust": "internal",
+      "requires": [],
+      "at": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 17,
+        "column": 3,
+        "endLine": 17,
+        "endColumn": 30
+      }
+    }
+  },
+  "transitions": [
+    {
+      "name": "checkout",
+      "from": [
+        "draft"
+      ],
+      "to": "pending_payment",
+      "by": [
+        "customer"
+      ],
+      "requires": [
+        {
+          "name": "owner",
+          "args": [],
+          "raw": "owner"
+        }
+      ],
+      "effects": [],
+      "atomic": true,
+      "idempotent": false,
+      "impl": {
+        "file": "src/orders/checkout.ts",
+        "symbol": "checkout"
+      },
+      "at": {
+        "file": "src/orders/checkout.ts",
+        "line": 17,
+        "column": 13,
+        "endLine": 17,
+        "endColumn": 38
+      },
+      "sites": {
+        "persistence": "prisma",
+        "write": {
+          "file": "src/orders/checkout.ts",
+          "line": 17,
+          "column": 13,
+          "endLine": 17,
+          "endColumn": 38
+        },
+        "function": {
+          "file": "src/orders/checkout.ts",
+          "name": "checkout",
+          "at": {
+            "file": "src/orders/checkout.ts",
+            "line": 11,
+            "column": 23,
+            "endLine": 11,
+            "endColumn": 31
+          }
+        },
+        "specTransition": "checkout",
+        "fromState": {
+          "values": [
+            "draft"
+          ],
+          "unconstrained": false
+        },
+        "read": {
+          "at": {
+            "file": "src/orders/checkout.ts",
+            "line": 12,
+            "column": 23,
+            "endLine": 12,
+            "endColumn": 81
+          },
+          "client": "prisma",
+          "path": "order.findUniqueOrThrow",
+          "gate": "prisma.order.findUniqueOrThrow",
+          "occurrence": 0
+        },
+        "commit": {
+          "at": {
+            "file": "src/orders/checkout.ts",
+            "line": 15,
+            "column": 10,
+            "endLine": 18,
+            "endColumn": 5
+          },
+          "client": "prisma",
+          "path": "order.update",
+          "gate": "prisma.order.update",
+          "occurrence": 0
+        },
+        "atomic": {
+          "kind": "conditional-update",
+          "at": {
+            "file": "src/orders/checkout.ts",
+            "line": 15,
+            "column": 10,
+            "endLine": 18,
+            "endColumn": 5
+          },
+          "gate": "prisma.order.update"
+        },
+        "guards": [
+          {
+            "guard": "owner",
+            "at": {
+              "file": "src/orders/checkout.ts",
+              "line": 13,
+              "column": 3,
+              "endLine": 13,
+              "endColumn": 33
+            },
+            "dominates": true
+          }
+        ],
+        "effects": [],
+        "invocation": {
+          "impl": {
+            "file": "src/orders/checkout.ts",
+            "symbol": "checkout"
+          },
+          "entityId": {
+            "param": 1,
+            "path": []
+          },
+          "actor": {
+            "param": 0,
+            "path": [
+              "actor"
+            ]
+          }
+        },
+        "storage": {
+          "client": "prisma",
+          "collection": "order",
+          "key": "id"
+        }
+      }
+    },
+    {
+      "name": "expire",
+      "from": [
+        "pending_payment"
+      ],
+      "to": "cancelled",
+      "by": [
+        "system"
+      ],
+      "requires": [],
+      "effects": [],
+      "atomic": true,
+      "idempotent": false,
+      "impl": {
+        "file": "src/jobs/expire-orders.ts",
+        "symbol": "expireOrder"
+      },
+      "at": {
+        "file": "src/jobs/expire-orders.ts",
+        "line": 12,
+        "column": 13,
+        "endLine": 12,
+        "endColumn": 32
+      },
+      "sites": {
+        "persistence": "prisma",
+        "write": {
+          "file": "src/jobs/expire-orders.ts",
+          "line": 12,
+          "column": 13,
+          "endLine": 12,
+          "endColumn": 32
+        },
+        "function": {
+          "file": "src/jobs/expire-orders.ts",
+          "name": "expireOrder",
+          "at": {
+            "file": "src/jobs/expire-orders.ts",
+            "line": 9,
+            "column": 23,
+            "endLine": 9,
+            "endColumn": 34
+          }
+        },
+        "specTransition": "expire",
+        "fromState": {
+          "values": [
+            "pending_payment"
+          ],
+          "unconstrained": false
+        },
+        "commit": {
+          "at": {
+            "file": "src/jobs/expire-orders.ts",
+            "line": 10,
+            "column": 27,
+            "endLine": 13,
+            "endColumn": 5
+          },
+          "client": "prisma",
+          "path": "order.updateMany",
+          "gate": "prisma.order.updateMany",
+          "occurrence": 0
+        },
+        "atomic": {
+          "kind": "conditional-update",
+          "at": {
+            "file": "src/jobs/expire-orders.ts",
+            "line": 10,
+            "column": 27,
+            "endLine": 13,
+            "endColumn": 5
+          },
+          "gate": "prisma.order.updateMany"
+        },
+        "guards": [],
+        "effects": [],
+        "invocation": {
+          "impl": {
+            "file": "src/jobs/expire-orders.ts",
+            "symbol": "expireOrder"
+          },
+          "entityId": {
+            "param": 0,
+            "path": []
+          }
+        },
+        "storage": {
+          "client": "prisma",
+          "collection": "order",
+          "key": "id"
+        }
+      }
+    },
+    {
+      "name": "payment_succeeded",
+      "from": [
+        "pending_payment"
+      ],
+      "to": "paid",
+      "by": [
+        "stripe"
+      ],
+      "requires": [],
+      "effects": [
+        {
+          "name": "email.receipt",
+          "multiplicity": "exactly-once"
+        }
+      ],
+      "atomic": true,
+      "idempotent": true,
+      "impl": {
+        "file": "src/payments/webhook.ts",
+        "symbol": "onPaymentSucceeded"
+      },
+      "at": {
+        "file": "src/payments/webhook.ts",
+        "line": 22,
+        "column": 13,
+        "endLine": 22,
+        "endColumn": 27
+      },
+      "sites": {
+        "persistence": "prisma",
+        "write": {
+          "file": "src/payments/webhook.ts",
+          "line": 22,
+          "column": 13,
+          "endLine": 22,
+          "endColumn": 27
+        },
+        "function": {
+          "file": "src/payments/webhook.ts",
+          "name": "onPaymentSucceeded",
+          "at": {
+            "file": "src/payments/webhook.ts",
+            "line": 19,
+            "column": 23,
+            "endLine": 19,
+            "endColumn": 41
+          }
+        },
+        "specTransition": "payment_succeeded",
+        "fromState": {
+          "values": [
+            "pending_payment"
+          ],
+          "unconstrained": false
+        },
+        "commit": {
+          "at": {
+            "file": "src/payments/webhook.ts",
+            "line": 20,
+            "column": 27,
+            "endLine": 23,
+            "endColumn": 5
+          },
+          "client": "prisma",
+          "path": "order.updateMany",
+          "gate": "prisma.order.updateMany",
+          "occurrence": 0
+        },
+        "atomic": {
+          "kind": "conditional-update",
+          "at": {
+            "file": "src/payments/webhook.ts",
+            "line": 20,
+            "column": 27,
+            "endLine": 23,
+            "endColumn": 5
+          },
+          "gate": "prisma.order.updateMany"
+        },
+        "guards": [],
+        "effects": [
+          {
+            "at": {
+              "file": "src/payments/webhook.ts",
+              "line": 26,
+              "column": 9,
+              "endLine": 26,
+              "endColumn": 61
+            },
+            "client": "email",
+            "path": "send",
+            "gate": "email.send",
+            "occurrence": 0,
+            "effect": "email.receipt"
+          }
+        ],
+        "invocation": {
+          "impl": {
+            "file": "src/payments/webhook.ts",
+            "symbol": "onPaymentSucceeded"
+          },
+          "entityId": {
+            "param": 0,
+            "path": [
+              "orderId"
+            ]
+          }
+        },
+        "storage": {
+          "client": "prisma",
+          "collection": "order",
+          "key": "id"
+        }
+      }
+    },
+    {
+      "name": "refund",
+      "from": [
+        "paid"
+      ],
+      "to": "refunded",
+      "by": [
+        "admin"
+      ],
+      "requires": [
+        {
+          "name": "role",
+          "args": [
+            "admin"
+          ],
+          "raw": "role(admin)"
+        }
+      ],
+      "effects": [
+        {
+          "name": "stripe.refund",
+          "multiplicity": "exactly-once"
+        }
+      ],
+      "atomic": true,
+      "idempotent": false,
+      "impl": {
+        "file": "src/orders/refund.ts",
+        "symbol": "refundOrder"
+      },
+      "at": {
+        "file": "src/orders/refund.ts",
+        "line": 18,
+        "column": 13,
+        "endLine": 18,
+        "endColumn": 31
+      },
+      "sites": {
+        "persistence": "prisma",
+        "write": {
+          "file": "src/orders/refund.ts",
+          "line": 18,
+          "column": 13,
+          "endLine": 18,
+          "endColumn": 31
+        },
+        "function": {
+          "file": "src/orders/refund.ts",
+          "name": "refundOrder",
+          "at": {
+            "file": "src/orders/refund.ts",
+            "line": 11,
+            "column": 23,
+            "endLine": 11,
+            "endColumn": 34
+          }
+        },
+        "specTransition": "refund",
+        "fromState": {
+          "values": [
+            "paid"
+          ],
+          "unconstrained": false
+        },
+        "read": {
+          "at": {
+            "file": "src/orders/refund.ts",
+            "line": 13,
+            "column": 23,
+            "endLine": 13,
+            "endColumn": 81
+          },
+          "client": "prisma",
+          "path": "order.findUniqueOrThrow",
+          "gate": "prisma.order.findUniqueOrThrow",
+          "occurrence": 0
+        },
+        "commit": {
+          "at": {
+            "file": "src/orders/refund.ts",
+            "line": 16,
+            "column": 27,
+            "endLine": 19,
+            "endColumn": 5
+          },
+          "client": "prisma",
+          "path": "order.updateMany",
+          "gate": "prisma.order.updateMany",
+          "occurrence": 0
+        },
+        "atomic": {
+          "kind": "conditional-update",
+          "at": {
+            "file": "src/orders/refund.ts",
+            "line": 16,
+            "column": 27,
+            "endLine": 19,
+            "endColumn": 5
+          },
+          "gate": "prisma.order.updateMany"
+        },
+        "guards": [
+          {
+            "guard": "role(admin)",
+            "at": {
+              "file": "src/orders/refund.ts",
+              "line": 12,
+              "column": 3,
+              "endLine": 12,
+              "endColumn": 34
+            },
+            "dominates": true
+          }
+        ],
+        "effects": [
+          {
+            "at": {
+              "file": "src/orders/refund.ts",
+              "line": 21,
+              "column": 10,
+              "endLine": 21,
+              "endColumn": 59
+            },
+            "client": "stripe",
+            "path": "refunds.create",
+            "gate": "stripe.refunds.create",
+            "occurrence": 0,
+            "effect": "stripe.refund"
+          }
+        ],
+        "invocation": {
+          "impl": {
+            "file": "src/orders/refund.ts",
+            "symbol": "refundOrder"
+          },
+          "entityId": {
+            "param": 1,
+            "path": []
+          },
+          "actor": {
+            "param": 0,
+            "path": [
+              "actor"
+            ]
+          }
+        },
+        "storage": {
+          "client": "prisma",
+          "collection": "order",
+          "key": "id"
+        }
+      }
+    },
+    {
+      "name": "ship",
+      "from": [
+        "paid"
+      ],
+      "to": "shipped",
+      "by": [
+        "admin"
+      ],
+      "requires": [
+        {
+          "name": "role",
+          "args": [
+            "admin"
+          ],
+          "raw": "role(admin)"
+        }
+      ],
+      "effects": [],
+      "atomic": true,
+      "idempotent": false,
+      "impl": {
+        "file": "src/admin/orders.ts",
+        "symbol": "shipOrder"
+      },
+      "at": {
+        "file": "src/admin/orders.ts",
+        "line": 14,
+        "column": 13,
+        "endLine": 14,
+        "endColumn": 30
+      },
+      "sites": {
+        "persistence": "prisma",
+        "write": {
+          "file": "src/admin/orders.ts",
+          "line": 14,
+          "column": 13,
+          "endLine": 14,
+          "endColumn": 30
+        },
+        "function": {
+          "file": "src/admin/orders.ts",
+          "name": "shipOrder",
+          "at": {
+            "file": "src/admin/orders.ts",
+            "line": 8,
+            "column": 23,
+            "endLine": 8,
+            "endColumn": 32
+          }
+        },
+        "specTransition": "ship",
+        "fromState": {
+          "values": [
+            "paid"
+          ],
+          "unconstrained": false
+        },
+        "read": {
+          "at": {
+            "file": "src/admin/orders.ts",
+            "line": 10,
+            "column": 23,
+            "endLine": 10,
+            "endColumn": 81
+          },
+          "client": "prisma",
+          "path": "order.findUniqueOrThrow",
+          "gate": "prisma.order.findUniqueOrThrow",
+          "occurrence": 0
+        },
+        "commit": {
+          "at": {
+            "file": "src/admin/orders.ts",
+            "line": 12,
+            "column": 10,
+            "endLine": 15,
+            "endColumn": 5
+          },
+          "client": "prisma",
+          "path": "order.update",
+          "gate": "prisma.order.update",
+          "occurrence": 0
+        },
+        "atomic": {
+          "kind": "conditional-update",
+          "at": {
+            "file": "src/admin/orders.ts",
+            "line": 12,
+            "column": 10,
+            "endLine": 15,
+            "endColumn": 5
+          },
+          "gate": "prisma.order.update"
+        },
+        "guards": [
+          {
+            "guard": "role(admin)",
+            "at": {
+              "file": "src/admin/orders.ts",
+              "line": 9,
+              "column": 3,
+              "endLine": 9,
+              "endColumn": 34
+            },
+            "dominates": true
+          }
+        ],
+        "effects": [],
+        "invocation": {
+          "impl": {
+            "file": "src/admin/orders.ts",
+            "symbol": "shipOrder"
+          },
+          "entityId": {
+            "param": 1,
+            "path": []
+          },
+          "actor": {
+            "param": 0,
+            "path": [
+              "actor"
+            ]
+          }
+        },
+        "storage": {
+          "client": "prisma",
+          "collection": "order",
+          "key": "id"
+        }
+      }
+    }
+  ],
+  "rules": [
+    {
+      "name": "Refund issued at most once per order",
+      "kind": "always",
+      "expr": {
+        "type": "effect-count",
+        "effect": "stripe.refund",
+        "op": "<=",
+        "value": 1
+      },
+      "source": "count(effect stripe.refund) <= 1",
+      "at": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 63,
+        "column": 5,
+        "endLine": 64,
+        "endColumn": 45
+      }
+    },
+    {
+      "name": "Unpaid orders don't linger",
+      "kind": "eventually",
+      "expr": {
+        "type": "status-cmp",
+        "op": "!=",
+        "value": "pending_payment"
+      },
+      "source": "status != pending_payment",
+      "at": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 65,
+        "column": 5,
+        "endLine": 66,
+        "endColumn": 42
+      }
+    },
+    {
+      "name": "Shipped orders are never refunded",
+      "kind": "never",
+      "expr": {
+        "type": "and",
+        "left": {
+          "type": "status-cmp",
+          "op": "==",
+          "value": "shipped"
+        },
+        "right": {
+          "type": "effect-count",
+          "effect": "stripe.refund",
+          "op": ">",
+          "value": 0
+        }
+      },
+      "source": "status == shipped and count(effect stripe.refund) > 0",
+      "at": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 67,
+        "column": 5,
+        "endLine": 68,
+        "endColumn": 65
+      }
+    }
+  ],
+  "concurrency": {
+    "checkout": 2,
+    "expire": 2,
+    "payment_succeeded": 2,
+    "refund": 2,
+    "ship": 2
+  },
+  "bindings": {
+    "persistence": "prisma",
+    "clients": {
+      "email": {
+        "module": "src/notify/email.ts",
+        "export": "email",
+        "at": {
+          "file": "src/orders/order.behavior.yaml",
+          "line": 80,
+          "column": 5,
+          "endLine": 80,
+          "endColumn": 58
+        }
+      },
+      "prisma": {
+        "module": "src/db.ts",
+        "export": "prisma",
+        "at": {
+          "file": "src/orders/order.behavior.yaml",
+          "line": 78,
+          "column": 5,
+          "endLine": 78,
+          "endColumn": 50
+        }
+      },
+      "stripe": {
+        "module": "src/payments/stripe.ts",
+        "export": "stripe",
+        "at": {
+          "file": "src/orders/order.behavior.yaml",
+          "line": 79,
+          "column": 5,
+          "endLine": 79,
+          "endColumn": 63
+        }
+      }
+    },
+    "guards": {
+      "owner": {
+        "file": "src/auth/guards.ts",
+        "symbol": "requireOwner",
+        "args": [],
+        "raw": "src/auth/guards.ts#requireOwner",
+        "at": {
+          "file": "src/orders/order.behavior.yaml",
+          "line": 82,
+          "column": 5,
+          "endLine": 82,
+          "endColumn": 43
+        }
+      },
+      "role(admin)": {
+        "file": "src/auth/guards.ts",
+        "symbol": "requireRole",
+        "args": [
+          "admin"
+        ],
+        "raw": "src/auth/guards.ts#requireRole(\"admin\")",
+        "at": {
+          "file": "src/orders/order.behavior.yaml",
+          "line": 83,
+          "column": 5,
+          "endLine": 83,
+          "endColumn": 57
+        }
+      }
+    },
+    "effects": {
+      "email.receipt": "email.send",
+      "stripe.refund": "stripe.refunds.create"
+    },
+    "effectsAt": {
+      "email.receipt": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 86,
+        "column": 5,
+        "endLine": 86,
+        "endColumn": 30
+      },
+      "stripe.refund": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 85,
+        "column": 5,
+        "endLine": 85,
+        "endColumn": 41
+      }
+    }
+  },
+  "implAt": {
+    "checkout": {
+      "file": "src/orders/checkout.ts",
+      "line": 11,
+      "column": 23,
+      "endLine": 11,
+      "endColumn": 31
+    },
+    "expire": {
+      "file": "src/jobs/expire-orders.ts",
+      "line": 9,
+      "column": 23,
+      "endLine": 9,
+      "endColumn": 34
+    },
+    "payment_succeeded": {
+      "file": "src/payments/webhook.ts",
+      "line": 19,
+      "column": 23,
+      "endLine": 19,
+      "endColumn": 41
+    },
+    "refund": {
+      "file": "src/orders/refund.ts",
+      "line": 11,
+      "column": 23,
+      "endLine": 11,
+      "endColumn": 34
+    },
+    "ship": {
+      "file": "src/admin/orders.ts",
+      "line": 8,
+      "column": 23,
+      "endLine": 8,
+      "endColumn": 32
+    }
+  }
+}

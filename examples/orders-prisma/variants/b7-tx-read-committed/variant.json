@@ -1,0 +1,14 @@
+{
+  "id": "b7-tx-read-committed",
+  "bug": "refundOrder reads, checks and updates inside an interactive $transaction at the default isolation level (READ COMMITTED), which does not stop two concurrent refunds from both paying out.",
+  "expected": [
+    { "category": "non-atomic", "transition": "refund", "file": "src/orders/refund.ts" },
+    { "category": "non-atomic", "transition": "refund", "subject": "isolation-level" },
+    {
+      "category": "implementation-property",
+      "transition": "refund",
+      "property": "effect-multiplicity",
+      "subject": "stripe.refund"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "b4-webhook-dup",
+  "bug": "onPaymentSucceeded's updateMany has no status in its where, so every delivery marks the order paid and a redelivery sends the receipt twice.",
+  "expected": [
+    {
+      "category": "from-state-unconstrained",
+      "transition": "payment_succeeded",
+      "file": "src/payments/webhook.ts"
+    },
+    {
+      "category": "implementation-property",
+      "transition": "payment_succeeded",
+      "property": "effect-multiplicity",
+      "subject": "email.receipt"
+    }
+  ]
+}
