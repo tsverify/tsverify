@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import { join, resolve } from "node:path";
 import type { ViewData } from "@tsv/viewer";
 import { afterEach, describe, expect, it } from "vitest";
-import { watchList } from "../src/commands/view";
+import { formatUrls, watchList } from "../src/commands/view";
 import { type Io, main } from "../src/main";
 import { tsv } from "./run";
 import { tempSpecDir } from "./temp-specs";
@@ -121,6 +121,31 @@ async function getData(url: string): Promise<ViewData> {
   return (await res.json()) as ViewData;
 }
 
+describe("formatUrls", () => {
+  it("prints Local and Network like Next/Vite", () => {
+    expect(
+      formatUrls({
+        local: "http://127.0.0.1:4400/",
+        network: ["http://10.0.0.5:4400/", "http://192.168.1.20:4400/"],
+      }),
+    ).toBe(
+      [
+        "tsv view",
+        "  Local:    http://127.0.0.1:4400/",
+        "  Network:  http://10.0.0.5:4400/",
+        "            http://192.168.1.20:4400/",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("says how to reach a loopback-only viewer from elsewhere", () => {
+    expect(formatUrls({ local: "http://127.0.0.1:4400/", network: [] })).toContain(
+      "  Network:  not exposed (use --host 0.0.0.0, or forward the port: see docs/viewer.md)",
+    );
+  });
+});
+
 describe("tsv view", () => {
   it("documents its flags", async () => {
     const r = await tsv(["view", "--help"]);
@@ -128,6 +153,7 @@ describe("tsv view", () => {
     expect(r.stdout).toContain("$ tsv view [...paths] [options]");
     expect(r.stdout).toMatch(/--port <n> +Port to listen on; 0 picks a free one \(default: 0\)/);
     expect(r.stdout).toMatch(/--host <address> .*\(default: 127\.0\.0\.1\)/);
+    expect(r.stdout).toMatch(/--allow-host <name>/);
     expect(r.stdout).toMatch(/--open +Open the viewer in the default browser/);
     expect(r.stdout).toMatch(/--spec-only/);
     expect(r.stdout).toMatch(/--project <dir>/);
