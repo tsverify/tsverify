@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildCodeModel,
   cleanCase,
+  cleanWrite,
   cleanWrites,
   patchSpec,
   patchWrite,
@@ -55,5 +56,17 @@ describe("compare", () => {
     expect(() => compare(noImplSpec, code)).toThrow(
       /links to spec transition "ship", which has no impl/,
     );
+  });
+
+  it("checks every write to t.to, naming the extra ones in the id", () => {
+    const spec = specModel();
+    const { transaction: _, ...unsafe } = cleanWrite("refund");
+    const writes = [
+      ...cleanWrites(),
+      { ...unsafe, name: "refund~2", write: [40, 5] as [number, number] },
+    ];
+    expect(compare(spec, buildCodeModel(spec, writes)).map((f) => f.id)).toEqual([
+      "non-atomic:Order lifecycle:refund:refund~2",
+    ]);
   });
 });
