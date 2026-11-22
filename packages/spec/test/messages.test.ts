@@ -376,3 +376,40 @@ describe("normalization", () => {
     expect(Object.keys(model?.bindings.guards ?? {})).toEqual(["role(admin)"]);
   });
 });
+
+describe("fixtures", () => {
+  it("normalizes fixtures with defaults", () => {
+    const { model, findings } = parseSpec(
+      `${BASE}fixtures:\n  entity: { id: o1 }\n  actors:\n    user: { id: u1 }\n`,
+      FILE,
+    );
+    expect(findings).toEqual([]);
+    expect(model?.fixtures).toMatchObject({
+      entity: { id: "o1" },
+      actors: { user: { id: "u1" } },
+      args: {},
+    });
+  });
+
+  it("rejects fixtures for an unknown actor", () => {
+    expectFinding(
+      `${BASE}fixtures:\n  actors:\n    usr: { id: u1 }\n`,
+      'fixtures.actors: unknown actor "usr"',
+      17,
+      5,
+    );
+  });
+
+  it("rejects args for an unknown transition", () => {
+    expectFinding(
+      `${BASE}fixtures:\n  args:\n    payy: [$id]\n`,
+      'fixtures.args: unknown transition "payy"',
+      17,
+      5,
+    );
+  });
+
+  it("omits fixtures when the section is absent", () => {
+    expect(parseSpec(BASE, FILE).model?.fixtures).toBeUndefined();
+  });
+});

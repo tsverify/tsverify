@@ -6,6 +6,7 @@ import {
   compareStrings,
   type EffectDecl,
   type EntityDecl,
+  type Fixtures,
   type GuardBinding,
   type GuardRef,
   parseGuardBinding,
@@ -64,6 +65,7 @@ export function normalize(
       transitionNames.map((name) => [name, maxParallel[name] ?? concurrencyDefault]),
     ),
     bindings: n.bindings(input.bindings),
+    ...(input.fixtures && { fixtures: n.fixtures(input.fixtures) }),
   };
   return { model, paths: n.paths, ruleRefs: n.ruleRefs };
 }
@@ -157,6 +159,16 @@ class Normalizer {
     this.paths.set(rule, ["rules", index]);
     this.ruleRefs.set(rule, parsed.refs);
     return [rule];
+  }
+
+  fixtures(f: NonNullable<SpecInput["fixtures"]>): Fixtures {
+    const at = this.locator.entry(["fixtures"]);
+    return {
+      entity: { ...(f.entity ?? {}) },
+      actors: { ...(f.actors ?? {}) },
+      args: { ...(f.args ?? {}) },
+      ...(at && { at }),
+    };
   }
 
   bindings(b: SpecInput["bindings"]): Bindings {

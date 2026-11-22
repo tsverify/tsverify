@@ -8,7 +8,7 @@ import { z } from "zod";
 
 export const TRUST_LEVELS = ["untrusted", "authenticated", "signed-webhook", "internal"] as const;
 export const EFFECT_MULTIPLICITIES = ["exactly-once", "at-least-once", "idempotent"] as const;
-export const PERSISTENCE_KINDS = ["assign", "prisma", "drizzle"] as const;
+export const PERSISTENCE_KINDS = ["assign", "prisma", "drizzle", "memory"] as const;
 export const RULE_KINDS = ["always", "never", "eventually"] as const;
 
 const DURATION = /^\d+[smhd]$/;
@@ -137,6 +137,23 @@ const bindings = z
   })
   .describe("Links from spec names to code");
 
+const fixtures = z
+  .strictObject({
+    entity: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe("Fields of a seeded entity, apart from the state field"),
+    actors: z
+      .record(name, z.unknown())
+      .optional()
+      .describe("Value per actor, passed where the impl takes an actor"),
+    args: z
+      .record(name, z.array(z.unknown()))
+      .optional()
+      .describe('Per-transition argument list; "$id" and "$actor" are substituted'),
+  })
+  .describe("Test fixtures for generated tests");
+
 export const specSchema = z
   .strictObject({
     behavior: name.describe("Behavior name"),
@@ -148,6 +165,7 @@ export const specSchema = z
     rules: z.array(rule).optional(),
     concurrency: concurrency.optional(),
     bindings: bindings.optional(),
+    fixtures: fixtures.optional(),
   })
   .meta({
     title: "tsv behavior spec (v1)",

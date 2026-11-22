@@ -17,6 +17,7 @@ export type {
   EffectDecl,
   EffectMultiplicity,
   EntityDecl,
+  Fixtures,
   FromState,
   GuardBinding,
   GuardRef,

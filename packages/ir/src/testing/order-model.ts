@@ -137,5 +137,15 @@ export function orderModel(): BehaviorModel {
         "email.receipt": "email.send",
       },
     },
+    fixtures: {
+      entity: { id: "o1", ownerId: "c1", email: "c1@example.com", chargeId: "ch_1" },
+      actors: {
+        customer: { id: "c1", roles: [] },
+        admin: { id: "a1", roles: ["admin"] },
+      },
+      args: {
+        payment_succeeded: [{ id: "evt_1", orderId: "$id", chargeId: "ch_1" }],
+      },
+    },
   };
 }

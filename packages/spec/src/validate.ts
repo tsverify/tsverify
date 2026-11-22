@@ -40,6 +40,7 @@ class Validator {
     this.entity();
     for (const t of this.model.transitions) this.transition(t);
     this.concurrency();
+    this.fixtures();
     this.rules();
     this.guardBindings();
   }
@@ -127,6 +128,27 @@ class Validator {
       this.out.error(
         this.locator.key(["concurrency", "max_parallel", key]),
         `concurrency.max_parallel: unknown transition "${key}" (declared: ${list(names)})`,
+        { hint: didYouMean(key, names) },
+      );
+    }
+  }
+
+  private fixtures(): void {
+    const actors = Object.keys(this.model.actors);
+    for (const key of Object.keys(this.input.fixtures?.actors ?? {})) {
+      if (actors.includes(key)) continue;
+      this.out.error(
+        this.locator.key(["fixtures", "actors", key]),
+        `fixtures.actors: unknown actor "${key}" (declared: ${list(actors)})`,
+        { hint: didYouMean(key, actors) },
+      );
+    }
+    const names = this.model.transitions.map((t) => t.name);
+    for (const key of Object.keys(this.input.fixtures?.args ?? {})) {
+      if (names.includes(key)) continue;
+      this.out.error(
+        this.locator.key(["fixtures", "args", key]),
+        `fixtures.args: unknown transition "${key}" (declared: ${list(names)})`,
         { hint: didYouMean(key, names) },
       );
     }
