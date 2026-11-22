@@ -4,7 +4,7 @@
  */
 import type { AtomicScope, PersistenceKind } from "@tsv/ir";
 import type { ts } from "ts-morph";
-import type { Reach } from "../callgraph";
+import type { Callees, Reach } from "../callgraph";
 import type { FunctionLike } from "../cfg";
 import type { ClientCall, ClientCalls, ScopeRef } from "../client-calls";
 import type { WriteNode } from "../writes";
@@ -39,6 +39,7 @@ export interface AdapterInput {
   /** Calls in `frame`, in source order. */
   frameCalls: readonly ts.CallExpression[];
   calls: ClientCalls;
+  callees: Callees;
   checker: ts.TypeChecker;
 }
 

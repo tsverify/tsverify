@@ -90,6 +90,57 @@ describe("non-atomic get/save", () => {
   });
 });
 
+describe("read hidden in a helper", () => {
+  const names = [
+    "shipDirect",
+    "shipAwaited",
+    "shipViaConst",
+    "shipNested",
+    "shipRepo",
+    "shipWithRoot",
+    "shipOutside",
+  ];
+  const result = extractFixture(
+    "hidden-read",
+    orderSpec(names.map((n) => ({ name: n, impl: `src/ship.ts#${n}`, to: "shipped" }))),
+  );
+
+  it.each([
+    ["shipDirect", 5],
+    ["shipAwaited", 9],
+    ["shipViaConst", 14],
+    ["shipNested", 5],
+    ["shipRepo", 23],
+  ])("%s: the helper's return is the read, in the transaction: atomic", (name, line) => {
+    const t = transitionOf(result, name);
+    expect(t.atomic).toBe(true);
+    expect(t.sites?.atomic).toMatchObject({ kind: "transaction", gate: "db.transaction" });
+    expect(t.sites?.read).toMatchObject({
+      client: "db",
+      path: "orders.get",
+      gate: "db.orders.get",
+      occurrence: 0,
+      at: { file: "src/ship.ts", line },
+    });
+    expect(t.sites?.storage).toEqual({ client: "db", collection: "orders", key: "id" });
+    expect(t.sites?.invocation?.entityId).toEqual({ param: 0, path: [] });
+  });
+
+  it("a helper called with the root client reads outside the scope: not atomic", () => {
+    const t = transitionOf(result, "shipWithRoot");
+    expect(t.atomic).toBe(false);
+    expect(t.sites?.read).toMatchObject({ gate: "db.orders.get", at: { line: 5 } });
+  });
+
+  it("without a scope the read is still found: not atomic, no warning", () => {
+    const t = transitionOf(result, "shipOutside");
+    expect(t.atomic).toBe(false);
+    expect(t.sites?.read?.gate).toBe("db.orders.get");
+    expect(t.sites?.commit?.gate).toBe("db.orders.save");
+    expect(result.findings).toEqual([]);
+  });
+});
+
 describe("helper write (interprocedural)", () => {
   const result = extractFixture(
     "helper-write",

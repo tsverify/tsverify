@@ -362,6 +362,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
       frame,
       frameCalls: frameCalls(frame),
       calls,
+      callees,
       checker,
     });
     matched.push({ write, at, value, narrowed, probed, frame, persistence });
