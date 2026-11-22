@@ -561,15 +561,15 @@ fixtures:
 
 The JSON Schema of the format gives completion, hover docs and inline errors in any editor that runs
 `yaml-language-server` (VS Code with the Red Hat YAML extension, Neovim, JetBrains, Zed). Get the schema with
-`tsverify schema > behavior.schema.json`. In this repository it is checked in as
-[`packages/spec/behavior.schema.json`](../packages/spec/behavior.schema.json) and exported as
-`@tsverify/spec/behavior.schema.json` (the published package will ship it too).
+`tsverify schema > behavior.schema.json`, or use the copy that ships with the CLI:
+`node_modules/@tsverify/cli/behavior.schema.json` (also resolvable as `@tsverify/cli/behavior.schema.json`). In
+this repository it is checked in as [`packages/spec/behavior.schema.json`](../packages/spec/behavior.schema.json).
 
 **Per file:** a modeline comment. The path is relative to the YAML file, or a URL. `tsverify` ignores comments:
 
 ```yaml
 # tsverify:example
-# yaml-language-server: $schema=../../behavior.schema.json
+# yaml-language-server: $schema=../../node_modules/@tsverify/cli/behavior.schema.json
 behavior: Light
 entity:
   name: Light
@@ -588,7 +588,7 @@ transitions:
 ```json
 {
   "yaml.schemas": {
-    "./behavior.schema.json": "**/*.behavior.yaml"
+    "./node_modules/@tsverify/cli/behavior.schema.json": "**/*.behavior.yaml"
   }
 }
 ```

@@ -82,5 +82,6 @@ The viewer is for your machine only.
 - It serves only `GET` and `HEAD`, and has no endpoint that writes anything.
 - Responses carry a strict Content-Security-Policy (scripts from the viewer itself only), `nosniff`, and
   `no-store`.
-- Everything is served from the installed package: the app is bundled with esbuild when the server starts, and
-  Mermaid is served from `node_modules`. Nothing is downloaded at run time, and no CDN is used.
+- Everything is served from the installed package: the app is prebuilt into `@tsverify/cli`'s `dist/viewer/`
+  (in a checkout of this repository it is bundled with esbuild when the server starts), and Mermaid is served from
+  the CLI's own `mermaid` dependency in `node_modules`. Nothing is downloaded at run time, and no CDN is used.

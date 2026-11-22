@@ -9,9 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [0.1.0-alpha.0]
 
-The first alpha, not published yet: packaging comes later, and the packages are still versioned `0.0.0`. It covers
-the whole pipeline, from a `*.behavior.yaml` spec to model checking, code conformance and generated tests against
-the real code.
+The first alpha, packaged for npm but not published yet. It covers the whole pipeline, from a `*.behavior.yaml`
+spec to model checking, code conformance and generated tests against the real code.
 
 ### Added
 
@@ -26,8 +25,8 @@ the real code.
 - YAML parsing with source positions, normalization to the shared `BehaviorModel`, and semantic validation with
   located, actionable findings (per-item locations for `from`, `by`, `requires` and `bindings.effects`;
   did-you-mean for unknown names; a warning for unused guard bindings).
-- A JSON Schema of the format, checked in as `@tsverify/spec/behavior.schema.json` with a drift test, for
-  `yaml-language-server` and agents.
+- A JSON Schema of the format, checked in with a drift test and shipped as
+  `@tsverify/cli/behavior.schema.json`, for `yaml-language-server` and agents.
 
 #### Checker
 - Explicit-state model checker (BFS) with a compact state encoding and symmetry reduction over concurrent
@@ -98,4 +97,9 @@ the real code.
 
 #### Project
 - Named `tsverify`: the command is `tsverify`, and the packages use the `@tsverify` npm scope.
+- Packaging: two published packages at `0.1.0-alpha.0`, `@tsverify/cli` (one esbuild bundle of the workspace with
+  third-party dependencies external and the viewer app prebuilt, shipping `behavior.schema.json`) and
+  `@tsverify/runtime` (compiled with `tsc`, zero dependencies); Node.js 22.12 or later. A pack smoke test
+  (`pnpm smoke:pack`) installs both tarballs with npm into a copy of the example app, and a draft release workflow
+  publishes on `v*` tags ([`RELEASING.md`](RELEASING.md)).
 - Licensed under the Apache License 2.0. Files tsverify generates in your project are yours.

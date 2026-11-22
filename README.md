@@ -10,9 +10,9 @@ does, and turns every mismatch into a failing test. Local-only: install + YAML f
 
 ## Quick start
 
-**1. Install.** *Placeholder: `tsverify` is not published yet.* Once it is, it will be a dev dependency
-(`npm install --save-dev @tsverify/cli`, then `npx tsverify …`). Until then, run it from a checkout of this repository
-with `pnpm install`, then `pnpm tsverify <command>`.
+**1. Install.** *Placeholder: `tsverify` is not published yet.* Once it is, it is a dev dependency
+(`npm install --save-dev @tsverify/cli`, then `npx tsverify …`; Node.js 22.12 or later). Until then, run it from a
+checkout of this repository with `pnpm install`, then `pnpm tsverify <command>`.
 
 **2. Write a spec** next to the entity it describes, e.g. `src/orders/order.behavior.yaml`:
 
@@ -61,6 +61,10 @@ tsverify diff --base main     # behavior diff (Markdown + Mermaid) for the PR
 tsverify view                 # local viewer: diagram, matrix, findings, counterexample playback, live reload
 ```
 
+`tsverify test` writes the generated tests to `.tsverify/generated/` and runs them with its own vitest, so the
+project needs nothing else installed. To run them with **your own** vitest too (e.g. in `vitest run`), add
+`@tsverify/runtime` (the same version as `@tsverify/cli`) and `vitest` as devDependencies.
+
 `tsverify view` serves on 127.0.0.1 only ([docs/viewer.md](docs/viewer.md)); `tsverify render <spec> --mermaid` prints the
 diagram as text.
 
@@ -72,7 +76,7 @@ diagram as text.
   reviewing their PRs.
 - [Format reference](docs/behavior-format.md): every key of `*.behavior.yaml`.
 - [CI workflows](docs/workflows.md): advisory, blocking, or blocking only for `enforced: true` specs.
-- Editor completion: point `yaml-language-server` at [`packages/spec/behavior.schema.json`](packages/spec/behavior.schema.json)
+- Editor completion: point `yaml-language-server` at `node_modules/@tsverify/cli/behavior.schema.json`
   ([how](docs/authoring-guide.md#9-editor-support-json-schema)).
 
 ## Using tsverify in CI
