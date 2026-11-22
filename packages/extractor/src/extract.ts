@@ -7,19 +7,19 @@
  * 4. Type queries: entity matching, from-states, link resolution, call graph, guards, effects,
  *    persistence facts; then model assembly (`assemble.ts`).
  */
-import type { BehaviorModel, Finding, PersistenceKind } from "@tsv/ir";
+import type { BehaviorModel, Finding, PersistenceKind, SourceLocation } from "@tsv/ir";
 import { compareStrings } from "@tsv/ir";
 import { ts } from "ts-morph";
 import { assignAdapter } from "./adapters/assign";
 import { memoryAdapter } from "./adapters/memory";
 import type { PersistenceAdapter, PersistenceFacts } from "./adapters/types";
 import { assemble, type Draft, type MatchedWrite } from "./assemble";
-import { Callees, frameCalls, frameOf, type Reach, reach } from "./callgraph";
+import { Callees, frameCalls, frameNaming, frameOf, type Reach, reach } from "./callgraph";
 import type { FunctionLike } from "./cfg";
 import { ClientCalls } from "./client-calls";
 import { Dominance } from "./dominance";
 import { matchesEntity, writtenValue } from "./entity";
-import { brokenLink, locText, sortFindings, unanalyzable } from "./findings";
+import { brokenLink, sortFindings, unanalyzable, uniqueIds } from "./findings";
 import { loadProject, ProjectContext } from "./project";
 import { resolveClient, resolveGuard, resolveImpl, symbolOf } from "./resolve";
 import {
@@ -185,6 +185,12 @@ export function extractAll(
   };
 }
 
+/** A file's name without directory and extension: the subject of findings outside any function. */
+function moduleName(ctx: ProjectContext, node: ts.Node): string {
+  const rel = ctx.rel(node.getSourceFile().fileName);
+  return rel.slice(rel.lastIndexOf("/") + 1).replace(/\.[cm]?[jt]sx?$/, "");
+}
+
 function sortedEntries<T>(record: Record<string, T>): [string, T][] {
   return Object.entries(record).sort(([a], [b]) => compareStrings(a, b));
 }
@@ -288,11 +294,14 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
   };
 
   const impls: { name: string; fn: FunctionLike; reach: Reach }[] = [];
-  for (const t of spec.transitions) {
+  const implAt: Record<string, SourceLocation> = {};
+  for (const t of [...spec.transitions].sort((a, b) => compareStrings(a.name, b.name))) {
     if (!t.impl) continue;
     const r = resolveImpl(ctx, t.impl);
-    if (r.ok) impls.push({ name: t.name, fn: r.value, reach: reachFrom(r.value) });
-    else {
+    if (r.ok) {
+      impls.push({ name: t.name, fn: r.value, reach: reachFrom(r.value) });
+      implAt[t.name] = ctx.loc(frameNaming(r.value).node);
+    } else {
       findings.push(
         brokenLink(
           behavior,
@@ -314,7 +323,23 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
   env.writes.forEach((write, i) => {
     if (write.field !== spec.entity.stateField) return;
     const { narrowed, probed } = env.types[i] as WriteTypes;
-    if (!matchesEntity(spec.entity, narrowed.declared, narrowed.refTypeNames)) return;
+    const match = matchesEntity(spec.entity, narrowed.declared, narrowed.refTypeNames);
+    if (!match) return;
+    const frame = frameOf(write.expr);
+    let persistence: PersistenceFacts | undefined;
+    const analyze = (fn: FunctionLike): PersistenceFacts => {
+      persistence ??= adapter.analyzeWrite({
+        write,
+        frame: fn,
+        frameCalls: frameCalls(fn),
+        calls,
+        callees,
+        checker,
+      });
+      return persistence;
+    };
+    // The exact-union fallback needs a recognized read: DTOs and events share the union.
+    if (match === "union" && (!frame || !analyze(frame).read)) return;
     const at = ctx.loc(write.site);
     const value = writtenValue(write.value, checker);
     if (value === undefined) {
@@ -322,7 +347,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
         unanalyzable(
           behavior,
           "write-value",
-          locText(at),
+          frame ? frameNaming(frame).name : moduleName(ctx, write.expr),
           `${spec.entity.name}.${write.field} is assigned a value that is not a single literal (${write.value.getText()}); the write is not extracted`,
           {
             codeAt: at,
@@ -332,13 +357,12 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
       );
       return;
     }
-    const frame = frameOf(write.expr);
     if (!frame) {
       findings.push(
         unanalyzable(
           behavior,
           "write-frame",
-          locText(at),
+          moduleName(ctx, write.expr),
           `${spec.entity.name}.${write.field} is written outside any function; the write is not extracted`,
           {
             codeAt: at,
@@ -348,14 +372,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
       );
       return;
     }
-    const persistence: PersistenceFacts = adapter.analyzeWrite({
-      write,
-      frame,
-      frameCalls: frameCalls(frame),
-      calls,
-      checker,
-    });
-    matched.push({ write, at, value, narrowed, probed, frame, persistence });
+    matched.push({ write, at, value, narrowed, probed, frame, persistence: analyze(frame) });
   });
 
   const persistenceClients = new Set<string>();
@@ -396,6 +413,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
     persistence: kind,
     adapter,
     findings,
+    implAt,
   });
-  return { spec: behavior, model, findings: sortFindings(findings) };
+  return { spec: behavior, model, findings: sortFindings(uniqueIds(findings)) };
 }

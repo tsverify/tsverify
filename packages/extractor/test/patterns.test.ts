@@ -64,6 +64,13 @@ describe("transaction-atomic", () => {
       concurrency: { ship: 2, ship_root: 2 },
     });
   });
+
+  it("records where each resolved impl is declared", () => {
+    expect(result.model?.implAt).toEqual({
+      ship: { file: "src/ship.ts", line: 5, column: 23, endLine: 5, endColumn: 32 },
+      ship_root: { file: "src/ship.ts", line: 16, column: 23, endLine: 16, endColumn: 38 },
+    });
+  });
 });
 
 describe("non-atomic get/save", () => {
@@ -80,6 +87,57 @@ describe("non-atomic get/save", () => {
     expect(t.sites?.commit).toMatchObject({ gate: "db.orders.save", at: { line: 10 } });
     expect(t.from).toEqual(["paid"]);
     expect(t.effects).toEqual([{ name: "stripe.refund", multiplicity: "at-least-once" }]);
+  });
+});
+
+describe("read hidden in a helper", () => {
+  const names = [
+    "shipDirect",
+    "shipAwaited",
+    "shipViaConst",
+    "shipNested",
+    "shipRepo",
+    "shipWithRoot",
+    "shipOutside",
+  ];
+  const result = extractFixture(
+    "hidden-read",
+    orderSpec(names.map((n) => ({ name: n, impl: `src/ship.ts#${n}`, to: "shipped" }))),
+  );
+
+  it.each([
+    ["shipDirect", 5],
+    ["shipAwaited", 9],
+    ["shipViaConst", 14],
+    ["shipNested", 5],
+    ["shipRepo", 23],
+  ])("%s: the helper's return is the read, in the transaction: atomic", (name, line) => {
+    const t = transitionOf(result, name);
+    expect(t.atomic).toBe(true);
+    expect(t.sites?.atomic).toMatchObject({ kind: "transaction", gate: "db.transaction" });
+    expect(t.sites?.read).toMatchObject({
+      client: "db",
+      path: "orders.get",
+      gate: "db.orders.get",
+      occurrence: 0,
+      at: { file: "src/ship.ts", line },
+    });
+    expect(t.sites?.storage).toEqual({ client: "db", collection: "orders", key: "id" });
+    expect(t.sites?.invocation?.entityId).toEqual({ param: 0, path: [] });
+  });
+
+  it("a helper called with the root client reads outside the scope: not atomic", () => {
+    const t = transitionOf(result, "shipWithRoot");
+    expect(t.atomic).toBe(false);
+    expect(t.sites?.read).toMatchObject({ gate: "db.orders.get", at: { line: 5 } });
+  });
+
+  it("without a scope the read is still found: not atomic, no warning", () => {
+    const t = transitionOf(result, "shipOutside");
+    expect(t.atomic).toBe(false);
+    expect(t.sites?.read?.gate).toBe("db.orders.get");
+    expect(t.sites?.commit?.gate).toBe("db.orders.save");
+    expect(result.findings).toEqual([]);
   });
 });
 
@@ -248,6 +306,49 @@ describe("effect mapping", () => {
   });
 });
 
+describe("effects on the write's path", () => {
+  const result = extractFixture(
+    "effect-path",
+    orderSpec([
+      { name: "ship", impl: "src/orders.ts#shipOrder", to: "shipped" },
+      { name: "refund", impl: "src/orders.ts#refundOrder", to: "refunded" },
+      {
+        name: "pay",
+        impl: "src/orders.ts#payOrder",
+        from: ["pending_payment"],
+        to: "paid",
+        by: ["system"],
+      },
+      {
+        name: "cancel",
+        impl: "src/orders.ts#cancelOrder",
+        from: ["pending_payment"],
+        to: "cancelled",
+        by: ["system"],
+      },
+    ]),
+  );
+  const effects = (name: string) =>
+    transitionOf(result, name).sites?.effects.map((e) => [e.gate, e.at.line]);
+
+  it("a catch around the transaction is not on the path; the call after it is", () => {
+    expect(effects("ship")).toEqual([["email.send", 17]]);
+  });
+
+  it("a rejection branch and a catch around the commit are not; the call before the write is", () => {
+    expect(effects("refund")).toEqual([["stripe.refunds.create", 30]]);
+    expect(transitionOf(result, "refund").effects.map((e) => e.name)).toEqual(["stripe.refund"]);
+  });
+
+  it("a flag returned from the transaction: the helper called after the commit is attributed", () => {
+    expect(effects("pay")).toEqual([["email.send", 60]]);
+  });
+
+  it("the write in a helper: the catch around the helper call is not attributed", () => {
+    expect(effects("cancel")).toEqual([["email.send", 71]]);
+  });
+});
+
 describe("unlinked write", () => {
   const result = extractFixture(
     "unlinked-write",
@@ -288,6 +389,34 @@ describe("unlinked write", () => {
     expect(first.sites?.fromState.reason).toMatch(/full declared union/);
     expect(first.from).toEqual(orderSpec([]).entity.states);
     expect(first.atomic).toBe(false);
+  });
+});
+
+describe("exact-union entity fallback", () => {
+  const result = extractFixture("entity-fallback", orderSpec([]));
+
+  it("an event typed with the spec's union is not the entity (assignment or spread)", () => {
+    const names = result.model?.transitions.map((t) => t.name);
+    expect(names).not.toContain("announceShipped");
+    expect(names).not.toContain("announceRefunded");
+  });
+
+  it("matches another type name only when a bound read (through a helper) produced it", () => {
+    const t = transitionOf(result, "shipRecord");
+    expect(t.to).toBe("shipped");
+    expect(t.from).toEqual(["paid"]);
+    expect(t.sites?.read).toMatchObject({ gate: "db.orders.get", at: { line: 31 } });
+    expect(t.atomic).toBe(true);
+  });
+
+  it("matches aliases of Pick<Order, …> and Readonly<Order> by name", () => {
+    expect(result.model?.transitions.map((t) => [t.name, t.to])).toEqual([
+      ["refundFrozen", "refunded"],
+      ["shipRecord", "shipped"],
+      ["shipRow", "shipped"],
+    ]);
+    expect(transitionOf(result, "shipRow").from).toEqual(["paid"]);
+    expect(result.findings).toEqual([]);
   });
 });
 
@@ -381,9 +510,22 @@ describe("spread-to-save write", () => {
   it("a non-literal target state is a warning, not a transition", () => {
     expect(result.findings).toEqual([
       expect.objectContaining({
-        id: "unanalyzable:Fixture orders:write-value:src/refund.ts:16:36",
+        id: "unanalyzable:Fixture orders:write-value:setStatus",
         severity: "warning",
+        codeAt: expect.objectContaining({ file: "src/refund.ts", line: 16, column: 36 }),
       }),
+    ]);
+  });
+});
+
+describe("unanalyzable ids", () => {
+  const result = extractFixture("finding-ids", orderSpec([]));
+
+  it("name the function (or file) instead of a position, suffixing collisions by location", () => {
+    expect(result.findings.map((f) => [f.id, f.codeAt?.line])).toEqual([
+      ["unanalyzable:Fixture orders:write-frame:seed", 7],
+      ["unanalyzable:Fixture orders:write-value:setTwice", 12],
+      ["unanalyzable:Fixture orders:write-value:setTwice~2", 13],
     ]);
   });
 });
@@ -415,6 +557,7 @@ describe("broken impl link", () => {
 
   it("still extracts the links that resolve", () => {
     expect(result.model?.transitions.map((t) => t.name)).toEqual(["ship"]);
+    expect(Object.keys(result.model?.implAt ?? {})).toEqual(["ship"]);
   });
 });
 

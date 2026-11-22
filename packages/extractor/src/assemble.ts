@@ -4,11 +4,14 @@
  *   is named after its function; collisions get `~2`, `~3`, … (linked first, then by location)
  * - `by`, `idempotent` from the linked spec transition (`[]` / `false` when unlinked)
  * - `requires` = bound guards that dominate the write; `atomic` = read and write share one scope
- *   (`memory`: no suspension point between the impl's entry and the write, scope `synchronous`)
+ *   (`memory`: no suspension point between the last re-check of the state field, else the impl's
+ *   entry, and the write; scope `synchronous`)
  * - effect multiplicity from the spec's declaration of that effect (`at-least-once` if undeclared)
  * - `concurrency` copies the linked spec transition's bound (2 when unlinked)
  * - name, entity, actors, rules, bindings and file are copied from the spec; transitions sorted
  *   by name; `at` = the write.
+ * - `implAt`: for each spec transition whose `impl` resolves, where the impl function is declared
+ *   (its name, like `CodeSites.function.at`), keyed by transition name.
  *
  * `from`: the narrowed literal set, restricted to `entity.states` (in that order); `"*"` when the
  * type is not a finite literal set. The full declared union stays a list, with
@@ -71,6 +74,8 @@ export interface AssembleEnv {
   adapter: PersistenceAdapter;
   /** Collects findings (appended to). */
   findings: Finding[];
+  /** Declaration location of each resolved spec `impl`, by transition name (sorted). */
+  implAt: Record<string, SourceLocation>;
 }
 
 function compareLoc(a: SourceLocation, b: SourceLocation): number {
@@ -171,6 +176,7 @@ function buildTransition(
     write: m.write,
     frame: m.frame,
     reach: d.reach,
+    checker: ctx.checker,
   });
   let atomicScope: CodeSites["atomic"];
   if (linkAtomicity) {
@@ -202,6 +208,8 @@ function buildTransition(
 
   const effects: (CallSite & { effect: string })[] = effectCalls(
     d.reach,
+    m.frame,
+    m.write.expr,
     calls,
     env.persistenceClients,
   )
@@ -328,5 +336,6 @@ export function assemble(spec: BehaviorModel, drafts: Draft[], env: AssembleEnv)
     rules: copy.rules,
     concurrency: sortedConcurrency,
     bindings: copy.bindings,
+    implAt: structuredClone(env.implAt),
   };
 }

@@ -93,13 +93,14 @@ export class ClientCalls {
       e = stripParens(e.expression);
     }
     if (segments.length === 0 || !ts.isIdentifier(e)) return undefined;
-    const root = this.rootClient(e);
+    const root = this.rootOf(e);
     if (!root) return undefined;
     const path = segments.join(".");
     return { call, client: root.client, path, gate: `${root.client}.${path}`, scope: root.scope };
   }
 
-  private rootClient(id: ts.Identifier): { client: string; scope?: ScopeRef } | undefined {
+  /** The client an identifier is (a bound client's symbol, or a scope alias such as `tx`). */
+  rootOf(id: ts.Identifier): { client: string; scope?: ScopeRef } | undefined {
     const sym = symbolOf(id, this.checker);
     if (!sym) return undefined;
     const direct = this.clients.get(sym);

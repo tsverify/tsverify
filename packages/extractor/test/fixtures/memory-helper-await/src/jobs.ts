@@ -16,18 +16,21 @@ async function markRunning(job: Job, ready: Promise<void>): Promise<void> {
   job.status = "running";
 }
 
-/** Two levels down: impl → finish → setDone, with the `await` in the middle frame. */
+/**
+ * Two levels down: impl → finish → setDone, with the `await` in the middle frame, after the
+ * check and before the helper that writes.
+ */
 export function finishJob(job: Job, flushed: Promise<void>): Promise<void> {
   return finish(job, flushed);
 }
 
 async function finish(job: Job, flushed: Promise<void>): Promise<void> {
+  if (job.status !== "running") return;
   await flushed;
   setDone(job);
 }
 
 function setDone(job: Job): void {
-  if (job.status !== "running") return;
   job.status = "done";
 }
 

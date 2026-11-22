@@ -2,12 +2,17 @@
  * Which spec a write belongs to, and what it writes.
  *
  * **Entity matching rule.** A write of `x.<stateField>` belongs to a spec when either
- * 1. the name of `x`'s declared type equals `entity.name` (the type's alias or symbol name, any
- *    union/intersection member, a type parameter's constraint, or `T` in `Readonly<T>`), **and**
- *    the declared type of `x.<stateField>` is a string-literal union overlapping `entity.states`,
- *    or is not a finite literal set at all (`string`, `any`; from-state is then `*`); or
- * 2. (fallback, any type name) the declared type of `x.<stateField>` is a literal union exactly
- *    equal to `entity.states` as a set.
+ * 1. (`"name"`) the name of `x`'s declared type equals `entity.name` (the type's alias or symbol
+ *    name, any union/intersection member, a type parameter's constraint, or `T` in
+ *    `Readonly<T>`, `Pick<T, …>`, `Omit<T, …>`, `Partial<T>`, `Required<T>`, `NonNullable<T>`,
+ *    also behind user aliases of those), **and** the declared type of `x.<stateField>` is a
+ *    string-literal union overlapping `entity.states`, or is not a finite literal set at all
+ *    (`string`, `any`; from-state is then `*`); or
+ * 2. (`"union"`, fallback for any type name) the declared type of `x.<stateField>` is a literal
+ *    union exactly equal to `entity.states` as a set, **and** `x` was produced by a recognized
+ *    read (a bound client call, possibly through a helper). The caller checks the read: a DTO or
+ *    event record typed with the same union (`StatusChangedEvent { status: OrderStatus }`) is not
+ *    the entity.
  */
 import type { EntityDecl } from "@tsv/ir";
 import { ts } from "ts-morph";
@@ -17,12 +22,13 @@ export function matchesEntity(
   entity: EntityDecl,
   declared: LiteralSet,
   refTypeNames: readonly string[],
-): boolean {
+): "name" | "union" | undefined {
   const states = new Set(entity.states);
   const named = refTypeNames.includes(entity.name);
-  if (declared === "*") return named;
-  if (named && declared.some((v) => states.has(v))) return true;
-  return declared.length === states.size && declared.every((v) => states.has(v));
+  if (declared === "*") return named ? "name" : undefined;
+  if (named && declared.some((v) => states.has(v))) return "name";
+  const exact = declared.length === states.size && declared.every((v) => states.has(v));
+  return exact ? "union" : undefined;
 }
 
 /**
