@@ -1,0 +1,76 @@
+# Dogfooding (doc 6 §6): counterexample playback in the viewer, src/app/playback.ts.
+# Project root is packages/viewer (its tsconfig.json), so impl paths are relative to it.
+#
+# The controller also holds a step cursor (0 … last), which v1 rules cannot talk about (they see
+# the status only). Its bounds hold by construction, and playback.test.ts checks them after
+# every operation:
+#   - idle means "never moved": the cursor is 0
+#   - ended only at the last step: `ended` implies cursor == last, and only `finish` (the clock
+#     reaching the last step) and `arrive` (stepping or seeking onto it) lead there
+#   - the cursor never leaves 0 … last; stepping or seeking off the last step leaves `ended`
+behavior: Counterexample playback
+summary: The viewer steps through a counterexample trace by hand, or lets a clock play it to the end.
+
+entity:
+  name: Playback
+  state: status
+  states: [idle, playing, paused, ended]
+  initial: idle
+
+actors:
+  viewer: { trust: internal } # the person at the viewer: buttons, keys and the step slider
+  clock: { trust: internal } # the playback timer, which only ever advances a playing trace
+
+transitions:
+  play:
+    from: [idle, paused, ended]
+    to: playing
+    by: viewer
+    atomic: true
+    impl: src/app/playback.ts#PlaybackController.play # from ended: restarts at step 0
+
+  pause:
+    from: playing
+    to: paused
+    by: viewer
+    atomic: true
+    impl: src/app/playback.ts#PlaybackController.pause
+
+  finish:
+    from: playing
+    to: ended
+    by: clock
+    atomic: true
+    impl: src/app/playback.ts#PlaybackController.tick # only when the tick lands on the last step
+
+  hold:
+    from: [idle, playing, ended]
+    to: paused
+    by: viewer
+    atomic: true
+    impl: src/app/playback.ts#PlaybackController.hold # stepping or seeking anywhere but the last step
+
+  arrive:
+    from: [idle, playing, paused]
+    to: ended
+    by: viewer
+    atomic: true
+    impl: src/app/playback.ts#PlaybackController.arrive # stepping or seeking onto the last step
+
+  reset:
+    from: [playing, paused, ended]
+    to: idle
+    by: viewer
+    atomic: true
+    impl: src/app/playback.ts#PlaybackController.reset
+
+rules:
+  - name: The viewer can always rewind to the first step
+    eventually: status == idle
+  - name: Every playback can reach the end of the trace
+    eventually: status == ended
+
+bindings:
+  # The controller is a plain in-process object: a transition is atomic when no await/yield lies
+  # between the method's state check and its write (the extractor's `memory` adapter).
+  persistence: memory
