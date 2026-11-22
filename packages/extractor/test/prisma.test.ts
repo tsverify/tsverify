@@ -1,6 +1,13 @@
 import type { Bindings } from "@tsverify/ir";
 import { describe, expect, it } from "vitest";
-import { extractFixture, guardKeys, orderSpec, type TransitionSpec, transitionOf } from "./helpers";
+import {
+  expectOneUnanalyzablePerUnknownFrom,
+  extractFixture,
+  guardKeys,
+  orderSpec,
+  type TransitionSpec,
+  transitionOf,
+} from "./helpers";
 
 const STATES = ["cancelled", "draft", "paid", "pending_payment", "refunded", "shipped"];
 
@@ -113,6 +120,10 @@ describe("prisma adapter", () => {
 
     it("a `{ set: v }` write is the value v", () => {
       expect(t("refundEquals").to).toBe("refunded");
+    });
+
+    it("reports each unknown from-state once, as the extractor's unanalyzable", () => {
+      expectOneUnanalyzablePerUnknownFrom(result);
     });
 
     it("a status condition inside OR: atomic, from-state unknown", () => {

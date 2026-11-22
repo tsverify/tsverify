@@ -228,6 +228,9 @@ function buildTransition(
     fromState.values === "*"
       ? "*"
       : spec.entity.states.filter((s) => (fromState.values as string[]).includes(s));
+  // Every `*` from-state (a `string` field, an unprobeable reference, an adapter's `OR`) gets
+  // exactly this one finding, `unanalyzable:<behavior>:from-state:<transition>`: it is the
+  // report for that cause, so a consumer need not add a second one.
   if (fromState.values === "*") {
     env.findings.push(
       unanalyzable(

@@ -136,3 +136,21 @@ export function expectDominanceMatchesSets(t: Transition): void {
   });
   for (const g of sites.guards) expect(g.dominates).toBe(inEvery.includes(g.guard));
 }
+
+/**
+ * The contract conformance can rely on to report an unknown from-state once: every transition
+ * whose `fromState.values` is `"*"` has exactly one extractor finding
+ * `unanalyzable:<behavior>:from-state:<transition>`, and no other transition has one.
+ */
+export function expectOneUnanalyzablePerUnknownFrom(result: ExtractResult): void {
+  const unknown = (result.model?.transitions ?? [])
+    .filter((t) => t.sites?.fromState.values === "*")
+    .map((t) => t.name)
+    .sort();
+  const prefix = `unanalyzable:${result.spec}:from-state:`;
+  const reported = result.findings
+    .filter((f) => f.id.startsWith(prefix))
+    .map((f) => f.id.slice(prefix.length))
+    .sort();
+  expect(reported).toEqual(unknown);
+}

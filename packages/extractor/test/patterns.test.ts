@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { extractAll } from "../src/index";
 import {
   expectDominanceMatchesSets,
+  expectOneUnanalyzablePerUnknownFrom,
   extractFixture,
   fixtureRoot,
   guardKeys,
@@ -566,6 +567,10 @@ describe("string-typed status", () => {
     expect(t.from).toEqual(["open"]);
     expect(t.sites?.fromState).toEqual({ values: ["open"], unconstrained: false });
     expect(t.sites?.storage).toEqual({ client: "store", collection: "tickets", key: "id" });
+  });
+
+  it("reports each unknown from-state once, as the extractor's unanalyzable", () => {
+    expectOneUnanalyzablePerUnknownFrom(result);
   });
 
   it("a membership guard gives the listed states without a declared domain", () => {
