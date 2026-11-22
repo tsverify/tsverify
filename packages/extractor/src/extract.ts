@@ -1,0 +1,396 @@
+/**
+ * `extractAll`: one TypeScript program per project, every spec extracted against it.
+ *
+ * 1. Load the tsconfig's files (`project.ts`).
+ * 2. Syntax only: candidate state writes for every spec's state field (`writes.ts`).
+ * 3. Plan every narrowing probe (`type-facts.ts`, X1 probe-first) — still no type query.
+ * 4. Type queries: entity matching, from-states, link resolution, call graph, guards, effects,
+ *    persistence facts; then model assembly (`assemble.ts`).
+ */
+import type { BehaviorModel, Finding, PersistenceKind } from "@tsv/ir";
+import { compareStrings } from "@tsv/ir";
+import { ts } from "ts-morph";
+import { assignAdapter } from "./adapters/assign";
+import type { PersistenceAdapter, PersistenceFacts } from "./adapters/types";
+import { assemble, type Draft, type MatchedWrite } from "./assemble";
+import { Callees, frameCalls, frameOf, type Reach, reach } from "./callgraph";
+import type { FunctionLike } from "./cfg";
+import { ClientCalls } from "./client-calls";
+import { Dominance } from "./dominance";
+import { matchesEntity, writtenValue } from "./entity";
+import { brokenLink, locText, sortFindings, unanalyzable } from "./findings";
+import { loadProject, ProjectContext } from "./project";
+import { resolveClient, resolveGuard, resolveImpl, symbolOf } from "./resolve";
+import {
+  declaredFieldType,
+  declaredTypeOfRef,
+  literalsOf,
+  type Narrowed,
+  type NarrowHandle,
+  type NarrowRequest,
+  singleLiteralOf,
+  typeNames,
+} from "./type-facts";
+import { findCandidateWrites, rebindWrites, type WriteNode } from "./writes";
+
+export interface ExtractOptions {
+  /** Project root; `impl` and binding paths are relative to it. */
+  projectRoot: string;
+  /** tsconfig path, relative to `projectRoot`. Default `<projectRoot>/tsconfig.json`. */
+  tsconfig?: string;
+}
+
+export interface ExtractResult {
+  /** The spec model's `name`. */
+  spec: string;
+  model?: BehaviorModel;
+  findings: Finding[];
+}
+
+export interface ExtractStats {
+  /** Source files analyzed (project files, no declarations, no `node_modules`). */
+  files: number;
+  /** Candidate state writes found syntactically (all state fields, before entity matching). */
+  writes: number;
+  /** Narrowing probes injected. */
+  probes: number;
+  durationMs: number;
+}
+
+/** Type facts of one candidate write; `narrowed.values` is `*` when it could not be probed. */
+interface WriteTypes {
+  narrowed: Narrowed;
+  probed: boolean;
+}
+
+interface Env {
+  ctx: ProjectContext;
+  writes: WriteNode[];
+  types: WriteTypes[];
+  callees: Callees;
+}
+
+function now(): number {
+  return globalThis.performance.now();
+}
+
+function detectPersistence(ctx: ProjectContext): PersistenceKind {
+  for (const sf of ctx.analyzedFiles()) {
+    for (const st of sf.statements) {
+      if (!ts.isImportDeclaration(st) || !ts.isStringLiteral(st.moduleSpecifier)) continue;
+      const m = st.moduleSpecifier.text;
+      if (m === "@prisma/client" || m.startsWith("@prisma/")) return "prisma";
+      if (m === "drizzle-orm" || m.startsWith("drizzle-orm/")) return "drizzle";
+    }
+  }
+  return "assign";
+}
+
+const ADAPTERS: Partial<Record<PersistenceKind, PersistenceAdapter>> = { assign: assignAdapter };
+
+function literalArgs(call: ts.CallExpression, checker: ts.TypeChecker): string[] {
+  const out: string[] = [];
+  for (const a of call.arguments) {
+    if (ts.isStringLiteral(a) || ts.isNoSubstitutionTemplateLiteral(a) || ts.isNumericLiteral(a)) {
+      out.push(a.text);
+    } else if (a.kind === ts.SyntaxKind.TrueKeyword) out.push("true");
+    else if (a.kind === ts.SyntaxKind.FalseKeyword) out.push("false");
+    else {
+      const v = singleLiteralOf(checker.getTypeAtLocation(a), checker);
+      if (v !== undefined) out.push(v);
+    }
+  }
+  return out;
+}
+
+function unprobedTypes(write: WriteNode, checker: ts.TypeChecker): Narrowed {
+  const fieldType = declaredFieldType(write.ref, write.field, checker);
+  return {
+    values: "*",
+    declared: fieldType ? literalsOf(fieldType, checker) : "*",
+    unconstrained: false,
+    typeText: "unknown",
+    declaredText: fieldType ? checker.typeToString(fieldType) : "unknown",
+    refTypeNames: typeNames(declaredTypeOfRef(write.ref, checker), checker),
+  };
+}
+
+export function extractAll(
+  specs: BehaviorModel[],
+  options: ExtractOptions,
+): { results: ExtractResult[]; stats: ExtractStats } {
+  const start = now();
+  const loaded = loadProject(options.projectRoot, options.tsconfig);
+  if ("error" in loaded) {
+    const results = specs.map((spec) => ({
+      spec: spec.name,
+      findings: [
+        brokenLink(
+          spec.name,
+          "tsconfig",
+          undefined,
+          `cannot load the TypeScript project: ${loaded.error}`,
+          undefined,
+          {
+            hint: "Pass the project root that contains tsconfig.json, or set the tsconfig path.",
+          },
+        ),
+      ],
+    }));
+    return { results, stats: { files: 0, writes: 0, probes: 0, durationMs: now() - start } };
+  }
+
+  // Phase 1 (syntax) and probe planning: no type query before planNarrowing.
+  const fields = new Set(specs.map((s) => s.entity.stateField));
+  const candidates = findCandidateWrites(loaded.files, fields);
+  const requests: NarrowRequest[] = [];
+  const requestOf: (number | undefined)[] = [];
+  for (const c of candidates) {
+    if (c.ref === undefined) {
+      requestOf.push(undefined);
+      continue;
+    }
+    requestOf.push(requests.length);
+    requests.push({ file: c.file, span: c.span, ref: c.ref, field: c.field });
+  }
+  const handles = loaded.facts.planNarrowing(requests);
+
+  // Phase 2: type queries.
+  const ctx = new ProjectContext(loaded);
+  const writes = rebindWrites(
+    candidates,
+    fields,
+    (f) => ctx.sourceFile(f),
+    (f, o) => ctx.facts.toOriginalPosition(f, o),
+  );
+  const types: WriteTypes[] = writes.map((w, i) => {
+    const r = requestOf[i];
+    if (r === undefined) return { narrowed: unprobedTypes(w, ctx.checker), probed: false };
+    return { narrowed: ctx.facts.narrowedLiteralsAt(handles[r] as NarrowHandle), probed: true };
+  });
+  const env: Env = { ctx, writes, types, callees: new Callees(ctx) };
+  const results = specs.map((spec) => extractSpec(spec, env));
+  return {
+    results,
+    stats: {
+      files: loaded.files.length,
+      writes: candidates.length,
+      probes: requests.length,
+      durationMs: now() - start,
+    },
+  };
+}
+
+function sortedEntries<T>(record: Record<string, T>): [string, T][] {
+  return Object.entries(record).sort(([a], [b]) => compareStrings(a, b));
+}
+
+function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
+  const { ctx, callees } = env;
+  const checker = ctx.checker;
+  const findings: Finding[] = [];
+  const behavior = spec.name;
+
+  const kind = spec.bindings.persistence ?? detectPersistence(ctx);
+  const adapter = ADAPTERS[kind];
+  if (!adapter) {
+    findings.push(
+      unanalyzable(
+        behavior,
+        "persistence",
+        kind,
+        `persistence "${kind}" is not supported yet; no code model was extracted`,
+        {
+          hint: "Only the `assign` adapter exists in this version; set `bindings.persistence: assign` if the code assigns and saves whole objects.",
+        },
+      ),
+    );
+    return { spec: behavior, findings };
+  }
+
+  // Links: clients, guards, impls.
+  const clientSyms = new Map<ts.Symbol, string>();
+  for (const [name, binding] of sortedEntries(spec.bindings.clients)) {
+    const r = resolveClient(ctx, binding);
+    if (r.ok) clientSyms.set(r.value, name);
+    else {
+      findings.push(
+        brokenLink(
+          behavior,
+          "client",
+          name,
+          `client "${name}" (${binding.module}#${binding.export}) does not resolve: ${r.reason}`,
+          binding.at,
+          {
+            hint: "Point `bindings.clients` at the module (relative to the project root) and the exported name of the client value.",
+          },
+        ),
+      );
+    }
+  }
+  const guards: { key: string; sym: ts.Symbol; args: string[] }[] = [];
+  for (const [key, binding] of sortedEntries(spec.bindings.guards)) {
+    const r = resolveGuard(ctx, binding);
+    if (r.ok) guards.push({ key, sym: r.value, args: binding.args });
+    else {
+      findings.push(
+        brokenLink(
+          behavior,
+          "guard",
+          key,
+          `guard "${key}" (${binding.raw}) does not resolve: ${r.reason}`,
+          binding.at,
+          {
+            hint: "Point `bindings.guards` at `path#function` or `path#function(args)`, relative to the project root.",
+          },
+        ),
+      );
+    }
+  }
+  const calls = new ClientCalls(checker, clientSyms, adapter);
+  const guardSyms = new Set(guards.map((g) => g.sym));
+  const calleeSym = (call: ts.CallExpression) => symbolOf(call.expression, checker);
+  const match = (call: ts.CallExpression): string[] => {
+    const sym = calleeSym(call);
+    if (!sym || !guardSyms.has(sym)) return [];
+    const lits = literalArgs(call, checker);
+    return guards
+      .filter(
+        (g) =>
+          g.sym === sym && g.args.length === lits.length && g.args.every((a, i) => a === lits[i]),
+      )
+      .map((g) => g.key);
+  };
+  const isStop = (call: ts.CallExpression): boolean => {
+    if (calls.classify(call)) return true;
+    const sym = calleeSym(call);
+    return sym !== undefined && guardSyms.has(sym);
+  };
+  const dominance = new Dominance(
+    callees,
+    isStop,
+    match,
+    guards.map((g) => g.key),
+  );
+
+  const reachMemo = new Map<FunctionLike, Reach>();
+  const reachFrom = (fn: FunctionLike): Reach => {
+    let r = reachMemo.get(fn);
+    if (!r) {
+      r = reach(fn, callees, isStop);
+      reachMemo.set(fn, r);
+    }
+    return r;
+  };
+
+  const impls: { name: string; fn: FunctionLike; reach: Reach }[] = [];
+  for (const t of spec.transitions) {
+    if (!t.impl) continue;
+    const r = resolveImpl(ctx, t.impl);
+    if (r.ok) impls.push({ name: t.name, fn: r.value, reach: reachFrom(r.value) });
+    else {
+      findings.push(
+        brokenLink(
+          behavior,
+          "impl",
+          t.name,
+          `${t.name}: impl ${t.impl.file}#${t.impl.symbol} does not resolve: ${r.reason}`,
+          t.at,
+          {
+            transition: t.name,
+            hint: "`impl` is `path#function`, relative to the project root (the directory with tsconfig.json).",
+          },
+        ),
+      );
+    }
+  }
+
+  // Writes of this spec's entity.
+  const matched: MatchedWrite[] = [];
+  env.writes.forEach((write, i) => {
+    if (write.field !== spec.entity.stateField) return;
+    const { narrowed, probed } = env.types[i] as WriteTypes;
+    if (!matchesEntity(spec.entity, narrowed.declared, narrowed.refTypeNames)) return;
+    const at = ctx.loc(write.site);
+    const value = writtenValue(write.value, checker);
+    if (value === undefined) {
+      findings.push(
+        unanalyzable(
+          behavior,
+          "write-value",
+          locText(at),
+          `${spec.entity.name}.${write.field} is assigned a value that is not a single literal (${write.value.getText()}); the write is not extracted`,
+          {
+            codeAt: at,
+            hint: "Assign a string literal (or a constant with a literal type) so the target state is known.",
+          },
+        ),
+      );
+      return;
+    }
+    const frame = frameOf(write.expr);
+    if (!frame) {
+      findings.push(
+        unanalyzable(
+          behavior,
+          "write-frame",
+          locText(at),
+          `${spec.entity.name}.${write.field} is written outside any function; the write is not extracted`,
+          {
+            codeAt: at,
+            hint: "Move the write into a function that a spec transition's impl calls.",
+          },
+        ),
+      );
+      return;
+    }
+    const persistence: PersistenceFacts = adapter.analyzeWrite({
+      write,
+      frame,
+      frameCalls: frameCalls(frame),
+      calls,
+      checker,
+    });
+    matched.push({ write, at, value, narrowed, probed, frame, persistence });
+  });
+
+  const persistenceClients = new Set<string>();
+  for (const m of matched) {
+    const p = m.persistence;
+    if (p.read) persistenceClients.add(p.read.client);
+    if (p.commit) persistenceClients.add(p.commit.client);
+    if (p.scope) {
+      const opener = calls.classify(p.scope.call);
+      if (opener) persistenceClients.add(opener.client);
+    }
+  }
+
+  // Linking: a write reached from an impl belongs to that spec transition. When several impls
+  // reach it, the ones whose `to` equals the written state win.
+  const drafts: Draft[] = [];
+  for (const m of matched) {
+    const linkers = impls.filter((i) => i.reach.frames.includes(m.frame));
+    const exact = linkers.filter(
+      (i) => spec.transitions.find((t) => t.name === i.name)?.to === m.value,
+    );
+    const use = exact.length > 0 ? exact : linkers;
+    if (use.length === 0) {
+      drafts.push({ write: m, reach: reachFrom(m.frame) });
+      continue;
+    }
+    for (const l of use) {
+      const t = spec.transitions.find((x) => x.name === l.name);
+      drafts.push({ write: m, reach: l.reach, linked: t });
+    }
+  }
+
+  const model = assemble(spec, drafts, {
+    ctx,
+    calls,
+    dominance,
+    persistenceClients,
+    persistence: kind,
+    findings,
+  });
+  return { spec: behavior, model, findings: sortFindings(findings) };
+}
