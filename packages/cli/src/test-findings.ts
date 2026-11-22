@@ -153,7 +153,7 @@ function replayFinding(
   if (meta.verdict === "replay-disagrees") {
     const f = base("replay-disagrees", "warning");
     const why = meta.followed
-      ? "the schedule was followed but the property held (a mapping or instrumentation gap?)"
+      ? "the schedule was followed but the property held: a step had no effect in the code (e.g. a conditional update that matched nothing, so the code is safer than the counterexample assumes), or the replay mapping missed a call"
       : `the code left the schedule (${meta.divergence?.kind ?? "?"}) and the property held: the code is safer than the counterexample assumes`;
     f.message = `The real code does not reproduce the ${against} for: ${what} Replay: ${why}. ${observed}`;
     if (meta.divergence) f.message += `\n${meta.divergence.message}`;

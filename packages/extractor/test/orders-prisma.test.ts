@@ -163,12 +163,8 @@ describe("orders-prisma variants", () => {
     const t = transitionOf(variant("b7-tx-read-committed"), "refund");
     expect(t.atomic).toBe(false);
     expect(t.sites?.read?.gate).toBe("prisma.order.findUniqueOrThrow");
-    expect(variant("b7-tx-read-committed").findings).toEqual([
-      expect.objectContaining({
-        id: "non-atomic:Order lifecycle:refund:isolation-level",
-        severity: "info",
-        codeAt: expect.objectContaining({ file: "src/orders/refund.ts", line: 14 }),
-      }),
-    ]);
+    expect(variant("b7-tx-read-committed").findings).toEqual([]);
+    expect(t.sites?.atomicNote?.at).toMatchObject({ file: "src/orders/refund.ts", line: 14 });
+    expect(t.sites?.atomicNote?.message).toContain("READ COMMITTED");
   });
 });

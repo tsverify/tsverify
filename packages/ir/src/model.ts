@@ -105,6 +105,12 @@ export interface CodeSites {
   /** The persistence call that commits the write (e.g. `db.orders.save`). */
   commit?: CallSite;
   atomic?: AtomicScope;
+  /**
+   * Why the read and write are not atomic although they look scoped, when the adapter can say
+   * (e.g. an interactive Prisma `$transaction` at READ COMMITTED). Conformance uses it as the
+   * reason and hint of the `non-atomic` finding.
+   */
+  atomicNote?: { message: string; hint: string; at: SourceLocation };
   /** Bound guards called on some path to the write; `dominates` = called on every path. */
   guards: { guard: string; at: SourceLocation; dominates: boolean }[];
   /** Effect calls attributed to this transition. `effect` is the spec effect name, or the gate when unmapped. */

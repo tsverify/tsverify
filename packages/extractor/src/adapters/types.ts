@@ -9,9 +9,9 @@ import type { FunctionLike } from "../cfg";
 import type { ClientCall, ClientCalls, ScopeRef } from "../client-calls";
 import type { WriteKind, WriteNode } from "../writes";
 
-/** Context for a "not atomic" verdict, reported when the spec asks for `atomic: true`. */
+/** Context for a "not atomic" verdict: becomes `CodeSites.atomicNote` (the reason in `non-atomic`). */
 export interface AtomicityNote {
-  /** Stable id subject, e.g. `isolation-level`. */
+  /** Short kind, e.g. `isolation-level` (for tests and debugging). */
   subject: string;
   message: string;
   hint: string;
@@ -47,7 +47,7 @@ export interface PersistenceFacts {
    * spec transition is `atomic: true` (otherwise the answer does not matter).
    */
   problems: string[];
-  /** Why the write is not atomic although it looks scoped: `info` findings when the spec says atomic. */
+  /** Why the write is not atomic although it looks scoped; the first becomes `CodeSites.atomicNote`. */
   notes?: AtomicityNote[];
 }
 
