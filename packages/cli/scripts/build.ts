@@ -3,34 +3,39 @@
  *
  * - `dist/tsverify.js`: the `tsverify` bin, one ESM bundle of `src/index.ts` for Node 22+. Every
  *   `@tsverify/*` workspace package is bundled in, except `@tsverify/runtime`, which generated
- *   tests import and which is published on its own. Every third-party package stays external and
- *   must be a `dependencies` entry of this package; the build fails otherwise. TypeScript is an
- *   optional peer (`typescript` or `@typescript/typescript6`), loaded at runtime from the
- *   analyzed project, so the build also fails if the bundle imports a peer statically.
- * - `dist/viewer/app.js` + `app.css`: the viewer's browser app, prebuilt so that an installed CLI
- *   never needs esbuild (`@tsverify/viewer`'s assets.ts picks them up next to the bundle, and its
- *   on-demand build, app-build.ts, is stubbed out of the bundle).
+ *   tests import and which is published on its own. Third-party packages are bundled too, unless
+ *   they are `dependencies` or `peerDependencies` of this package (left external, installed or
+ *   provided by the user). A bundled third-party package must be a `devDependencies` entry, so
+ *   its version is pinned here; the build fails otherwise. TypeScript is an optional peer
+ *   (`typescript` or `@typescript/typescript6`), loaded at runtime from the analyzed project, so
+ *   the build also fails if the bundle imports it statically.
+ * - `dist/viewer/`: the viewer's browser app with the part of Mermaid it uses (`app.js`,
+ *   `app.css`, `chunks/`), prebuilt so that an installed CLI needs neither esbuild nor Mermaid
+ *   (`@tsverify/viewer`'s assets.ts serves it from next to the bundle, and its on-demand build,
+ *   app-build.ts, is stubbed out of the bundle).
+ * - `dist/THIRD_PARTY_NOTICES.md`: the license texts of every bundled third-party package.
  * - `behavior.schema.json` at the package root, copied from `@tsverify/spec`, for editors
  *   (`node_modules/@tsverify/cli/behavior.schema.json`).
  *
  * Development is unaffected: `bin/tsverify.js` still runs `src/` through tsx.
  */
-import { chmodSync, copyFileSync, readFileSync, rmSync } from "node:fs";
+import { chmodSync, copyFileSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire, isBuiltin } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { writeViewerAssets } from "@tsverify/viewer";
+import { bundledPackages, writeViewerAssets } from "@tsverify/viewer";
 import { build, type Plugin } from "esbuild";
+import { type NoticePackage, thirdPartyNotices } from "./notices";
 
 const PACKAGE_DIR = fileURLToPath(new URL("..", import.meta.url));
 const DIST = join(PACKAGE_DIR, "dist");
 const ENTRY = "tsverify.js";
-/** Published separately: imported by generated tests, and resolved by `test-run.ts`. */
-const RUNTIME = "@tsverify/runtime";
+const NOTICES = "THIRD_PARTY_NOTICES.md";
 /** Replaces `@tsverify/viewer`'s app-build.ts in the bundle; only reached if dist/viewer/ is gone. */
 const VIEWER_APP_BUILD_STUB = `
 const missing = () => { throw new Error("tsverify view: dist/viewer/ is missing from the @tsverify/cli installation; reinstall it"); };
 export const buildApp = async () => missing();
+export const buildBundledApp = async () => missing();
 export const appStylesPath = missing;
 `;
 
@@ -38,11 +43,19 @@ interface Manifest {
   version: string;
   dependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
 }
 
 const manifest = JSON.parse(readFileSync(join(PACKAGE_DIR, "package.json"), "utf8")) as Manifest;
-const dependencies = manifest.dependencies ?? {};
-const peerDependencies = manifest.peerDependencies ?? {};
+/**
+ * Installed with the CLI, or provided by the user: never bundled. Includes `@tsverify/runtime`
+ * (a dependency, published separately), which generated tests import and `test-run.ts` resolves.
+ */
+const external = new Set([
+  ...Object.keys(manifest.dependencies ?? {}),
+  ...Object.keys(manifest.peerDependencies ?? {}),
+]);
+const devDependencies = manifest.devDependencies ?? {};
 
 /** `@scope/name/sub` → `@scope/name`, `name/sub` → `name`. */
 function packageName(specifier: string): string {
@@ -50,14 +63,22 @@ function packageName(specifier: string): string {
   return (specifier.startsWith("@") ? parts.slice(0, 2) : parts.slice(0, 1)).join("/");
 }
 
-const workspaceBundling: Plugin = {
-  name: "tsverify-workspace",
+const bundling: Plugin = {
+  name: "tsverify-bundling",
   setup(b) {
     b.onResolve({ filter: /^[^./]/ }, (args) => {
       if (isBuiltin(args.path)) return { path: args.path, external: true };
       const name = packageName(args.path);
-      if (name.startsWith("@tsverify/") && name !== RUNTIME) return undefined; // bundled
-      return { path: args.path, external: true };
+      if (external.has(name)) return { path: args.path, external: true };
+      if (name.startsWith("@tsverify/")) return undefined; // workspace: bundled
+      if (name in devDependencies) return undefined; // third-party: bundled
+      return {
+        errors: [
+          {
+            text: `${args.path} is neither bundled (a devDependencies entry of @tsverify/cli) nor external (dependencies / peerDependencies)`,
+          },
+        ],
+      };
     });
     // The CLI reads only `version` from its package.json: inline that, not the whole manifest.
     b.onLoad({ filter: /[\\/]cli[\\/]package\.json$/ }, () => ({
@@ -83,15 +104,24 @@ const result = await build({
   format: "esm",
   platform: "node",
   target: "node22",
-  banner: { js: "#!/usr/bin/env node" },
+  // Bundled CommonJS (yaml) calls `require` for Node built-ins, which an ES module lacks:
+  // esbuild's `__require` shim uses this one.
+  banner: {
+    js: [
+      "#!/usr/bin/env node",
+      'import { createRequire as __tsverifyCreateRequire } from "node:module";',
+      "const require = __tsverifyCreateRequire(import.meta.url);",
+    ].join("\n"),
+  },
   // Whitespace and syntax only: identifiers stay readable in stack traces, and esbuild's
   // per-module path comments (`// src/main.ts`) are dropped.
   minifyWhitespace: true,
   minifySyntax: true,
+  // License texts go to THIRD_PARTY_NOTICES.md instead.
   legalComments: "none",
   metafile: true,
   logLevel: "warning",
-  plugins: [workspaceBundling],
+  plugins: [bundling],
 });
 
 const externals = new Set<string>();
@@ -100,15 +130,10 @@ for (const output of Object.values(result.metafile.outputs)) {
     if (imported.external && !isBuiltin(imported.path)) externals.add(packageName(imported.path));
   }
 }
-const undeclared = [...externals].filter((name) => !(name in dependencies));
-if (undeclared.length > 0) {
-  throw new Error(
-    `the bundle imports packages that @tsverify/cli does not depend on: ${undeclared.join(", ")}`,
-  );
-}
 // The TypeScript peers come from the analyzed project, loaded at runtime (the extractor's
 // loadTypeScript): a static import would make them hard requirements of every install.
-const imported = Object.keys(peerDependencies).filter((name) => externals.has(name));
+const TYPESCRIPT_PEERS = ["typescript", "@typescript/typescript6"];
+const imported = TYPESCRIPT_PEERS.filter((name) => externals.has(name));
 if (imported.length > 0) {
   throw new Error(
     `the bundle imports the peer dependencies ${imported.join(", ")} statically; load them at runtime`,
@@ -116,7 +141,22 @@ if (imported.length > 0) {
 }
 chmodSync(join(DIST, ENTRY), 0o755);
 
-await writeViewerAssets(join(DIST, "viewer"));
+const bundled = await bundledPackages(result.metafile, PACKAGE_DIR);
+for (const p of bundled) {
+  if (devDependencies[p.name] !== p.version) {
+    throw new Error(
+      `dist/${ENTRY} bundles ${p.name}@${p.version}, but @tsverify/cli's devDependencies pin ${devDependencies[p.name] ?? "nothing"}`,
+    );
+  }
+}
+
+const viewer = await writeViewerAssets(join(DIST, "viewer"));
+
+const notices: NoticePackage[] = [
+  ...bundled.map((p) => ({ ...p, bundledIn: [`dist/${ENTRY}`] })),
+  ...viewer.packages.map((p) => ({ ...p, bundledIn: ["dist/viewer/"] })),
+];
+writeFileSync(join(DIST, NOTICES), thirdPartyNotices(notices));
 
 const require = createRequire(import.meta.url);
 copyFileSync(
@@ -126,7 +166,13 @@ copyFileSync(
 
 const kb = (bytes: number) => `${Math.round(bytes / 1024)} kB`;
 const entry = result.metafile.outputs[`dist/${ENTRY}`];
+const viewerBytes = viewer.files.reduce((sum, f) => sum + f.bytes, 0);
+const names = (packages: { name: string }[]) => packages.map((p) => p.name).join(", ");
 process.stdout.write(
-  `built dist/${ENTRY} (${kb(entry?.bytes ?? 0)}), dist/viewer/, behavior.schema.json; ` +
-    `external: ${[...externals].sort().join(", ")}\n`,
+  [
+    `built dist/${ENTRY} (${kb(entry?.bytes ?? 0)}), bundling ${names(bundled)}; external: ${[...externals].sort().join(", ")}`,
+    `built dist/viewer/ (${kb(viewerBytes)} in ${viewer.files.length} files), bundling ${names(viewer.packages)}`,
+    `wrote dist/${NOTICES} (${new Set(notices.map((p) => `${p.name}@${p.version}`)).size} packages), behavior.schema.json`,
+    "",
+  ].join("\n"),
 );

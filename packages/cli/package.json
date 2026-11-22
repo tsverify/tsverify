@@ -60,23 +60,21 @@
     }
   },
   "dependencies": {
-    "@tsverify/runtime": "workspace:*",
-    "cac": "7.1.1",
-    "mermaid": "12.3.0",
-    "picocolors": "1.1.1",
-    "vitest": "5.1.1",
-    "yaml": "2.9.1",
-    "zod": "4.6.7"
+    "@tsverify/runtime": "workspace:*"
   },
   "peerDependencies": {
     "@typescript/typescript6": ">=6.0.0",
-    "typescript": ">=5.4"
+    "typescript": ">=5.4",
+    "vitest": "^3.0.5 || ^4.0.1 || ^5.0.0"
   },
   "peerDependenciesMeta": {
     "@typescript/typescript6": {
       "optional": true
     },
     "typescript": {
+      "optional": true
+    },
+    "vitest": {
       "optional": true
     }
   },
@@ -89,7 +87,12 @@
     "@tsverify/spec": "workspace:*",
     "@tsverify/testgen": "workspace:*",
     "@tsverify/viewer": "workspace:*",
+    "cac": "7.1.1",
     "esbuild": "0.28.2",
-    "tsx": "4.23.15"
+    "picocolors": "1.1.1",
+    "tsx": "4.23.15",
+    "vitest": "5.1.1",
+    "yaml": "2.9.1",
+    "zod": "4.6.7"
   }
 }

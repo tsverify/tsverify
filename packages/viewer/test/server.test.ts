@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { request } from "node:http";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative, sep } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { writeViewerAssets } from "../src/server/assets";
 import { isAllowedHost, isLoopback } from "../src/server/host-guard";
@@ -173,15 +173,57 @@ describe("startViewer", () => {
     expect(mermaid.body).toContain("./chunks/mermaid.esm.min/");
   });
 
-  it("writes the prebuilt app bundle and styles that a bundled build serves", async () => {
-    const dir = await tempDir();
-    const [app, styles] = await writeViewerAssets(join(dir, "viewer"));
-    expect(app).toBe(join(dir, "viewer", "app.js"));
-    expect(styles).toBe(join(dir, "viewer", "app.css"));
+  it("writes a prebuilt viewer with the part of Mermaid it uses, and serves it", async () => {
+    const dir = join(await tempDir(), "viewer");
+    const build = await writeViewerAssets(dir);
+    const files = build.files.map((f) => relative(dir, f.path).split(sep).join("/"));
+    expect(files).toContain("app.js");
+    expect(files).toContain("app.css");
+    const chunks = files.filter((f) => f.startsWith("chunks/"));
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const f of chunks) expect(f).toMatch(/^chunks\/[A-Za-z0-9_.-]+\.js$/);
+    // State diagrams only: all of Mermaid's diagrams, layouts and KaTeX would be over 5 MB.
+    const bytes = build.files.reduce((sum, f) => sum + f.bytes, 0);
+    expect(bytes).toBeLessThan(1.5 * 1024 * 1024);
+    const names = build.packages.map((p) => p.name);
+    expect(names).toEqual(
+      expect.arrayContaining(["dagre-d3-es", "dompurify", "mermaid", "preact"]),
+    );
+    expect(names).not.toContain("katex");
+    expect(names).not.toContain("cytoscape");
 
-    const viewer = await start();
-    expect(await readFile(app as string, "utf8")).toBe((await get(viewer, "/app.js")).body);
-    expect((await get(viewer, "/")).body).toContain(await readFile(styles as string, "utf8"));
+    const viewer = await start({ assets: dir });
+    const app = await get(viewer, "/app.js");
+    expect(app.body).toBe(await readFile(join(dir, "app.js"), "utf8"));
+    expect(app.body).toContain("./chunks/");
+    expect(app.body).not.toContain("/vendor/mermaid/");
+    expect((await get(viewer, "/")).body).toContain(await readFile(join(dir, "app.css"), "utf8"));
+    let mermaidCode = "";
+    for (const f of chunks) {
+      const res = await get(viewer, `/${f}`);
+      expect(res.status, f).toBe(200);
+      expect(res.headers["content-type"]).toMatch(/^text\/javascript/);
+      expect(res.headers["content-security-policy"]).toContain("script-src 'self'");
+      expect(res.body).not.toMatch(/https?:\/\/(?:cdn|unpkg|esm\.sh)/i);
+      mermaidCode += res.body;
+    }
+    expect(mermaidCode).toContain("stateDiagram");
+    expect(mermaidCode).toContain("bundles only Mermaid's state diagrams");
+    // Prebuilt: nothing is served from node_modules, and chunk names are never paths.
+    for (const path of [
+      "/vendor/mermaid/mermaid.esm.min.mjs",
+      "/chunks/..%2fapp.js",
+      "/chunks/%2e%2e%2fapp.css",
+      "/chunks/.hidden.js",
+      "/chunks/x/y.js",
+    ]) {
+      expect((await get(viewer, path)).status, path).toBe(404);
+    }
+  });
+
+  it("serves no chunks when built on demand", async () => {
+    const viewer = await start({ assets: await tempDir() });
+    expect((await get(viewer, "/chunks/chunk-ABC.js")).status).toBe(404);
   });
 
   it("404s paths outside the served Mermaid files and 405s non-GET methods", async () => {

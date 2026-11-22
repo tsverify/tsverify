@@ -19,8 +19,10 @@ into the CLI. All workspace packages share one version.
 3. **Check locally.**
    ```sh
    pnpm run ci
-   pnpm smoke:pack          # packs both packages, npm-installs them into a copy of examples/orders-app, runs the CLI
+   pnpm smoke:pack          # packs both packages, npm-installs them into copies of examples/orders-app (with and without vitest), runs the CLI
    ```
+   The smoke test ends with the tarball sizes and the installed footprint (`node_modules` without vitest); compare
+   them with the previous release.
    To inspect what would be published, run `pnpm pack` in `packages/cli` or `packages/runtime` and look inside the
    tarball. `prepack` builds `dist/` and copies `README.md`, `LICENSE`, `NOTICE` and `CHANGELOG.md` into the
    package; the copies are gitignored. (`npm pack --dry-run` lists nearly the same files, but it ignores
@@ -36,9 +38,13 @@ into the CLI. All workspace packages share one version.
 ## How the packages are built
 
 - **`@tsverify/cli`**: `packages/cli/scripts/build.ts` (esbuild) writes `dist/tsverify.js`, which bundles every
-  `@tsverify/*` package except the runtime and leaves third-party packages external; the build fails if the bundle
-  imports a package that is not in the CLI's `dependencies`. It also prebuilds the viewer app into `dist/viewer/`
-  and copies `behavior.schema.json` into the package root.
+  `@tsverify/*` package except the runtime, plus the small pure-JS packages (yaml, zod, cac, picocolors). Only the
+  CLI's `dependencies` and `peerDependencies` stay external (the optional peer vitest, needed by `tsverify test`
+  alone). A bundled third-party package must be pinned in the CLI's `devDependencies`, or the build fails. It also
+  prebuilds the viewer app, with the part of Mermaid it uses (state diagrams), into `dist/viewer/`, writes the
+  license texts of everything it bundled to `dist/THIRD_PARTY_NOTICES.md`, and copies `behavior.schema.json` into
+  the package root. When you add or upgrade a bundled package, check that its license allows redistribution with
+  its notice (MIT, ISC, BSD, Apache-2.0).
 - **`@tsverify/runtime`**: `tsc -p tsconfig.build.json` compiles `src/` to `dist/` (JS + `.d.ts`).
 - In development, `exports` and `bin` point at `src/` and the tsx launcher. `publishConfig` swaps them for `dist/`
   when pnpm packs or publishes, so always publish with **pnpm**, not `npm publish`.

@@ -533,7 +533,7 @@ Prefer a small, behavior-preserving refactor that makes the code checkable over 
 ## 8. Fixtures for `tsverify test`
 
 `tsverify test` generates vitest tests into `<project>/.tsverify/generated/` (add `.tsverify/` to `.gitignore`) and runs them
-with a bundled vitest. It replaces each `bindings.clients` export with an in-memory fake (a store for
+with the project's own vitest (`npm i -D vitest`; versions 3.0.5 and later). It replaces each `bindings.clients` export with an in-memory fake (a store for
 `assign`/`prisma` clients, call recorders for effect clients), seeds one entity, and calls each `impl`:
 
 | Test file | One test per | Passes when |
