@@ -29,6 +29,7 @@ const RUNTIME = "@tsverify/runtime";
 const VIEWER_APP_BUILD_STUB = `
 const missing = () => { throw new Error("tsverify view: dist/viewer/ is missing from the @tsverify/cli installation; reinstall it"); };
 export const buildApp = async () => missing();
+export const buildBundledApp = async () => missing();
 export const appStylesPath = missing;
 `;
 

@@ -1,4 +1,7 @@
+export type { ViewerAssetsBuild } from "./server/assets";
 export { writeViewerAssets } from "./server/assets";
+export type { BundledPackage, MetafileInputs } from "./server/bundled-packages";
+export { bundledPackages } from "./server/bundled-packages";
 export { isLoopback } from "./server/host-guard";
 export type { OpenBrowserOptions } from "./server/open";
 export { openBrowser } from "./server/open";

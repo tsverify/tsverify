@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { ViewData } from "../view-data";
-import { appBundle, MERMAID_PREFIX, mermaidAsset, pageHtml } from "./assets";
+import { CHUNKS_PREFIX, MERMAID_PREFIX, viewerAssets } from "./assets";
 import { isAllowedHost, isLoopback, urlHost } from "./host-guard";
 import { type Watcher, watchPaths } from "./watch";
 
@@ -25,6 +25,12 @@ export interface ViewerOptions {
   poll?: boolean;
   /** Called after every rebuild (not the first load). */
   onReload?: (event: ReloadEvent) => void;
+  /**
+   * A prebuilt viewer directory (`writeViewerAssets` output) to serve. Default: `viewer/` next to
+   * the server module when it exists (the published CLI's `dist/viewer/`), else the app is built
+   * from `src/app/` on demand.
+   */
+  assets?: string;
 }
 
 export interface ReloadEvent {
@@ -60,7 +66,9 @@ const HEARTBEAT_MS = 25_000;
 
 /**
  * Serves the viewer on `host:port` (default `127.0.0.1`, a random free port):
- * - `GET /` the page, `GET /app.js` the app bundle, `GET /vendor/mermaid/…` Mermaid
+ * - `GET /` the page, `GET /app.js` the app bundle, `GET /chunks/…` its lazily loaded chunks
+ *   (prebuilt: the bundled Mermaid), or `GET /vendor/mermaid/…` Mermaid from `node_modules`
+ *   (development)
  * - `GET /api/data` the current `ViewData` as JSON
  * - `GET /api/events` server-sent events: `reload` after watched files change and the data is rebuilt
  *
@@ -74,8 +82,9 @@ export async function startViewer(options: ViewerOptions): Promise<Viewer> {
     throw new Error(`startViewer: ${host} is not a loopback address; the viewer is local-only`);
   }
   let data: ViewData = { ...(await options.load()), version: 1 };
+  const assets = viewerAssets(options.assets);
   // Start the bundle build now so the first page load doesn't wait for all of it.
-  appBundle().catch(() => {});
+  assets.appBundle().catch(() => {});
 
   const streams = new Set<ServerResponse>();
   let closed = false;
@@ -99,15 +108,17 @@ export async function startViewer(options: ViewerOptions): Promise<Viewer> {
     }
     const path = new URL(req.url ?? "/", "http://viewer.invalid").pathname;
     if (path === "/" || path === "/index.html") {
-      send(res, 200, "text/html; charset=utf-8", await pageHtml(), req);
+      send(res, 200, "text/html; charset=utf-8", await assets.pageHtml(), req);
     } else if (path === "/app.js") {
-      send(res, 200, "text/javascript; charset=utf-8", (await appBundle()).code, req);
+      send(res, 200, "text/javascript; charset=utf-8", (await assets.appBundle()).code, req);
     } else if (path === "/api/data") {
       send(res, 200, "application/json; charset=utf-8", JSON.stringify(data), req);
     } else if (path === "/api/events") {
       openStream(res);
-    } else if (path.startsWith(MERMAID_PREFIX)) {
-      const asset = await mermaidAsset(path.slice(MERMAID_PREFIX.length));
+    } else if (path.startsWith(CHUNKS_PREFIX) || path.startsWith(MERMAID_PREFIX)) {
+      const asset = path.startsWith(CHUNKS_PREFIX)
+        ? await assets.chunk(path.slice(CHUNKS_PREFIX.length))
+        : await assets.mermaid(path.slice(MERMAID_PREFIX.length));
       if (asset) send(res, 200, asset.type, asset.body, req);
       else send(res, 404, "text/plain; charset=utf-8", "not found\n");
     } else {

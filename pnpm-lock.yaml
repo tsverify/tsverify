@@ -71,9 +71,6 @@ importers:
       cac:
         specifier: 7.1.1
         version: 7.1.1
-      mermaid:
-        specifier: 12.3.0
-        version: 12.3.0
       picocolors:
         specifier: 1.1.1
         version: 1.1.1
@@ -187,13 +184,13 @@ importers:
       esbuild:
         specifier: 0.28.2
         version: 0.28.2
-      mermaid:
-        specifier: 12.3.0
-        version: 12.3.0
       preact:
         specifier: 11.2.0
         version: 11.2.0(preact-render-to-string@6.8.3)
     devDependencies:
+      mermaid:
+        specifier: 12.3.0
+        version: 12.3.0
       preact-render-to-string:
         specifier: 6.8.3
         version: 6.8.3(preact@11.2.0)

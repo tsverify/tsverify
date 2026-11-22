@@ -14,10 +14,10 @@
     "@tsverify/ir": "workspace:*",
     "@tsverify/render": "workspace:*",
     "esbuild": "0.28.2",
-    "mermaid": "12.3.0",
     "preact": "11.2.0"
   },
   "devDependencies": {
+    "mermaid": "12.3.0",
     "preact-render-to-string": "6.8.3"
   }
 }
