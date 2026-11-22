@@ -5,8 +5,8 @@
  * types here are **structural**: the subset of `ir.Trace` the planner reads. `test/ir-compat.test.ts`
  * proves an `ir.Trace` is assignable to `TraceInput`.
  */
-import type { Step } from "./divergence";
-import { UNTIL_DONE } from "./scheduler";
+import type { Step } from "./divergence.js";
+import { UNTIL_DONE } from "./scheduler.js";
 
 /** `ir.TraceActionKind`. */
 export type ModelActionKind = "atomic" | "read" | "write";

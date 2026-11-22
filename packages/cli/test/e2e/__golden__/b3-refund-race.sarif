@@ -6,7 +6,7 @@
       "tool": {
         "driver": {
           "name": "tsverify",
-          "version": "0.0.0",
+          "version": "0.1.0-alpha.0",
           "rules": [
             {
               "id": "invalid-spec",

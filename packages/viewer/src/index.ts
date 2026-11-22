@@ -1,3 +1,4 @@
+export { writeViewerAssets } from "./server/assets";
 export { isLoopback } from "./server/host-guard";
 export type { OpenBrowserOptions } from "./server/open";
 export { openBrowser } from "./server/open";

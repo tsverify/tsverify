@@ -21,3 +21,19 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm verify
+  # Packs @tsverify/runtime and @tsverify/cli, installs the tarballs with npm into a copy of
+  # examples/orders-app and runs the installed CLI (scripts/smoke-pack.ts). Needs the registry.
+  smoke-pack:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [22, 26]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm smoke:pack

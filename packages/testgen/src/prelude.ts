@@ -1,5 +1,5 @@
 /**
- * The part every generated test file shares (doc: packages/runtime/README.md, "Shape of a
+ * The part every generated test file shares (doc: packages/runtime/DESIGN.md, "Shape of a
  * generated replay test"):
  *
  * 1. fakes as plain top-level consts (a `vi.mock` factory runs lazily, after them)

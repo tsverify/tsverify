@@ -3,10 +3,10 @@
  * derivation of a `ReplayMapping` from them. Structural because the runtime has no internal
  * dependencies; `test/ir-compat.test.ts` proves the `ir` types are assignable.
  */
-import type { EffectsConfig } from "./instrument/effects";
-import type { PrismaFakeConfig } from "./instrument/prisma";
-import type { StoreConfig } from "./instrument/store";
-import type { ReplayMapping } from "./plan";
+import type { EffectsConfig } from "./instrument/effects.js";
+import type { PrismaFakeConfig } from "./instrument/prisma.js";
+import type { StoreConfig } from "./instrument/store.js";
+import type { ReplayMapping } from "./plan.js";
 
 /** `ir.CallSite` without the source location. */
 export interface CallSiteInput {

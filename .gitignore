@@ -5,3 +5,10 @@ coverage/
 *.log
 .DS_Store
 .claude/worktrees/
+# Copied into the published packages at pack time (prepack)
+packages/*/LICENSE
+packages/*/NOTICE
+packages/*/CHANGELOG.md
+packages/cli/README.md
+packages/cli/behavior.schema.json
+*.tgz

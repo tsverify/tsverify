@@ -24,9 +24,9 @@
  *   throws (rollback). Not reentrant: a nested transaction is a `deadlock`.
  * - Unknown members throw `UninstrumentedCallError` naming the call and the config to add.
  */
-import { preview } from "../preview";
-import type { Scheduler } from "../scheduler";
-import { strict } from "./strict";
+import { preview } from "../preview.js";
+import type { Scheduler } from "../scheduler.js";
+import { strict } from "./strict.js";
 
 export type Row = Record<string, unknown>;
 
