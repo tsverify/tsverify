@@ -1,0 +1,794 @@
+{
+  "kind": "entity",
+  "name": "Order lifecycle",
+  "origin": "code",
+  "entity": {
+    "name": "Order",
+    "stateField": "status",
+    "states": [
+      "draft",
+      "pending_payment",
+      "paid",
+      "shipped",
+      "refunded",
+      "cancelled"
+    ],
+    "initial": "draft",
+    "terminal": [
+      "shipped",
+      "refunded",
+      "cancelled"
+    ]
+  },
+  "actors": {
+    "customer": {
+      "name": "customer",
+      "trust": "untrusted",
+      "requires": []
+    },
+    "admin": {
+      "name": "admin",
+      "trust": "authenticated",
+      "requires": [
+        {
+          "name": "role",
+          "args": [
+            "admin"
+          ],
+          "raw": "role(admin)"
+        }
+      ]
+    },
+    "stripe": {
+      "name": "stripe",
+      "trust": "signed-webhook",
+      "requires": []
+    },
+    "system": {
+      "name": "system",
+      "trust": "internal",
+      "requires": []
+    }
+  },
+  "transitions": [
+    {
+      "name": "checkout",
+      "from": [
+        "draft"
+      ],
+      "to": "pending_payment",
+      "by": [
+        "customer"
+      ],
+      "requires": [
+        {
+          "name": "owner",
+          "args": [],
+          "raw": "owner"
+        }
+      ],
+      "effects": [],
+      "atomic": true,
+      "idempotent": false,
+      "impl": {
+        "file": "src/orders/checkout.ts",
+        "symbol": "checkout"
+      },
+      "at": {
+        "file": "src/orders/checkout.ts",
+        "line": 13,
+        "column": 5,
+        "endLine": 13,
+        "endColumn": 37
+      },
+      "sites": {
+        "persistence": "assign",
+        "write": {
+          "file": "src/orders/checkout.ts",
+          "line": 13,
+          "column": 5,
+          "endLine": 13,
+          "endColumn": 37
+        },
+        "function": {
+          "file": "src/orders/checkout.ts",
+          "name": "checkout",
+          "at": {
+            "file": "src/orders/checkout.ts",
+            "line": 8,
+            "column": 23,
+            "endLine": 8,
+            "endColumn": 31
+          }
+        },
+        "specTransition": "checkout",
+        "fromState": {
+          "values": [
+            "draft"
+          ],
+          "unconstrained": false
+        },
+        "read": {
+          "at": {
+            "file": "src/orders/checkout.ts",
+            "line": 10,
+            "column": 25,
+            "endLine": 10,
+            "endColumn": 47
+          },
+          "client": "db",
+          "path": "orders.get",
+          "gate": "db.orders.get",
+          "occurrence": 0
+        },
+        "commit": {
+          "at": {
+            "file": "src/orders/checkout.ts",
+            "line": 14,
+            "column": 11,
+            "endLine": 14,
+            "endColumn": 32
+          },
+          "client": "db",
+          "path": "orders.save",
+          "gate": "db.orders.save",
+          "occurrence": 0
+        },
+        "atomic": {
+          "kind": "transaction",
+          "at": {
+            "file": "src/orders/checkout.ts",
+            "line": 9,
+            "column": 10,
+            "endLine": 16,
+            "endColumn": 5
+          },
+          "gate": "db.transaction"
+        },
+        "guards": [
+          {
+            "guard": "owner",
+            "at": {
+              "file": "src/orders/checkout.ts",
+              "line": 11,
+              "column": 5,
+              "endLine": 11,
+              "endColumn": 35
+            },
+            "dominates": true
+          }
+        ],
+        "effects": [],
+        "invocation": {
+          "impl": {
+            "file": "src/orders/checkout.ts",
+            "symbol": "checkout"
+          },
+          "entityId": {
+            "param": 1,
+            "path": []
+          },
+          "actor": {
+            "param": 0,
+            "path": [
+              "actor"
+            ]
+          }
+        },
+        "storage": {
+          "client": "db",
+          "collection": "orders",
+          "key": "id"
+        }
+      }
+    },
+    {
+      "name": "expire",
+      "from": [
+        "pending_payment"
+      ],
+      "to": "cancelled",
+      "by": [
+        "system"
+      ],
+      "requires": [],
+      "effects": [],
+      "atomic": true,
+      "idempotent": false,
+      "impl": {
+        "file": "src/jobs/expire-orders.ts",
+        "symbol": "expireOrder"
+      },
+      "at": {
+        "file": "src/jobs/expire-orders.ts",
+        "line": 13,
+        "column": 5,
+        "endLine": 13,
+        "endColumn": 31
+      },
+      "sites": {
+        "persistence": "assign",
+        "write": {
+          "file": "src/jobs/expire-orders.ts",
+          "line": 13,
+          "column": 5,
+          "endLine": 13,
+          "endColumn": 31
+        },
+        "function": {
+          "file": "src/jobs/expire-orders.ts",
+          "name": "expireOrder",
+          "at": {
+            "file": "src/jobs/expire-orders.ts",
+            "line": 9,
+            "column": 23,
+            "endLine": 9,
+            "endColumn": 34
+          }
+        },
+        "specTransition": "expire",
+        "fromState": {
+          "values": [
+            "pending_payment"
+          ],
+          "unconstrained": false
+        },
+        "read": {
+          "at": {
+            "file": "src/jobs/expire-orders.ts",
+            "line": 11,
+            "column": 25,
+            "endLine": 11,
+            "endColumn": 47
+          },
+          "client": "db",
+          "path": "orders.get",
+          "gate": "db.orders.get",
+          "occurrence": 0
+        },
+        "commit": {
+          "at": {
+            "file": "src/jobs/expire-orders.ts",
+            "line": 14,
+            "column": 11,
+            "endLine": 14,
+            "endColumn": 32
+          },
+          "client": "db",
+          "path": "orders.save",
+          "gate": "db.orders.save",
+          "occurrence": 0
+        },
+        "atomic": {
+          "kind": "transaction",
+          "at": {
+            "file": "src/jobs/expire-orders.ts",
+            "line": 10,
+            "column": 10,
+            "endLine": 16,
+            "endColumn": 5
+          },
+          "gate": "db.transaction"
+        },
+        "guards": [],
+        "effects": [],
+        "invocation": {
+          "impl": {
+            "file": "src/jobs/expire-orders.ts",
+            "symbol": "expireOrder"
+          },
+          "entityId": {
+            "param": 0,
+            "path": []
+          }
+        },
+        "storage": {
+          "client": "db",
+          "collection": "orders",
+          "key": "id"
+        }
+      }
+    },
+    {
+      "name": "payment_succeeded",
+      "from": [
+        "pending_payment"
+      ],
+      "to": "paid",
+      "by": [
+        "stripe"
+      ],
+      "requires": [],
+      "effects": [
+        {
+          "name": "email.receipt",
+          "multiplicity": "exactly-once"
+        }
+      ],
+      "atomic": true,
+      "idempotent": true,
+      "impl": {
+        "file": "src/payments/webhook.ts",
+        "symbol": "onPaymentSucceeded"
+      },
+      "at": {
+        "file": "src/payments/webhook.ts",
+        "line": 22,
+        "column": 5,
+        "endLine": 22,
+        "endColumn": 26
+      },
+      "sites": {
+        "persistence": "assign",
+        "write": {
+          "file": "src/payments/webhook.ts",
+          "line": 22,
+          "column": 5,
+          "endLine": 22,
+          "endColumn": 26
+        },
+        "function": {
+          "file": "src/payments/webhook.ts",
+          "name": "onPaymentSucceeded",
+          "at": {
+            "file": "src/payments/webhook.ts",
+            "line": 18,
+            "column": 23,
+            "endLine": 18,
+            "endColumn": 41
+          }
+        },
+        "specTransition": "payment_succeeded",
+        "fromState": {
+          "values": [
+            "pending_payment"
+          ],
+          "unconstrained": false
+        },
+        "read": {
+          "at": {
+            "file": "src/payments/webhook.ts",
+            "line": 20,
+            "column": 25,
+            "endLine": 20,
+            "endColumn": 53
+          },
+          "client": "db",
+          "path": "orders.get",
+          "gate": "db.orders.get",
+          "occurrence": 0
+        },
+        "commit": {
+          "at": {
+            "file": "src/payments/webhook.ts",
+            "line": 24,
+            "column": 11,
+            "endLine": 24,
+            "endColumn": 32
+          },
+          "client": "db",
+          "path": "orders.save",
+          "gate": "db.orders.save",
+          "occurrence": 0
+        },
+        "atomic": {
+          "kind": "transaction",
+          "at": {
+            "file": "src/payments/webhook.ts",
+            "line": 19,
+            "column": 22,
+            "endLine": 26,
+            "endColumn": 5
+          },
+          "gate": "db.transaction"
+        },
+        "guards": [],
+        "effects": [
+          {
+            "at": {
+              "file": "src/payments/webhook.ts",
+              "line": 28,
+              "column": 9,
+              "endLine": 28,
+              "endColumn": 60
+            },
+            "client": "email",
+            "path": "send",
+            "gate": "email.send",
+            "occurrence": 0,
+            "effect": "email.receipt"
+          }
+        ],
+        "invocation": {
+          "impl": {
+            "file": "src/payments/webhook.ts",
+            "symbol": "onPaymentSucceeded"
+          },
+          "entityId": {
+            "param": 0,
+            "path": [
+              "orderId"
+            ]
+          }
+        },
+        "storage": {
+          "client": "db",
+          "collection": "orders",
+          "key": "id"
+        }
+      }
+    },
+    {
+      "name": "refund",
+      "from": [
+        "paid"
+      ],
+      "to": "refunded",
+      "by": [
+        "admin"
+      ],
+      "requires": [
+        {
+          "name": "role",
+          "args": [
+            "admin"
+          ],
+          "raw": "role(admin)"
+        }
+      ],
+      "effects": [
+        {
+          "name": "stripe.refund",
+          "multiplicity": "exactly-once"
+        }
+      ],
+      "atomic": true,
+      "idempotent": false,
+      "impl": {
+        "file": "src/orders/refund.ts",
+        "symbol": "refundOrder"
+      },
+      "at": {
+        "file": "src/orders/refund.ts",
+        "line": 17,
+        "column": 5,
+        "endLine": 17,
+        "endColumn": 30
+      },
+      "sites": {
+        "persistence": "assign",
+        "write": {
+          "file": "src/orders/refund.ts",
+          "line": 17,
+          "column": 5,
+          "endLine": 17,
+          "endColumn": 30
+        },
+        "function": {
+          "file": "src/orders/refund.ts",
+          "name": "refundOrder",
+          "at": {
+            "file": "src/orders/refund.ts",
+            "line": 11,
+            "column": 23,
+            "endLine": 11,
+            "endColumn": 34
+          }
+        },
+        "specTransition": "refund",
+        "fromState": {
+          "values": [
+            "paid"
+          ],
+          "unconstrained": false
+        },
+        "read": {
+          "at": {
+            "file": "src/orders/refund.ts",
+            "line": 14,
+            "column": 25,
+            "endLine": 14,
+            "endColumn": 47
+          },
+          "client": "db",
+          "path": "orders.get",
+          "gate": "db.orders.get",
+          "occurrence": 0
+        },
+        "commit": {
+          "at": {
+            "file": "src/orders/refund.ts",
+            "line": 18,
+            "column": 11,
+            "endLine": 18,
+            "endColumn": 32
+          },
+          "client": "db",
+          "path": "orders.save",
+          "gate": "db.orders.save",
+          "occurrence": 0
+        },
+        "atomic": {
+          "kind": "transaction",
+          "at": {
+            "file": "src/orders/refund.ts",
+            "line": 13,
+            "column": 24,
+            "endLine": 20,
+            "endColumn": 5
+          },
+          "gate": "db.transaction"
+        },
+        "guards": [
+          {
+            "guard": "role(admin)",
+            "at": {
+              "file": "src/orders/refund.ts",
+              "line": 12,
+              "column": 3,
+              "endLine": 12,
+              "endColumn": 34
+            },
+            "dominates": true
+          }
+        ],
+        "effects": [
+          {
+            "at": {
+              "file": "src/orders/refund.ts",
+              "line": 21,
+              "column": 10,
+              "endLine": 21,
+              "endColumn": 43
+            },
+            "client": "stripe",
+            "path": "refunds.create",
+            "gate": "stripe.refunds.create",
+            "occurrence": 0,
+            "effect": "stripe.refund"
+          }
+        ],
+        "invocation": {
+          "impl": {
+            "file": "src/orders/refund.ts",
+            "symbol": "refundOrder"
+          },
+          "entityId": {
+            "param": 1,
+            "path": []
+          },
+          "actor": {
+            "param": 0,
+            "path": [
+              "actor"
+            ]
+          }
+        },
+        "storage": {
+          "client": "db",
+          "collection": "orders",
+          "key": "id"
+        }
+      }
+    },
+    {
+      "name": "ship",
+      "from": [
+        "paid"
+      ],
+      "to": "shipped",
+      "by": [
+        "admin"
+      ],
+      "requires": [
+        {
+          "name": "role",
+          "args": [
+            "admin"
+          ],
+          "raw": "role(admin)"
+        }
+      ],
+      "effects": [],
+      "atomic": true,
+      "idempotent": false,
+      "impl": {
+        "file": "src/admin/orders.ts",
+        "symbol": "shipOrder"
+      },
+      "at": {
+        "file": "src/admin/orders.ts",
+        "line": 13,
+        "column": 5,
+        "endLine": 13,
+        "endColumn": 29
+      },
+      "sites": {
+        "persistence": "assign",
+        "write": {
+          "file": "src/admin/orders.ts",
+          "line": 13,
+          "column": 5,
+          "endLine": 13,
+          "endColumn": 29
+        },
+        "function": {
+          "file": "src/admin/orders.ts",
+          "name": "shipOrder",
+          "at": {
+            "file": "src/admin/orders.ts",
+            "line": 8,
+            "column": 23,
+            "endLine": 8,
+            "endColumn": 32
+          }
+        },
+        "specTransition": "ship",
+        "fromState": {
+          "values": [
+            "paid"
+          ],
+          "unconstrained": false
+        },
+        "read": {
+          "at": {
+            "file": "src/admin/orders.ts",
+            "line": 11,
+            "column": 25,
+            "endLine": 11,
+            "endColumn": 47
+          },
+          "client": "db",
+          "path": "orders.get",
+          "gate": "db.orders.get",
+          "occurrence": 0
+        },
+        "commit": {
+          "at": {
+            "file": "src/admin/orders.ts",
+            "line": 14,
+            "column": 11,
+            "endLine": 14,
+            "endColumn": 32
+          },
+          "client": "db",
+          "path": "orders.save",
+          "gate": "db.orders.save",
+          "occurrence": 0
+        },
+        "atomic": {
+          "kind": "transaction",
+          "at": {
+            "file": "src/admin/orders.ts",
+            "line": 10,
+            "column": 10,
+            "endLine": 16,
+            "endColumn": 5
+          },
+          "gate": "db.transaction"
+        },
+        "guards": [
+          {
+            "guard": "role(admin)",
+            "at": {
+              "file": "src/admin/orders.ts",
+              "line": 9,
+              "column": 3,
+              "endLine": 9,
+              "endColumn": 34
+            },
+            "dominates": true
+          }
+        ],
+        "effects": [],
+        "invocation": {
+          "impl": {
+            "file": "src/admin/orders.ts",
+            "symbol": "shipOrder"
+          },
+          "entityId": {
+            "param": 1,
+            "path": []
+          },
+          "actor": {
+            "param": 0,
+            "path": [
+              "actor"
+            ]
+          }
+        },
+        "storage": {
+          "client": "db",
+          "collection": "orders",
+          "key": "id"
+        }
+      }
+    }
+  ],
+  "rules": [
+    {
+      "name": "Refund issued at most once per order",
+      "kind": "always",
+      "source": "count(effect stripe.refund) <= 1",
+      "expr": {
+        "type": "effect-count",
+        "effect": "stripe.refund",
+        "op": "<=",
+        "value": 1
+      }
+    },
+    {
+      "name": "Unpaid orders don't linger",
+      "kind": "eventually",
+      "source": "status != pending_payment",
+      "expr": {
+        "type": "status-cmp",
+        "op": "!=",
+        "value": "pending_payment"
+      }
+    },
+    {
+      "name": "Shipped orders are never refunded",
+      "kind": "never",
+      "source": "status == shipped and count(effect stripe.refund) > 0",
+      "expr": {
+        "type": "and",
+        "left": {
+          "type": "status-cmp",
+          "op": "==",
+          "value": "shipped"
+        },
+        "right": {
+          "type": "effect-count",
+          "effect": "stripe.refund",
+          "op": ">",
+          "value": 0
+        }
+      }
+    }
+  ],
+  "concurrency": {
+    "checkout": 2,
+    "expire": 2,
+    "payment_succeeded": 2,
+    "refund": 2,
+    "ship": 2
+  },
+  "bindings": {
+    "persistence": "assign",
+    "clients": {
+      "db": {
+        "module": "src/db.ts",
+        "export": "db"
+      },
+      "stripe": {
+        "module": "src/payments/stripe.ts",
+        "export": "stripe"
+      },
+      "email": {
+        "module": "src/notify/email.ts",
+        "export": "email"
+      }
+    },
+    "guards": {
+      "owner": {
+        "file": "src/auth/guards.ts",
+        "symbol": "requireOwner",
+        "args": [],
+        "raw": "src/auth/guards.ts#requireOwner"
+      },
+      "role(admin)": {
+        "file": "src/auth/guards.ts",
+        "symbol": "requireRole",
+        "args": [
+          "admin"
+        ],
+        "raw": "src/auth/guards.ts#requireRole(\"admin\")"
+      }
+    },
+    "effects": {
+      "stripe.refund": "stripe.refunds.create",
+      "email.receipt": "email.send"
+    }
+  }
+}
