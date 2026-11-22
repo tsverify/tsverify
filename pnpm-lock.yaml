@@ -33,6 +33,12 @@ importers:
         specifier: workspace:*
         version: link:../../packages/spec
 
+  examples/shared:
+    devDependencies:
+      '@tsv/ir':
+        specifier: workspace:*
+        version: link:../../packages/ir
+
   packages/checker:
     dependencies:
       '@tsv/ir':
