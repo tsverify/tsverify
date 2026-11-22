@@ -216,6 +216,12 @@ export interface BehaviorModel {
   kind: "entity";
   name: string;
   summary?: string;
+  /**
+   * The spec's `enforced: true`: the team marked it as one CI should block on. `tsv` never acts
+   * on it by itself (D4); it is carried into `--format json|sarif` and selectable with
+   * `--enforced-only`, so a pipeline can block on enforced specs and stay advisory elsewhere.
+   */
+  enforced?: boolean;
   origin: ModelOrigin;
   /** Path of the behavior file this model came from (relative to the project root). */
   file?: string;
