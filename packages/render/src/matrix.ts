@@ -45,7 +45,9 @@ export function permissionMatrix(model: BehaviorModel): PermissionMatrix {
 
 /**
  * The matrix as a Markdown table. Untrusted actors are marked, and an allowed cell with no
- * guard on an untrusted row is flagged in bold, since anyone can perform that transition.
+ * guard on an untrusted row is flagged in bold, since anyone can perform that transition. Actors
+ * in one `by` are alternatives, so each row's guards suffice on their own; a note says so when
+ * some transition lists several.
  */
 export function permissionMatrixMarkdown(model: BehaviorModel): string {
   const m = permissionMatrix(model);
@@ -71,6 +73,12 @@ export function permissionMatrixMarkdown(model: BehaviorModel): string {
   lines.push(
     "✓ allowed, with the guards that must pass · — not allowed · ⚠ untrusted: its requests cannot be trusted",
   );
+  if (model.transitions.some((t) => new Set(t.by).size > 1)) {
+    lines.push("");
+    lines.push(
+      "A transition allowed to several actors needs any one of them: a caller passes that row's guards.",
+    );
+  }
   if (flagged) {
     lines.push("");
     lines.push("**⚠ unguarded**: an untrusted actor can perform this transition with no guard.");

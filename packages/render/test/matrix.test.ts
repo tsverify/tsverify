@@ -1,6 +1,7 @@
 import { orderModel } from "@tsverify/ir/testing";
 import { permissionMatrix, permissionMatrixMarkdown } from "@tsverify/render";
 import { describe, expect, it } from "vitest";
+import { ownerOrAdminModel } from "./models";
 
 describe("permissionMatrix", () => {
   it("builds the Order matrix", async () => {
@@ -23,6 +24,16 @@ describe("permissionMatrix", () => {
       { name: "mfa", args: [], raw: "mfa" },
     ];
     expect(permissionMatrix(model).cells.admin?.refund?.guards).toEqual(["mfa", "role(admin)"]);
+  });
+
+  it("gives each alternative actor in by its own guards plus the transition's", async () => {
+    const model = ownerOrAdminModel();
+    const m = permissionMatrix(model);
+    expect(m.cells.customer?.refund).toEqual({ allowed: true, guards: ["owner", "verified"] });
+    expect(m.cells.admin?.refund).toEqual({ allowed: true, guards: ["role(admin)", "verified"] });
+    await expect(permissionMatrixMarkdown(model)).toMatchFileSnapshot(
+      "__golden__/owner-or-admin-matrix.md",
+    );
   });
 
   it("adds actors that are only named in a transition", () => {

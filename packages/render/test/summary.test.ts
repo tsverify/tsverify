@@ -1,7 +1,12 @@
 import { orderModel } from "@tsverify/ir/testing";
 import { summarize } from "@tsverify/render";
 import { describe, expect, it } from "vitest";
-import { codeAnyStateModel, escapingModel, nonAtomicRefundModel } from "./models";
+import {
+  codeAnyStateModel,
+  escapingModel,
+  nonAtomicRefundModel,
+  ownerOrAdminModel,
+} from "./models";
 
 describe("summarize", () => {
   it("summarizes the Order model", async () => {
@@ -11,6 +16,25 @@ describe("summarize", () => {
         "This issues stripe.refund exactly once and is atomic.\n",
     );
     await expect(out).toMatchFileSnapshot("__golden__/order-summary.md");
+  });
+
+  it("reads a multi-actor by as alternatives, with the transition's requires stated once", async () => {
+    const out = summarize(ownerOrAdminModel());
+    expect(out).toContain(
+      "- **refund**: a customer (untrusted, requires owner) or an admin (requires role(admin)) " +
+        "can move a paid order to refunded. Whoever acts must also pass verified. " +
+        "This issues stripe.refund exactly once and is atomic.\n",
+    );
+    await expect(out).toMatchFileSnapshot("__golden__/owner-or-admin-summary.md");
+  });
+
+  it("does not call an untrusted alternative unguarded when the transition has guards", () => {
+    const model = ownerOrAdminModel();
+    const customer = model.actors.customer;
+    if (customer) customer.requires = [];
+    expect(summarize(model)).toContain(
+      "a customer (untrusted) or an admin (requires role(admin)) can move a paid order to refunded. Whoever acts must also pass verified.",
+    );
   });
 
   it("is deterministic", () => {

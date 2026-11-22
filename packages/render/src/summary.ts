@@ -1,4 +1,13 @@
-import type { Actor, BehaviorModel, CmpOp, EffectDecl, Expr, Rule, Transition } from "@tsverify/ir";
+import type {
+  Actor,
+  BehaviorModel,
+  CmpOp,
+  EffectDecl,
+  Expr,
+  GuardRef,
+  Rule,
+  Transition,
+} from "@tsverify/ir";
 import { compareStrings } from "@tsverify/ir";
 import { isNonAtomicOnce } from "./mermaid";
 
@@ -44,9 +53,19 @@ function overview(model: BehaviorModel, noun: string): string {
   return parts.join(" ");
 }
 
+/**
+ * `by: [a, b]` lists alternatives: any one listed actor may perform `t`, passing its own
+ * `requires`. With one actor, its guards and the transition's are listed together; with several,
+ * each actor names its own guards and the transition's `requires` is stated once, for everyone.
+ */
 function transitionSentence(model: BehaviorModel, t: Transition, noun: string): string {
+  const alternatives = new Set(t.by).size > 1;
   const actors = joinList(
-    t.by.map((a) => actorPhrase(a, model.actors[a], t)),
+    t.by.map((a) =>
+      alternatives
+        ? actorPhrase(a, model.actors[a], [], t.requires.length > 0)
+        : actorPhrase(a, model.actors[a], t.requires, false),
+    ),
     "or",
   );
   let source: string;
@@ -63,6 +82,9 @@ function transitionSentence(model: BehaviorModel, t: Transition, noun: string): 
   }
   const timer = t.after === undefined ? "" : ` after ${md(t.after)}`;
   let text = `**${md(t.name)}**: ${actors} can move ${source} to ${md(t.to)}${timer}.`;
+  const shared = [...new Set(t.requires.map((g) => g.raw))].sort(compareStrings);
+  if (alternatives && shared.length > 0)
+    text += ` Whoever acts must also pass ${joinList(shared.map(md), "and")}.`;
 
   const clauses: string[] = [];
   if (t.effects.length > 0) clauses.push(`issues ${joinList(t.effects.map(effectPhrase), "and")}`);
@@ -79,8 +101,18 @@ function transitionSentence(model: BehaviorModel, t: Transition, noun: string): 
   return text;
 }
 
-function actorPhrase(name: string, actor: Actor | undefined, t: Transition): string {
-  const guards = [...new Set([...t.requires, ...(actor?.requires ?? [])].map((g) => g.raw))].sort(
+/**
+ * `an admin (requires role(admin))`. `shared`: the transition's guards, listed with the actor's;
+ * `guardedElsewhere`: the transition's guards are stated separately, so an untrusted actor with
+ * none of its own is not unguarded.
+ */
+function actorPhrase(
+  name: string,
+  actor: Actor | undefined,
+  shared: GuardRef[],
+  guardedElsewhere: boolean,
+): string {
+  const guards = [...new Set([...shared, ...(actor?.requires ?? [])].map((g) => g.raw))].sort(
     compareStrings,
   );
   let phrase: string;
@@ -97,7 +129,7 @@ function actorPhrase(name: string, actor: Actor | undefined, t: Transition): str
   const notes: string[] = [];
   if (actor?.trust === "untrusted") notes.push("untrusted");
   if (guards.length > 0) notes.push(`requires ${joinList(guards.map(md), "and")}`);
-  else if (actor?.trust === "untrusted") notes.push("no guard");
+  else if (actor?.trust === "untrusted" && !guardedElsewhere) notes.push("no guard");
   return notes.length === 0 ? phrase : `${phrase} (${notes.join(", ")})`;
 }
 
