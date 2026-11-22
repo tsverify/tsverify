@@ -55,12 +55,7 @@
           }
         }
       },
-      "required": [
-        "name",
-        "state",
-        "states",
-        "initial"
-      ],
+      "required": ["name", "state", "states", "initial"],
       "additionalProperties": false,
       "description": "The stateful entity this behavior describes"
     },
@@ -75,12 +70,7 @@
         "properties": {
           "trust": {
             "type": "string",
-            "enum": [
-              "untrusted",
-              "authenticated",
-              "signed-webhook",
-              "internal"
-            ]
+            "enum": ["untrusted", "authenticated", "signed-webhook", "internal"]
           },
           "requires": {
             "description": "Guards implied for every transition this actor performs",
@@ -99,9 +89,7 @@
             ]
           }
         },
-        "required": [
-          "trust"
-        ],
+        "required": ["trust"],
         "additionalProperties": false,
         "description": "Who can trigger transitions"
       }
@@ -185,11 +173,7 @@
                   },
                   "additionalProperties": {
                     "type": "string",
-                    "enum": [
-                      "exactly-once",
-                      "at-least-once",
-                      "idempotent"
-                    ]
+                    "enum": ["exactly-once", "at-least-once", "idempotent"]
                   },
                   "minProperties": 1,
                   "maxProperties": 1,
@@ -217,11 +201,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "from",
-          "to",
-          "by"
-        ],
+        "required": ["from", "to", "by"],
         "additionalProperties": false,
         "description": "A state change"
       }
@@ -238,45 +218,28 @@
           },
           "always": {
             "description": "Expression that holds in every reachable state",
-            "type": [
-              "string",
-              "boolean"
-            ]
+            "type": ["string", "boolean"]
           },
           "never": {
             "description": "Expression that holds in no reachable state",
-            "type": [
-              "string",
-              "boolean"
-            ]
+            "type": ["string", "boolean"]
           },
           "eventually": {
             "description": "From every reachable state, a state satisfying the expression is reachable",
-            "type": [
-              "string",
-              "boolean"
-            ]
+            "type": ["string", "boolean"]
           }
         },
-        "required": [
-          "name"
-        ],
+        "required": ["name"],
         "additionalProperties": false,
         "oneOf": [
           {
-            "required": [
-              "always"
-            ]
+            "required": ["always"]
           },
           {
-            "required": [
-              "never"
-            ]
+            "required": ["never"]
           },
           {
-            "required": [
-              "eventually"
-            ]
+            "required": ["eventually"]
           }
         ]
       }
@@ -313,12 +276,7 @@
         "persistence": {
           "description": "Persistence adapter; omitted means auto-detected",
           "type": "string",
-          "enum": [
-            "assign",
-            "prisma",
-            "drizzle",
-            "memory"
-          ]
+          "enum": ["assign", "prisma", "drizzle", "memory"]
         },
         "clients": {
           "type": "object",
@@ -340,10 +298,7 @@
                 "description": "Exported binding, e.g. `stripe`"
               }
             },
-            "required": [
-              "module",
-              "export"
-            ],
+            "required": ["module", "export"],
             "additionalProperties": false
           }
         },
@@ -410,12 +365,7 @@
       "description": "Test fixtures for generated tests"
     }
   },
-  "required": [
-    "behavior",
-    "entity",
-    "actors",
-    "transitions"
-  ],
+  "required": ["behavior", "entity", "actors", "transitions"],
   "additionalProperties": false,
   "title": "tsv behavior spec (v1)",
   "description": "A `*.behavior.yaml` file. See docs/behavior-format.md."
