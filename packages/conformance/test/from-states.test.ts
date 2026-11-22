@@ -6,6 +6,7 @@ import {
   patchSpec,
   patchWrite,
   specModel,
+  strictExpire,
   VARIANT_CASES,
   type Write,
 } from "./code-model";
@@ -62,17 +63,16 @@ describe("from-states", () => {
         severity: "error",
         message:
           "checkout: checkout also writes pending_payment from cancelled, which the spec does not allow (from: draft).",
+        // The from list, where the extra state could be added.
+        specAt: { file: "src/orders/order.behavior.yaml", line: 20, column: 11 },
         codeAt: { file: "src/orders/checkout.ts", line: 13, column: 5 },
         hint: "Tighten the check before the write to status is 'draft', or add cancelled to checkout.from.",
       }),
     ]);
   });
 
-  it("reports a stricter code from-set as a warning", () => {
-    const spec = patchSpec(specModel(), "expire", (t) => ({
-      ...t,
-      from: ["draft", "pending_payment"],
-    }));
+  it("reports a stricter code from-set as a warning, at the missing state's from item", () => {
+    const spec = patchSpec(specModel(), "expire", strictExpire);
     const findings = run(cleanWrites(), spec);
     expect(findings).toEqual([
       expect.objectContaining({
@@ -81,7 +81,17 @@ describe("from-states", () => {
         message:
           "expire: expireOrder only writes cancelled from pending_payment; the spec also allows draft.",
         hint: "Remove draft from expire.from, or let the code accept it.",
+        specAt: { file: "src/orders/order.behavior.yaml", line: 38, column: 12 },
       }),
+    ]);
+  });
+
+  it("points at the from item of whichever state the code does not accept", () => {
+    const spec = patchSpec(specModel(), "expire", strictExpire);
+    const writes = withFrom("expire", ["draft"]);
+    const findings = run(writes, spec);
+    expect(findings.map((f) => [f.id, f.specAt?.column])).toEqual([
+      ["from-state-mismatch:Order lifecycle:expire:pending_payment", 19],
     ]);
   });
 
@@ -99,6 +109,18 @@ describe("from-states", () => {
     expect(finding).toMatchObject({
       id: "from-state-mismatch:Order lifecycle:ship:draft,pending_payment,shipped,refunded,cancelled",
       severity: "warning",
+      // No from items to point at: the transition.
+      specAt: { file: "src/orders/order.behavior.yaml", line: 45, column: 3 },
+    });
+  });
+
+  it("falls back to the transition when the spec has no from locations", () => {
+    const spec = patchSpec(specModel(), "checkout", ({ fromAt: _, ...t }) => t);
+    const [finding] = run(withFrom("checkout", ["cancelled", "draft"]), spec);
+    expect(finding?.specAt).toEqual({
+      file: "src/orders/order.behavior.yaml",
+      line: 19,
+      column: 3,
     });
   });
 });

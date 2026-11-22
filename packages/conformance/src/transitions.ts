@@ -4,6 +4,7 @@ import {
   compareStrings,
   type Finding,
   formatSymbolRef,
+  type SourceLocation,
   type Transition,
 } from "@tsv/ir";
 import { formatStates, makeFinding, type Pairing } from "./finding";
@@ -85,12 +86,14 @@ export function checkUnlinked(spec: BehaviorModel, c: Transition): Finding {
 /**
  * Splits the code transitions linked to `t` into its primary writes (those writing `t.to`) and
  * reports the rest: `missing-transition` when there is no primary write, `undeclared-transition`
- * for every linked write to another state.
+ * for every linked write to another state. `implAt` (the code model's `implAt[t.name]`) is the
+ * `codeAt` of a missing transition: the impl's declaration, since the write itself is not there.
  */
 export function checkLinked(
   spec: BehaviorModel,
   t: Transition,
   linked: Transition[],
+  implAt?: SourceLocation,
 ): { pairings: Pairing[]; findings: Finding[] } {
   const pairings: Pairing[] = [];
   const findings: Finding[] = [];
@@ -118,7 +121,6 @@ export function checkLinked(
     );
   }
   if (pairings.length === 0 && t.impl !== undefined) {
-    // No code location exists for a write that isn't there; `impl` has a file but no position.
     findings.push(
       makeFinding({
         category: "missing-transition",
@@ -128,6 +130,7 @@ export function checkLinked(
         message: `${t.name}: ${formatSymbolRef(t.impl)} never writes ${spec.entity.stateField} = ${t.to}.`,
         hint: `Set ${spec.entity.stateField} to '${t.to}' in ${t.impl.symbol} (or a function it calls), or fix impl.`,
         ...specAt,
+        ...(implAt === undefined ? {} : { codeAt: implAt }),
       }),
     );
   }

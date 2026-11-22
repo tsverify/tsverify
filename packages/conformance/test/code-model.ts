@@ -24,23 +24,53 @@ const SPEC_FILE = "src/orders/order.behavior.yaml";
 /** `[line, column]`, 1-based. */
 type Pos = [number, number];
 
-/** Line of each transition key in `examples/orders-app/src/orders/order.behavior.yaml`. */
-const SPEC_LINES: Record<string, number> = {
-  checkout: 19,
-  payment_succeeded: 27,
-  expire: 37,
-  ship: 45,
-  refund: 52,
+/**
+ * Start positions in `examples/orders-app/src/orders/order.behavior.yaml` of each transition
+ * key, its `from` and `by` item, its `requires` items and its effect declarations.
+ */
+const SPEC_POSITIONS: Record<
+  string,
+  { at: Pos; from: Pos; by: Pos; requires?: Pos[]; effects?: Pos[] }
+> = {
+  checkout: { at: [19, 3], from: [20, 11], by: [22, 9], requires: [[23, 16]] },
+  payment_succeeded: { at: [27, 3], from: [28, 11], by: [30, 9], effects: [[34, 9]] },
+  expire: { at: [37, 3], from: [38, 11], by: [40, 9] },
+  ship: { at: [45, 3], from: [46, 11], by: [48, 9] },
+  refund: { at: [52, 3], from: [53, 11], by: [55, 9], effects: [[58, 9]] },
 };
 
-/** `orderModel()` plus the file and transition locations the spec parser would attach. */
+function specLoc([line, column]: Pos): SourceLocation {
+  return { file: SPEC_FILE, line, column };
+}
+
+/**
+ * `orderModel()` plus the file and the (start) locations the spec parser would attach: each
+ * transition, its `from` / `by` / `requires` items and effect declarations, the admin actor's
+ * `requires` item and each `bindings.effects` entry.
+ */
 export function specModel(): BehaviorModel {
   const model = orderModel();
   model.file = SPEC_FILE;
   for (const t of model.transitions) {
-    const line = SPEC_LINES[t.name];
-    if (line !== undefined) t.at = { file: SPEC_FILE, line, column: 3 };
+    const pos = SPEC_POSITIONS[t.name];
+    if (pos === undefined) continue;
+    t.at = specLoc(pos.at);
+    t.fromAt = [specLoc(pos.from)];
+    t.byAt = [specLoc(pos.by)];
+    t.requires.forEach((g, i) => {
+      const at = pos.requires?.[i];
+      if (at !== undefined) g.at = specLoc(at);
+    });
+    t.effects.forEach((e, i) => {
+      const at = pos.effects?.[i];
+      if (at !== undefined) e.at = specLoc(at);
+    });
   }
+  for (const g of model.actors.admin?.requires ?? []) g.at = specLoc([14, 44]);
+  model.bindings.effectsAt = {
+    "email.receipt": specLoc([85, 5]),
+    "stripe.refund": specLoc([84, 5]),
+  };
   return model;
 }
 
@@ -399,6 +429,21 @@ export function extraRefundWrite(to: string): Write {
   return { ...cleanWrite("refund"), name: `refund->${to}`, to, write: [19, 5], effects: [] };
 }
 
+/** Where `refundOrder` (refund's impl) is declared, as the extractor reports it in `implAt`. */
+export const REFUND_IMPL_AT: SourceLocation = { file: "src/orders/refund.ts", line: 11, column: 1 };
+
+/** `expire` with `from: [draft, pending_payment]` (on line 38), which the code does not match. */
+export function strictExpire(t: Transition): Transition {
+  return {
+    ...t,
+    from: ["draft", "pending_payment"],
+    fromAt: [
+      { file: SPEC_FILE, line: 38, column: 12 },
+      { file: SPEC_FILE, line: 38, column: 19 },
+    ],
+  };
+}
+
 /** Synthetic mutations covering the rules no seeded bug exercises. */
 export const MUTATION_CASES = {
   "missing-effect": () =>
@@ -413,7 +458,10 @@ export const MUTATION_CASES = {
         ],
       })),
     ),
-  "missing-transition": () => codeCase(cleanWrites().filter((w) => w.name !== "refund")),
+  "missing-transition": () => {
+    const { spec, code } = codeCase(cleanWrites().filter((w) => w.name !== "refund"));
+    return { spec, code: { ...code, implAt: { refund: REFUND_IMPL_AT } } };
+  },
   "wrong-state": () =>
     codeCase(
       patchWrite(cleanWrites(), "ship", (w) => ({ ...w, name: "ship->refunded", to: "refunded" })),
@@ -430,10 +478,7 @@ export const MUTATION_CASES = {
       })),
     ),
   "strict-from": () => {
-    const spec = patchSpec(specModel(), "expire", (t) => ({
-      ...t,
-      from: ["draft", "pending_payment"],
-    }));
+    const spec = patchSpec(specModel(), "expire", strictExpire);
     return { spec, code: buildCodeModel(spec, cleanWrites()) };
   },
   "no-impl": () => {

@@ -58,12 +58,14 @@ export function makeFinding(input: FindingInput): Finding {
 /**
  * A finding about pairing `p`. The id subject is `subject`, followed by the code transition name
  * when that write is not the canonical one (named exactly `t.name`), i.e. when the impl has
- * several writes to `t.to` (`refund~2`). The common case keeps short, stable ids.
+ * several writes to `t.to` (`refund~2`). The common case keeps short, stable ids. `specAt` is
+ * the most precise spec location the rule has (a `requires` item, an effect), else `t.at`.
  */
 export function pairingFinding(
   p: Pairing,
-  input: Omit<FindingInput, "behavior" | "transition" | "specAt">,
+  input: Omit<FindingInput, "behavior" | "transition">,
 ): Finding {
+  const specAt = input.specAt ?? p.t.at;
   const parts = [input.subject, p.code.name === p.t.name ? undefined : p.code.name].filter(
     (s): s is string => s !== undefined,
   );
@@ -72,7 +74,7 @@ export function pairingFinding(
     behavior: p.spec.name,
     transition: p.t.name,
     ...(parts.length === 0 ? {} : { subject: parts.join(":") }),
-    ...(p.t.at === undefined ? {} : { specAt: p.t.at }),
+    ...(specAt === undefined ? {} : { specAt }),
   });
 }
 

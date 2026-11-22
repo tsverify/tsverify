@@ -6,6 +6,7 @@ import {
   extraRefundWrite,
   patchSpec,
   patchWrite,
+  REFUND_IMPL_AT,
   specModel,
   VARIANT_CASES,
   type Write,
@@ -73,6 +74,23 @@ describe("transitions", () => {
         hint: "Set status to 'refunded' in refundOrder (or a function it calls), or fix impl.",
       },
     ]);
+  });
+
+  it("points a missing transition's codeAt at the impl declaration (code.implAt)", () => {
+    const spec = specModel();
+    const code = buildCodeModel(
+      spec,
+      cleanWrites().filter((w) => w.name !== "refund"),
+    );
+    const [finding] = compare(spec, { ...code, implAt: { refund: REFUND_IMPL_AT } });
+    expect(finding).toMatchObject({
+      id: "missing-transition:Order lifecycle:refund",
+      specAt: REFUND_SPEC_AT,
+      codeAt: REFUND_IMPL_AT,
+    });
+    // Another transition's implAt is not used.
+    const [other] = compare(spec, { ...code, implAt: { ship: REFUND_IMPL_AT } });
+    expect(other?.codeAt).toBeUndefined();
   });
 
   it("reports a linked write to the wrong state as both undeclared and missing", () => {

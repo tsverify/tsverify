@@ -1,6 +1,6 @@
 src/orders/order.behavior.yaml  project: .
 Order lifecycle
-  ✗ guard-not-dominating  src/orders/order.behavior.yaml:52:3 · src/orders/refund.ts:21:3
+  ✗ guard-not-dominating  src/orders/order.behavior.yaml:14:44 · src/orders/refund.ts:21:3
     refund: role(admin) (requireRole) is called on some paths but not all before the write (required by actor admin).
     hint: Call requireRole on every path from refundOrder to the write, before any early return.
 

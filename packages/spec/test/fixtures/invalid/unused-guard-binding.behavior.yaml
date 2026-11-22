@@ -1,0 +1,25 @@
+# A bound guard that no transition or actor requires. The unreferenced db client is fine.
+behavior: Mini
+entity:
+  name: Order
+  state: status
+  states: [draft, paid, refunded]
+  initial: draft
+actors:
+  customer: { trust: untrusted }
+  admin: { trust: authenticated, requires: role(admin) }
+transitions:
+  pay:
+    from: draft
+    to: paid
+    by: customer
+  refund:
+    from: paid
+    to: refunded
+    by: admin
+bindings:
+  clients:
+    db: { module: src/db.ts, export: db }
+  guards:
+    role(admin): src/auth/guards.ts#requireRole("admin")
+    owner: src/auth/guards.ts#requireOwner

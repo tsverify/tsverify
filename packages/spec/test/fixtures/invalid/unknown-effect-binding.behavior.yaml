@@ -1,0 +1,21 @@
+# bindings.effects maps an effect that no transition declares (a typo of stripe.refund).
+behavior: Mini
+entity:
+  name: Order
+  state: status
+  states: [paid, refunded]
+  initial: paid
+actors:
+  admin: { trust: internal }
+transitions:
+  refund:
+    from: paid
+    to: refunded
+    by: admin
+    effects: [stripe.refund]
+bindings:
+  clients:
+    db: { module: src/db.ts, export: db }
+    stripe: { module: src/payments/stripe.ts, export: stripe }
+  effects:
+    stripe.refnd: stripe.refunds.create

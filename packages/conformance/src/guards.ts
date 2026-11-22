@@ -31,7 +31,8 @@ export function requiredGuards(spec: BehaviorModel, t: Transition): RequiredGuar
 /**
  * Every required guard must dominate the write, i.e. appear in the code transition's `requires`
  * (`ModelOrigin`: bound guards that dominate the write). `codeAt` is the earliest call of that
- * guard that does not dominate, or the write when the guard is never called.
+ * guard that does not dominate, or the write when the guard is never called. `specAt` is the
+ * `requires` item: the transition's when it lists the guard, else the first actor's in `t.by`.
  */
 export function checkGuards(p: Pairing): Finding[] {
   const { spec, t, code, sites } = p;
@@ -55,6 +56,7 @@ export function checkGuards(p: Pairing): Finding[] {
           `${t.name}: ${guard.raw} (${call}) ${how} before the write ` +
           `(required by ${sources.join(", ")}).`,
         hint: `Call ${call} on every path from ${entry} to the write, before any early return.`,
+        ...(guard.at === undefined ? {} : { specAt: guard.at }),
         codeAt: partial ?? sites.write,
       }),
     );

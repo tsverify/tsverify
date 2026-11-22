@@ -11,6 +11,9 @@ function uniqueSorted(names: string[]): string[] {
  * spec transition is an unmapped gate (e.g. `stripe.charges.create`), and the message says so.
  * Effects on linked writes to other states are not counted: those writes are already
  * `undeclared-transition`.
+ *
+ * `specAt`: an undeclared effect points at its `bindings.effects` entry (when mapped), a missing
+ * one at its declaration under `t.effects`; otherwise both fall back to `t.at`.
  */
 export function checkEffects(p: Pairing): Finding[] {
   const { spec, t, code, sites } = p;
@@ -30,6 +33,7 @@ export function checkEffects(p: Pairing): Finding[] {
     const at = earliest(callSites.map((e) => e.at));
     const gate = callSites[0]?.gate ?? gateOf(name);
     const unmapped = !known.has(name);
+    const binding = spec.bindings.effectsAt?.[name];
     findings.push(
       pairingFinding(p, {
         category: "undeclared-effect",
@@ -41,6 +45,7 @@ export function checkEffects(p: Pairing): Finding[] {
         hint: unmapped
           ? `Declare the effect on ${t.name} and map it to ${name} in bindings.effects, or remove the call.`
           : `Declare ${name} under ${t.name}.effects, or remove the call.`,
+        ...(binding === undefined ? {} : { specAt: binding }),
         codeAt: at ?? sites.write,
       }),
     );
@@ -49,6 +54,7 @@ export function checkEffects(p: Pairing): Finding[] {
   for (const name of declared) {
     if (called.includes(name)) continue;
     const gate = gateOf(name);
+    const declaration = t.effects.find((e) => e.name === name)?.at;
     findings.push(
       pairingFinding(p, {
         category: "missing-effect",
@@ -56,6 +62,7 @@ export function checkEffects(p: Pairing): Finding[] {
         subject: name,
         message: `${t.name}: ${entry} never calls ${name}${gate === name ? "" : ` (${gate})`} when it writes ${t.to}.`,
         hint: `Call ${gate} after the write in ${entry}, or remove ${name} from ${t.name}.effects.`,
+        ...(declaration === undefined ? {} : { specAt: declaration }),
         codeAt: sites.write,
       }),
     );

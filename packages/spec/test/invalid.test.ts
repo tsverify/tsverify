@@ -121,6 +121,32 @@ const CASES: Case[] = [
     transition: "pay",
   },
   {
+    fixture: "unknown-effect-binding",
+    severity: "error",
+    message:
+      'bindings.effects: unknown effect "stripe.refnd" (declared on transitions: stripe.refund)',
+    line: 21,
+    column: 5,
+    hint: 'did you mean "stripe.refund"?',
+  },
+  {
+    fixture: "unknown-effect-client",
+    severity: "error",
+    message:
+      'bindings.effects "stripe.refund": unknown client "strpe" in "strpe.refunds.create" (bound clients: db, stripe)',
+    line: 21,
+    column: 20,
+    hint: 'did you mean "stripe"?',
+  },
+  {
+    fixture: "unused-guard-binding",
+    severity: "warning",
+    message: 'bindings.guards: unused guard binding "owner" (no transition or actor requires it)',
+    line: 25,
+    column: 5,
+    hint: 'add "owner" to a "requires" list, or remove the binding',
+  },
+  {
     fixture: "terminal-outgoing",
     severity: "warning",
     message: 'transition "refund": terminal state "shipped" has an outgoing transition',
