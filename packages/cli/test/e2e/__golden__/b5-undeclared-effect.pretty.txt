@@ -1,6 +1,6 @@
 src/orders/order.behavior.yaml  project: .
 Order lifecycle
-  ✗ undeclared-effect  src/orders/order.behavior.yaml:84:5 · src/jobs/expire-orders.ts:21:11
+  ✗ undeclared-effect  src/orders/order.behavior.yaml:37:3 · src/jobs/expire-orders.ts:21:11
     expire: expireOrder calls stripe.refund (stripe.refunds.create), which the spec does not declare for expire.
     hint: Declare stripe.refund under expire.effects, or remove the call.
 

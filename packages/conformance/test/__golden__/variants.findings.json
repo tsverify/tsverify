@@ -88,8 +88,8 @@
       "transition": "expire",
       "specAt": {
         "file": "src/orders/order.behavior.yaml",
-        "line": 84,
-        "column": 5
+        "line": 37,
+        "column": 3
       },
       "codeAt": {
         "file": "src/jobs/expire-orders.ts",
