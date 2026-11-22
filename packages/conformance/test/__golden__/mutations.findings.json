@@ -9,8 +9,8 @@
       "transition": "payment_succeeded",
       "specAt": {
         "file": "src/orders/order.behavior.yaml",
-        "line": 27,
-        "column": 3
+        "line": 34,
+        "column": 9
       },
       "codeAt": {
         "file": "src/payments/webhook.ts",
@@ -144,8 +144,8 @@
       "transition": "checkout",
       "specAt": {
         "file": "src/orders/order.behavior.yaml",
-        "line": 19,
-        "column": 3
+        "line": 23,
+        "column": 16
       },
       "codeAt": {
         "file": "src/orders/checkout.ts",

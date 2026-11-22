@@ -10,10 +10,10 @@
       "transition": "expire",
       "specAt": {
         "file": "src/orders/order.behavior.yaml",
-        "line": 37,
-        "column": 3,
-        "endLine": 43,
-        "endColumn": 48
+        "line": 84,
+        "column": 5,
+        "endLine": 84,
+        "endColumn": 41
       },
       "codeAt": {
         "file": "src/jobs/expire-orders.ts",

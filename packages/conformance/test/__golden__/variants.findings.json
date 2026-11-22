@@ -25,8 +25,8 @@
       "transition": "refund",
       "specAt": {
         "file": "src/orders/order.behavior.yaml",
-        "line": 52,
-        "column": 3
+        "line": 14,
+        "column": 44
       },
       "codeAt": {
         "file": "src/orders/refund.ts",
@@ -88,8 +88,8 @@
       "transition": "expire",
       "specAt": {
         "file": "src/orders/order.behavior.yaml",
-        "line": 37,
-        "column": 3
+        "line": 84,
+        "column": 5
       },
       "codeAt": {
         "file": "src/jobs/expire-orders.ts",

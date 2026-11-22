@@ -24,23 +24,53 @@ const SPEC_FILE = "src/orders/order.behavior.yaml";
 /** `[line, column]`, 1-based. */
 type Pos = [number, number];
 
-/** Line of each transition key in `examples/orders-app/src/orders/order.behavior.yaml`. */
-const SPEC_LINES: Record<string, number> = {
-  checkout: 19,
-  payment_succeeded: 27,
-  expire: 37,
-  ship: 45,
-  refund: 52,
+/**
+ * Start positions in `examples/orders-app/src/orders/order.behavior.yaml` of each transition
+ * key, its `from` and `by` item, its `requires` items and its effect declarations.
+ */
+const SPEC_POSITIONS: Record<
+  string,
+  { at: Pos; from: Pos; by: Pos; requires?: Pos[]; effects?: Pos[] }
+> = {
+  checkout: { at: [19, 3], from: [20, 11], by: [22, 9], requires: [[23, 16]] },
+  payment_succeeded: { at: [27, 3], from: [28, 11], by: [30, 9], effects: [[34, 9]] },
+  expire: { at: [37, 3], from: [38, 11], by: [40, 9] },
+  ship: { at: [45, 3], from: [46, 11], by: [48, 9] },
+  refund: { at: [52, 3], from: [53, 11], by: [55, 9], effects: [[58, 9]] },
 };
 
-/** `orderModel()` plus the file and transition locations the spec parser would attach. */
+function specLoc([line, column]: Pos): SourceLocation {
+  return { file: SPEC_FILE, line, column };
+}
+
+/**
+ * `orderModel()` plus the file and the (start) locations the spec parser would attach: each
+ * transition, its `from` / `by` / `requires` items and effect declarations, the admin actor's
+ * `requires` item and each `bindings.effects` entry.
+ */
 export function specModel(): BehaviorModel {
   const model = orderModel();
   model.file = SPEC_FILE;
   for (const t of model.transitions) {
-    const line = SPEC_LINES[t.name];
-    if (line !== undefined) t.at = { file: SPEC_FILE, line, column: 3 };
+    const pos = SPEC_POSITIONS[t.name];
+    if (pos === undefined) continue;
+    t.at = specLoc(pos.at);
+    t.fromAt = [specLoc(pos.from)];
+    t.byAt = [specLoc(pos.by)];
+    t.requires.forEach((g, i) => {
+      const at = pos.requires?.[i];
+      if (at !== undefined) g.at = specLoc(at);
+    });
+    t.effects.forEach((e, i) => {
+      const at = pos.effects?.[i];
+      if (at !== undefined) e.at = specLoc(at);
+    });
   }
+  for (const g of model.actors.admin?.requires ?? []) g.at = specLoc([14, 44]);
+  model.bindings.effectsAt = {
+    "email.receipt": specLoc([85, 5]),
+    "stripe.refund": specLoc([84, 5]),
+  };
   return model;
 }
 

@@ -10,10 +10,10 @@
       "transition": "refund",
       "specAt": {
         "file": "src/orders/order.behavior.yaml",
-        "line": 52,
-        "column": 3,
-        "endLine": 59,
-        "endColumn": 43
+        "line": 14,
+        "column": 44,
+        "endLine": 14,
+        "endColumn": 55
       },
       "codeAt": {
         "file": "src/orders/refund.ts",
