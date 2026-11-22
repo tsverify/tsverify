@@ -26,7 +26,7 @@ export interface OpenBrowserOptions {
   onError?: (error: Error) => void;
 }
 
-/** Opens `url` in the default browser, detached; never throws. Only for `tsv view --open`. */
+/** Opens `url` in the default browser, detached; never throws. Only for `tsverify view --open`. */
 export function openBrowser(url: string, options: OpenBrowserOptions = {}): void {
   const { command, args } = openerCommand(url, options.platform ?? process.platform);
   const run =

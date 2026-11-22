@@ -4,10 +4,10 @@ import { describe, expect, it } from "vitest";
 import { checkCode } from "../src/code-conformance";
 import { loadSpecs } from "../src/inputs";
 import type { JsonReport } from "../src/output/json";
-import { CANONICAL_SPEC, REPO_ROOT, tsv } from "./run";
+import { CANONICAL_SPEC, REPO_ROOT, tsverify } from "./run";
 import { tempSpecDir } from "./temp-specs";
 
-// Code conformance in `tsv check` on a tiny project; the orders app is covered by e2e/.
+// Code conformance in `tsverify check` on a tiny project; the orders app is covered by e2e/.
 
 /** `switch_on` is linked to code; `smash` has no impl (an info finding). */
 const LIGHT_SPEC = `behavior: Light
@@ -65,7 +65,7 @@ function parse(stdout: string): JsonReport {
 describe("check: code conformance", () => {
   it("extracts, compares and model-checks the code of the spec's project", async () => {
     const cwd = await tempSpecDir(lightProject());
-    const r = await tsv(["check", "--format", "json"], { cwd });
+    const r = await tsverify(["check", "--format", "json"], { cwd });
     expect(r.stderr).toBe("");
     expect(r.code).toBe(0);
     const doc = parse(r.stdout);
@@ -83,7 +83,7 @@ describe("check: code conformance", () => {
 
   it("shows info findings in pretty output without failing the run", async () => {
     const cwd = await tempSpecDir(lightProject());
-    const r = await tsv(["check"], { cwd });
+    const r = await tsverify(["check"], { cwd });
     expect(r.code).toBe(0);
     expect(r.stdout).toMatch(/^src\/light\.behavior\.yaml {2}project: \.\nLight\n/);
     expect(r.stdout).toContain("ℹ unanalyzable  src/light.behavior.yaml:16:3");
@@ -101,7 +101,7 @@ describe("check: code conformance", () => {
       "  smash:\n    from: on",
     );
     const cwd = await tempSpecDir({ ...lightProject(), "src/light.behavior.yaml": spec });
-    const r = await tsv(["check"], { cwd });
+    const r = await tsverify(["check"], { cwd });
     expect(r.stdout).not.toContain("implementation-property");
     expect(r.code).toBe(0);
   });
@@ -117,7 +117,7 @@ describe("check: code conformance", () => {
       ...lightProject("", code),
       "src/light.behavior.yaml": spec,
     });
-    const r = await tsv(["check", "--format", "json"], { cwd });
+    const r = await tsverify(["check", "--format", "json"], { cwd });
     expect(r.stderr).toBe("");
     expect(r.code).toBe(1);
     const undeclared = parse(r.stdout).findings.find((f) => f.category === "undeclared-transition");
@@ -126,7 +126,7 @@ describe("check: code conformance", () => {
 
   it("fails conformance mismatches with exit 1 and cwd-relative code locations", async () => {
     const cwd = await tempSpecDir(lightProject("app/", UNGUARDED_CODE));
-    const r = await tsv(["check", "--format", "json"], { cwd });
+    const r = await tsverify(["check", "--format", "json"], { cwd });
     expect(r.code).toBe(1);
     const doc = parse(r.stdout);
     expect(doc.specs[0]?.project).toBe("app");
@@ -141,7 +141,7 @@ describe("check: code conformance", () => {
   it("uses the nearest tsconfig.json", async () => {
     // src/tsconfig.json makes src/ the project root, so `impl: src/light.ts` no longer resolves.
     const cwd = await tempSpecDir({ ...lightProject(), "src/tsconfig.json": TSCONFIG });
-    const r = await tsv(["check", "--format", "json"], { cwd });
+    const r = await tsverify(["check", "--format", "json"], { cwd });
     expect(r.code).toBe(2);
     const doc = parse(r.stdout);
     expect(doc.specs[0]?.project).toBe("src");
@@ -153,7 +153,7 @@ describe("check: code conformance", () => {
   it("--project overrides discovery, resolved against the cwd", async () => {
     // Same layout as above: discovery would pick src/, which breaks the impl link.
     const cwd = await tempSpecDir({ ...lightProject(), "src/tsconfig.json": TSCONFIG });
-    const r = await tsv(["check", "--project", ".", "--format", "json"], { cwd });
+    const r = await tsverify(["check", "--project", ".", "--format", "json"], { cwd });
     expect(r.stderr).toBe("");
     expect(r.code).toBe(0);
     expect(parse(r.stdout).specs[0]).toMatchObject({
@@ -161,7 +161,7 @@ describe("check: code conformance", () => {
       project: ".",
     });
 
-    const inner = await tsv(["check", "--project", "..", "--format", "json"], {
+    const inner = await tsverify(["check", "--project", "..", "--format", "json"], {
       cwd: join(cwd, "src"),
     });
     expect(inner.code).toBe(0);
@@ -179,7 +179,7 @@ describe("check: code conformance", () => {
       "app/src/light.ts": UNGUARDED_CODE,
       "specs/light.behavior.yaml": LIGHT_SPEC,
     });
-    const r = await tsv(["check", "specs", "--project", "app", "--format", "json"], { cwd });
+    const r = await tsverify(["check", "specs", "--project", "app", "--format", "json"], { cwd });
     expect(r.code).toBe(1);
     const doc = parse(r.stdout);
     expect(doc.specs[0]).toMatchObject({ file: "specs/light.behavior.yaml", project: "app" });
@@ -191,18 +191,18 @@ describe("check: code conformance", () => {
 
   it("rejects a --project directory that doesn't exist (exit 2)", async () => {
     const cwd = await tempSpecDir(lightProject());
-    const r = await tsv(["check", "--project", "nope"], { cwd });
+    const r = await tsverify(["check", "--project", "nope"], { cwd });
     expect(r.code).toBe(2);
     expect(r.stdout).toBe("");
     expect(r.stderr).toContain("error: --project: no such directory: nope");
-    expect(r.stderr).toContain("$ tsv check [...paths] [options]");
+    expect(r.stderr).toContain("$ tsverify check [...paths] [options]");
   });
 
   it("reports a spec with no tsconfig.json up the tree as a broken link (exit 2)", async () => {
     // Assumes nothing above the temp directory holds a tsconfig.json.
     const spec = await readFile(join(REPO_ROOT, CANONICAL_SPEC), "utf8");
     const cwd = await tempSpecDir({ "order.behavior.yaml": spec });
-    const r = await tsv(["check", "--format", "json"], { cwd });
+    const r = await tsverify(["check", "--format", "json"], { cwd });
     expect(r.code).toBe(2);
     const doc = parse(r.stdout);
     expect(doc.specs[0]).toMatchObject({ project: null });
@@ -220,10 +220,10 @@ describe("check: code conformance", () => {
       },
     ]);
 
-    const pretty = await tsv(["check"], { cwd });
+    const pretty = await tsverify(["check"], { cwd });
     expect(pretty.stdout).toMatch(/^order\.behavior\.yaml {2}no project\n/);
 
-    const specOnly = await tsv(["check", "--spec-only"], { cwd });
+    const specOnly = await tsverify(["check", "--spec-only"], { cwd });
     expect(specOnly.code).toBe(0);
     expect(specOnly.stdout).toContain("✓ 1 spec, 0 errors, 0 warnings (6 spec states)");
   });
@@ -233,7 +233,7 @@ describe("check: code conformance", () => {
       ...lightProject(),
       "src/bad.behavior.yaml": LIGHT_SPEC.replace("to: on", "to: onn"),
     });
-    const r = await tsv(["check", "--format", "json"], { cwd });
+    const r = await tsverify(["check", "--format", "json"], { cwd });
     expect(r.code).toBe(2);
     const doc = parse(r.stdout);
     const bad = doc.specs.find((s) => s.file === "src/bad.behavior.yaml");
@@ -246,7 +246,7 @@ describe("check: code conformance", () => {
       ...lightProject(),
       "src/copy.behavior.yaml": LIGHT_SPEC.replace("behavior: Light", "behavior: Light copy"),
     });
-    const r = await tsv(["check", "--format", "json"], { cwd });
+    const r = await tsverify(["check", "--format", "json"], { cwd });
     expect(r.code).toBe(0);
     const doc = parse(r.stdout);
     expect(doc.specs.map((s) => [s.behavior, s.project, s.extract])).toEqual([
@@ -255,7 +255,7 @@ describe("check: code conformance", () => {
     ]);
   });
 
-  it("returns the models it compared, relative to the project root (for tsv test)", async () => {
+  it("returns the models it compared, relative to the project root (for tsverify test)", async () => {
     const cwd = await tempSpecDir(lightProject("app/"));
     const specs = await loadSpecs(["app/src/light.behavior.yaml"], cwd);
     const [outcome] = await checkCode(specs, { cwd });

@@ -2,7 +2,7 @@
   "#meta": {
     "format": "ITF",
     "format-description": "https://apalache-mc.org/docs/adr/015adr-trace.html",
-    "description": "tsv counterexample: rule:Refund issued at most once per order in Order lifecycle",
+    "description": "tsverify counterexample: rule:Refund issued at most once per order in Order lifecycle",
     "behavior": "Order lifecycle",
     "model": "spec",
     "property": "rule:Refund issued at most once per order",

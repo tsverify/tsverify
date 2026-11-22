@@ -1,4 +1,4 @@
-// The schema src/generated/prisma/client.ts stands in for. `tsv` does not read this file, and the
+// The schema src/generated/prisma/client.ts stands in for. `tsverify` does not read this file, and the
 // example never runs `prisma generate`: the stand-in client is checked in.
 
 generator client {

@@ -19,13 +19,13 @@ export type FindingCategory =
   | "undeclared-effect"
   | "missing-effect"
   | "non-atomic"
-  // generated tests (tsv test)
+  // generated tests (tsverify test)
   | "generated-test-failed"
   | "replay-confirmed"
   | "replay-disagrees"
   // analysis limits
   | "unanalyzable"
-  /** `tsv test` could not generate a test (missing fixtures, invocation shape, unsupported persistence). */
+  /** `tsverify test` could not generate a test (missing fixtures, invocation shape, unsupported persistence). */
   | "not-generated";
 
 /** Categories that mean "the input is invalid" rather than "a behavior bug was found". */

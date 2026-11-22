@@ -5,7 +5,7 @@
     {
       "tool": {
         "driver": {
-          "name": "tsv",
+          "name": "tsverify",
           "version": "0.0.0",
           "rules": [
             {
@@ -117,14 +117,14 @@
               "id": "unanalyzable",
               "name": "Unanalyzable",
               "shortDescription": {
-                "text": "tsv could not analyze this part of the code or spec."
+                "text": "tsverify could not analyze this part of the code or spec."
               }
             },
             {
               "id": "not-generated",
               "name": "NotGenerated",
               "shortDescription": {
-                "text": "tsv test could not generate a test for this transition or actor."
+                "text": "tsverify test could not generate a test for this transition or actor."
               }
             }
           ]
@@ -142,7 +142,7 @@
           "ruleIndex": 16,
           "level": "note",
           "message": {
-            "text": "tsv test generated no guard tests for `expire`: expireOrder takes no actor, so the actors not allowed to perform it (customer, admin) cannot be passed in"
+            "text": "tsverify test generated no guard tests for `expire`: expireOrder takes no actor, so the actors not allowed to perform it (customer, admin) cannot be passed in"
           },
           "locations": [
             {
@@ -161,7 +161,7 @@
             }
           ],
           "partialFingerprints": {
-            "tsvFindingId/v1": "not-generated:Order lifecycle:testgen:guards:expire"
+            "tsverifyFindingId/v1": "not-generated:Order lifecycle:testgen:guards:expire"
           },
           "properties": {
             "behavior": "Order lifecycle",
@@ -173,7 +173,7 @@
           "ruleIndex": 16,
           "level": "note",
           "message": {
-            "text": "tsv test generated no guard tests for `payment_succeeded`: onPaymentSucceeded takes no actor, so the actors not allowed to perform it (customer, admin) cannot be passed in"
+            "text": "tsverify test generated no guard tests for `payment_succeeded`: onPaymentSucceeded takes no actor, so the actors not allowed to perform it (customer, admin) cannot be passed in"
           },
           "locations": [
             {
@@ -192,7 +192,7 @@
             }
           ],
           "partialFingerprints": {
-            "tsvFindingId/v1": "not-generated:Order lifecycle:testgen:guards:payment_succeeded"
+            "tsverifyFindingId/v1": "not-generated:Order lifecycle:testgen:guards:payment_succeeded"
           },
           "properties": {
             "behavior": "Order lifecycle",
@@ -204,7 +204,7 @@
           "ruleIndex": 13,
           "level": "error",
           "message": {
-            "text": "Replay confirmed in the real code: Rule \"Refund issued at most once per order\" (always: count(effect stripe.refund) <= 1) is violated: a reachable state breaks it. Observed: final state refunded; email.send ×1, stripe.refunds.create ×2.\nHint: The replay test is kept in .tsv/generated/order-lifecycle/replay-1.test.ts; it fails until the code is fixed."
+            "text": "Replay confirmed in the real code: Rule \"Refund issued at most once per order\" (always: count(effect stripe.refund) <= 1) is violated: a reachable state breaks it. Observed: final state refunded; email.send ×1, stripe.refunds.create ×2.\nHint: The replay test is kept in .tsverify/generated/order-lifecycle/replay-1.test.ts; it fails until the code is fixed."
           },
           "locations": [
             {
@@ -223,7 +223,7 @@
             }
           ],
           "partialFingerprints": {
-            "tsvFindingId/v1": "replay-confirmed:Order lifecycle:rule:Refund issued at most once per order:code-model"
+            "tsverifyFindingId/v1": "replay-confirmed:Order lifecycle:rule:Refund issued at most once per order:code-model"
           },
           "properties": {
             "behavior": "Order lifecycle",
@@ -252,7 +252,7 @@
           "ruleIndex": 13,
           "level": "error",
           "message": {
-            "text": "Replay confirmed in the real code: Exactly-once effect `stripe.refund` fires 2 times for one Order. Observed: final state refunded; email.send ×1, stripe.refunds.create ×2.\nHint: The replay test is kept in .tsv/generated/order-lifecycle/replay-2.test.ts; it fails until the code is fixed."
+            "text": "Replay confirmed in the real code: Exactly-once effect `stripe.refund` fires 2 times for one Order. Observed: final state refunded; email.send ×1, stripe.refunds.create ×2.\nHint: The replay test is kept in .tsverify/generated/order-lifecycle/replay-2.test.ts; it fails until the code is fixed."
           },
           "locations": [
             {
@@ -291,7 +291,7 @@
             }
           ],
           "partialFingerprints": {
-            "tsvFindingId/v1": "replay-confirmed:Order lifecycle:effect-multiplicity:stripe.refund:code-model"
+            "tsverifyFindingId/v1": "replay-confirmed:Order lifecycle:effect-multiplicity:stripe.refund:code-model"
           },
           "properties": {
             "behavior": "Order lifecycle",

@@ -10,15 +10,15 @@
  * | replay verdict `inconclusive`           | `unanalyzable` (info)                     |
  * | replay test fails without a verdict     | `generated-test-failed` (error): it could not run |
  *
- * Replay verdicts come from `task.meta.tsvReplay`, which every generated replay test sets
+ * Replay verdicts come from `task.meta.tsverifyReplay`, which every generated replay test sets
  * before its assertion (see packages/testgen/README.md). A `replay-confirmed` finding has
- * `causedBy` the `tsv check` finding it replayed, when that finding is in `sources`.
+ * `causedBy` the `tsverify check` finding it replayed, when that finding is in `sources`.
  */
 import type { Finding, Trace } from "@tsverify/ir";
 import type { GeneratedTest } from "@tsverify/testgen";
 import type { TestOutcome } from "./test-run";
 
-/** What a generated replay test stores in `task.meta.tsvReplay`. */
+/** What a generated replay test stores in `task.meta.tsverifyReplay`. */
 export interface ReplayMeta {
   verdict: "confirmed" | "confirmed-divergent" | "replay-disagrees" | "inconclusive";
   followed: boolean;
@@ -38,11 +38,11 @@ export interface TestCounts {
 
 export interface MapInput {
   behavior: string;
-  /** Generated directory relative to the project root (e.g. `.tsv/generated/order-lifecycle`). */
+  /** Generated directory relative to the project root (e.g. `.tsverify/generated/order-lifecycle`). */
   outDir: string;
   tests: readonly GeneratedTest[];
   outcomes: readonly TestOutcome[];
-  /** The `tsv check` findings the replays came from, by id. */
+  /** The `tsverify check` findings the replays came from, by id. */
   sources: ReadonlyMap<string, Finding>;
 }
 
@@ -66,7 +66,7 @@ export function testFindings(input: MapInput): { findings: Finding[]; counts: Te
       if (outcome.state !== "passed") findings.push(failed(behavior, file, test, outcome.errors));
       continue;
     }
-    const meta = outcome.meta.tsvReplay as ReplayMeta | undefined;
+    const meta = outcome.meta.tsverifyReplay as ReplayMeta | undefined;
     const source = test.finding === undefined ? undefined : sources.get(test.finding);
     if (meta === undefined) {
       if (outcome.state !== "passed") findings.push(failed(behavior, file, test, outcome.errors));

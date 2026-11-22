@@ -23,21 +23,23 @@ const ENFORCED_ONLY_HELP =
   "Keep only specs with `enforced: true` (and invalid ones); none left is an empty run (exit 0)";
 
 /**
- * Runs `tsv` with `argv` (the arguments after the program name) and returns the exit code.
+ * Runs `tsverify` with `argv` (the arguments after the program name) and returns the exit code.
  * Never exits the process and never throws: unexpected exceptions become exit code 3.
  */
 export async function main(argv: string[], io: Io): Promise<number> {
   try {
     return await run(argv, io);
   } catch (e) {
-    io.stderr(`tsv: internal error: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`);
+    io.stderr(
+      `tsverify: internal error: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`,
+    );
     return ExitCode.Internal;
   }
 }
 
 async function run(argv: string[], io: Io): Promise<number> {
   const cli = program(io);
-  cli.parse(["node", "tsv", ...camelCaseBooleanFlags(argv, cli)], { run: false });
+  cli.parse(["node", "tsverify", ...camelCaseBooleanFlags(argv, cli)], { run: false });
   const command = cli.matchedCommand;
 
   if (cli.options.help) {
@@ -62,7 +64,7 @@ async function run(argv: string[], io: Io): Promise<number> {
 
 /** The command table. Each action returns its exit code; `run` awaits it. */
 function program(io: Io): CAC {
-  const cli = cac("tsv");
+  const cli = cac("tsverify");
   // Registered as plain options rather than `cli.help()` / `cli.version()`, which print to the
   // console themselves.
   cli.option("-h, --help", "Display this message");
@@ -95,7 +97,7 @@ function program(io: Io): CAC {
   cli
     .command(
       "test [...paths]",
-      "Generate vitest tests from the specs and the code (paths, forbidden states, guards, counterexample replays) into <project>/.tsv/generated/ and run them",
+      "Generate vitest tests from the specs and the code (paths, forbidden states, guards, counterexample replays) into <project>/.tsverify/generated/ and run them",
     )
     .option("--format <format>", FORMAT_HELP, { default: "pretty" })
     .option(

@@ -1,4 +1,4 @@
-<!-- tsv-diff -->
+<!-- tsverify-diff -->
 ## Behavior diff
 
 `HEAD` → working tree: 1 of 1 behavior file changed.

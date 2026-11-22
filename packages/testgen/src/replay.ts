@@ -6,7 +6,7 @@
  * sidecar (trace + the code model's `CodeSites` subset), seed, one worker per trace worker,
  * `tryPlay`, `drain`, then the violated property in code terms and `replayResult`.
  *
- * The verdict goes to `task.meta.tsvReplay` (read back by `tsv test`). A `confirmed` or
+ * The verdict goes to `task.meta.tsverifyReplay` (read back by `tsverify test`). A `confirmed` or
  * `confirmed-divergent` verdict fails the test. When the property is not an effect count or a
  * status check, the test calls `replayResult(outcome, undefined)`: verdict `inconclusive`, passes.
  */
@@ -40,7 +40,7 @@ export function replayFiles(
         skipFinding(
           ctx.behavior,
           `replay:${finding.id}`,
-          `tsv test generated no replay for ${finding.id}: ${planned.reason}`,
+          `tsverify test generated no replay for ${finding.id}: ${planned.reason}`,
           {
             ...(finding.transition === undefined ? {} : { transition: finding.transition }),
             ...(finding.specAt ? { specAt: finding.specAt } : {}),
@@ -101,8 +101,8 @@ function replayFile(
     declarations: [
       `declare module "vitest" {`,
       "  interface TaskMeta {",
-      "    /** Read back by `tsv test`: the verdict, plus the stored status and effect counts it saw. */",
-      "    tsvReplay?: ReplayResult & {",
+      "    /** Read back by `tsverify test`: the verdict, plus the stored status and effect counts it saw. */",
+      "    tsverifyReplay?: ReplayResult & {",
       "      status: unknown;",
       "      effects: Record<string, number>;",
       "    };",
@@ -169,7 +169,7 @@ function replayFile(
     lines.push(`  // ${evaluated.description}`);
     lines.push(`  const violated = ${evaluated.violated};`);
     lines.push("  const result = replayResult(outcome, violated);");
-    lines.push("  task.meta.tsvReplay = { ...result, status, effects };");
+    lines.push("  task.meta.tsverifyReplay = { ...result, status, effects };");
     lines.push(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: emitted code contains a template literal
       '  const why = `${result.verdict}: the real code violates ${PROPERTY}\\n${result.divergence?.message ?? ""}`;',
@@ -177,7 +177,9 @@ function replayFile(
     lines.push("  expect(result.violated, why.trim()).toBe(false);");
   } else {
     lines.push(`  // Inconclusive: ${evaluated.reason}.`);
-    lines.push("  task.meta.tsvReplay = { ...replayResult(outcome, undefined), status, effects };");
+    lines.push(
+      "  task.meta.tsverifyReplay = { ...replayResult(outcome, undefined), status, effects };",
+    );
   }
   lines.push("});");
 

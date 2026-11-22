@@ -37,7 +37,7 @@ export function formatPretty(report: Report, io: Io): string {
       out += `${formatFindings(spec.findings, options)}\n`;
     }
     if (report.command === "test") {
-      out += `${f.dim("Generated-test results only: static findings (model checking, conformance) come from `tsv check`.")}\n`;
+      out += `${f.dim("Generated-test results only: static findings (model checking, conformance) come from `tsverify check`.")}\n`;
     }
   } else {
     const findings = allFindings(report);

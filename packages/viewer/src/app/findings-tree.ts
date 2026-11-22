@@ -9,7 +9,7 @@ export interface FindingNode {
 const SEVERITY_ORDER: Record<Severity, number> = { error: 0, warning: 1, info: 2 };
 
 /**
- * Findings grouped by root cause, like `tsv check`'s pretty output (`formatFindings` with
+ * Findings grouped by root cause, like `tsverify check`'s pretty output (`formatFindings` with
  * `groupCauses`): ordered by severity, location and id, with every finding whose `causedBy`
  * names another finding of the list nested under the first such cause in that order. A link
  * that would close a cycle is ignored, so each finding appears exactly once.

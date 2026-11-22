@@ -11,16 +11,16 @@ export interface GenerateInput {
   spec: BehaviorModel;
   /** The extracted code model of the same spec (locations relative to the project root). */
   code: BehaviorModel;
-  /** Findings of `tsv check` for this spec; those with a `trace` become replay tests. */
+  /** Findings of `tsverify check` for this spec; those with a `trace` become replay tests. */
   findings: Finding[];
-  /** Project-relative directory the files are written to, e.g. `.tsv/generated/order-lifecycle`. */
+  /** Project-relative directory the files are written to, e.g. `.tsverify/generated/order-lifecycle`. */
   outDir: string;
 }
 
 export type GeneratedTestKind = "path" | "forbidden" | "guard" | "replay";
 
 /**
- * One generated `test(…)`, so `tsv test` can map a vitest result back onto the spec and the code.
+ * One generated `test(…)`, so `tsverify test` can map a vitest result back onto the spec and the code.
  * Matched by `file` + `name` (names are unique within a file).
  */
 export interface GeneratedTest {

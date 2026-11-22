@@ -5,7 +5,7 @@ import { outDirs, specSlug } from "./generated-dir";
 import { testFindings } from "./test-findings";
 import type { TestOutcome } from "./test-run";
 
-const OUT = ".tsv/generated/order-lifecycle";
+const OUT = ".tsverify/generated/order-lifecycle";
 const write = { file: "src/jobs/expire-orders.ts", line: 13, column: 5 };
 const path: GeneratedTest = {
   file: "paths.test.ts",
@@ -82,7 +82,7 @@ describe("testFindings", () => {
 
   it("maps replay verdicts", () => {
     const meta = (verdict: string, extra: object = {}) => ({
-      tsvReplay: {
+      tsverifyReplay: {
         verdict,
         followed: verdict === "confirmed",
         violated: verdict !== "replay-disagrees",
@@ -133,7 +133,7 @@ describe("testFindings", () => {
   it("links a confirmed replay to its static finding only when that finding is known", () => {
     const failed = outcome(replay, {
       state: "failed",
-      meta: { tsvReplay: { verdict: "confirmed", followed: true, violated: true } },
+      meta: { tsverifyReplay: { verdict: "confirmed", followed: true, violated: true } },
     });
     const unknown = testFindings({
       behavior: "Order lifecycle",
@@ -184,9 +184,9 @@ describe("generated directories", () => {
     expect(specSlug("Zahlung: Rückerstattung")).toBe("zahlung-ruckerstattung");
     expect(specSlug("!!!")).toBe("spec");
     expect(outDirs(["Order lifecycle", "order-lifecycle", "Stock"])).toEqual([
-      ".tsv/generated/order-lifecycle",
-      ".tsv/generated/order-lifecycle-2",
-      ".tsv/generated/stock",
+      ".tsverify/generated/order-lifecycle",
+      ".tsverify/generated/order-lifecycle-2",
+      ".tsverify/generated/stock",
     ]);
   });
 });

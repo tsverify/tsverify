@@ -18,7 +18,7 @@ afterEach(async () => {
 });
 
 async function tempDir(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), "tsv-viewer-"));
+  const dir = await mkdtemp(join(tmpdir(), "tsverify-viewer-"));
   dirs.push(dir);
   return dir;
 }

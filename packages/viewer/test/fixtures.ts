@@ -3,7 +3,7 @@ import type { Finding, Trace } from "@tsverify/ir";
 import type { SpecInput } from "../src/view-data";
 
 /**
- * Real pipeline output (`tsv check` steps, run on the materialized orders-app variant with the
+ * Real pipeline output (`tsverify check` steps, run on the materialized orders-app variant with the
  * app as the cwd), one spec each:
  * - `b3-refund-race`: the code model's double refund, caused by the `non-atomic` refund
  * - `b6-spec-race`: the spec's own double refund (`refund` is `atomic: false`)

@@ -1,5 +1,5 @@
 {
-  "$comment": "Code-model counterexamples from the real pipeline (tsv check) for two orders-app variants: B1 (an unlinked reopenOrder between two payment_succeeded deliveries) and B4 (two atomic deliveries).",
+  "$comment": "Code-model counterexamples from the real pipeline (tsverify check) for two orders-app variants: B1 (an unlinked reopenOrder between two payment_succeeded deliveries) and B4 (two atomic deliveries).",
   "b1-reopen": {
     "behavior": "Order lifecycle",
     "entity": "Order",

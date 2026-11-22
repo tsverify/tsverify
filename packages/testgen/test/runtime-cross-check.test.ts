@@ -34,7 +34,7 @@ import { gateMapping, planReplay } from "../src/replay-plan";
 import b3 from "./fixtures/b3-refund-race.json" with { type: "json" };
 import traces from "./fixtures/traces.json" with { type: "json" };
 
-const OUT = ".tsv/generated/order-lifecycle";
+const OUT = ".tsverify/generated/order-lifecycle";
 const spec: BehaviorModel = { ...orderModel(), file: "src/orders/order.behavior.yaml" };
 const clean = cleanCode as unknown as BehaviorModel;
 const b3Code = b3.code as unknown as BehaviorModel;

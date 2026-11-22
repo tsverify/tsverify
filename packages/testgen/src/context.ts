@@ -107,14 +107,14 @@ export function buildContext(input: ContextInput): { ctx?: Context; skipped: Fin
   if (persistence === "memory") {
     return skipAll(
       "persistence",
-      "tsv test generated no tests: `memory` persistence has no fakes or replay support yet",
+      "tsverify test generated no tests: `memory` persistence has no fakes or replay support yet",
     );
   }
   const fixtures = spec.fixtures;
   if (fixtures === undefined) {
     return skipAll(
       "fixtures",
-      "tsv test generated no tests: the spec has no `fixtures` (entity fields and actor values to drive the code with)",
+      "tsverify test generated no tests: the spec has no `fixtures` (entity fields and actor values to drive the code with)",
       "Add `fixtures: { entity: …, actors: … }` to the spec (docs/behavior-format.md, fixtures).",
     );
   }
@@ -124,10 +124,15 @@ export function buildContext(input: ContextInput): { ctx?: Context; skipped: Fin
   for (const t of [...spec.transitions].sort((a, b) => compareStrings(a.name, b.name))) {
     const skip = (message: string) =>
       skipped.push(
-        skipFinding(behavior, t.name, `tsv test generated no tests for \`${t.name}\`: ${message}`, {
-          transition: t.name,
-          ...(t.at ? { specAt: t.at } : {}),
-        }),
+        skipFinding(
+          behavior,
+          t.name,
+          `tsverify test generated no tests for \`${t.name}\`: ${message}`,
+          {
+            transition: t.name,
+            ...(t.at ? { specAt: t.at } : {}),
+          },
+        ),
       );
     if (t.impl === undefined) {
       skip("it has no `impl`");
@@ -169,7 +174,7 @@ export function buildContext(input: ContextInput): { ctx?: Context; skipped: Fin
       skipFinding(
         behavior,
         "fixtures",
-        `tsv test generated no tests: \`fixtures.entity\` has no string or number \`${storage.key}\` (the key of the stored ${spec.entity.name})`,
+        `tsverify test generated no tests: \`fixtures.entity\` has no string or number \`${storage.key}\` (the key of the stored ${spec.entity.name})`,
       ),
     );
     return { skipped };
@@ -181,11 +186,16 @@ export function buildContext(input: ContextInput): { ctx?: Context; skipped: Fin
     const invocation = sites.invocation as InvocationShape;
     const skip = (message: string, hint?: string) =>
       skipped.push(
-        skipFinding(behavior, t.name, `tsv test generated no tests for \`${t.name}\`: ${message}`, {
-          transition: t.name,
-          ...(t.at ? { specAt: t.at } : {}),
-          ...(hint === undefined ? {} : { hint }),
-        }),
+        skipFinding(
+          behavior,
+          t.name,
+          `tsverify test generated no tests for \`${t.name}\`: ${message}`,
+          {
+            transition: t.name,
+            ...(t.at ? { specAt: t.at } : {}),
+            ...(hint === undefined ? {} : { hint }),
+          },
+        ),
       );
     const s = sites.storage as Storage;
     if (
@@ -269,7 +279,7 @@ export function buildContext(input: ContextInput): { ctx?: Context; skipped: Fin
         skipFinding(
           behavior,
           "fakes",
-          `tsv test generated no tests: client \`${client}\` opens transactions through several methods (${transactions.join(", ")}); the store fake supports one`,
+          `tsverify test generated no tests: client \`${client}\` opens transactions through several methods (${transactions.join(", ")}); the store fake supports one`,
         ),
       );
       return { skipped };

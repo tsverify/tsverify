@@ -9,7 +9,7 @@ export interface ValidateCommandOptions {
   format?: unknown;
 }
 
-/** `tsv validate [paths…]`: parse and validate specs. Exit 0, or 2 on any invalid spec. */
+/** `tsverify validate [paths…]`: parse and validate specs. Exit 0, or 2 on any invalid spec. */
 export async function validateCommand(
   io: Io,
   paths: readonly string[],

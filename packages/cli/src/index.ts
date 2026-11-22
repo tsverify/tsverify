@@ -1,4 +1,4 @@
-// The `tsv` bin entry: the only module that touches the real process. Everything else goes
+// The `tsverify` bin entry: the only module that touches the real process. Everything else goes
 // through the injected `Io` (see main.ts).
 import { main } from "./main";
 

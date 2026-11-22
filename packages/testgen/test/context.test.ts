@@ -6,7 +6,7 @@ import cleanCode from "../../extractor/test/__golden__/orders-app.code.json" wit
 import { buildContext } from "../src/context";
 
 const code = cleanCode as unknown as BehaviorModel;
-const outDir = ".tsv/generated/order-lifecycle";
+const outDir = ".tsverify/generated/order-lifecycle";
 
 describe("buildContext on the clean orders app", () => {
   const { ctx, skipped } = buildContext({ spec: orderModel(), code, outDir });

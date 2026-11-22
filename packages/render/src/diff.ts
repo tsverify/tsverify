@@ -31,7 +31,7 @@ export interface DiffTextOptions extends DiffRenderOptions {
 }
 
 /** First line of the Markdown: lets CI find and update its own PR comment (a "sticky" comment). */
-export const DIFF_COMMENT_MARKER = "<!-- tsv-diff -->";
+export const DIFF_COMMENT_MARKER = "<!-- tsverify-diff -->";
 
 /** Fields whose values are flags: `"yes"` / `""`. */
 const FLAG_FIELDS: ReadonlySet<string> = new Set(["atomic", "idempotent", "terminal", "enforced"]);

@@ -1,5 +1,5 @@
 /**
- * End-to-end: `tsv check` over the demo app (examples/orders-app), clean and with every
+ * End-to-end: `tsverify check` over the demo app (examples/orders-app), clean and with every
  * seeded-bug variant, in-process through `main` with the materialized app as the cwd.
  */
 import type { Finding } from "@tsverify/ir";
@@ -66,7 +66,7 @@ async function checkApp(variant: string): Promise<{ json: Run; pretty: Run }> {
   }
 }
 
-describe("tsv check on examples/orders-app", { timeout: 60_000 }, () => {
+describe("tsverify check on examples/orders-app", { timeout: 60_000 }, () => {
   it("has seeded-bug variants to check", () => {
     expect(VARIANTS.length).toBeGreaterThan(0);
   });

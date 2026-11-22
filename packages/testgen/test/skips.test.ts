@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import cleanCode from "../../extractor/test/__golden__/orders-app.code.json" with { type: "json" };
 import { generate } from "../src/index";
 
-const OUT = ".tsv/generated/order-lifecycle";
+const OUT = ".tsverify/generated/order-lifecycle";
 const code = () => structuredClone(cleanCode) as unknown as BehaviorModel;
 
 function run(spec: BehaviorModel, model: BehaviorModel = code()) {
@@ -46,7 +46,7 @@ describe("skipped", () => {
         id: "not-generated:Order lifecycle:testgen:ship",
         transition: "ship",
         message:
-          "tsv test generated no tests for `ship`: `drizzle` persistence has no fakes yet (only `assign` and `prisma`)",
+          "tsverify test generated no tests for `ship`: `drizzle` persistence has no fakes yet (only `assign` and `prisma`)",
       }),
     );
     expect(result.tests.some((t) => t.transition === "ship")).toBe(false);
@@ -59,7 +59,7 @@ describe("skipped", () => {
       if (t.name === "refund" && t.sites) delete t.sites.invocation;
     const result = run(orderModel(), model);
     expect(result.skipped.map((f) => f.message)).toContain(
-      "tsv test generated no tests for `refund`: the extractor could not tell how to call src/orders/refund.ts#refundOrder (no invocation shape)",
+      "tsverify test generated no tests for `refund`: the extractor could not tell how to call src/orders/refund.ts#refundOrder (no invocation shape)",
     );
     expect(result.tests.some((t) => t.transition === "refund")).toBe(false);
   });
@@ -84,7 +84,7 @@ describe("skipped", () => {
     if (ship) delete ship.impl;
     const result = run(spec);
     expect(result.skipped.map((f) => f.message)).toContain(
-      "tsv test generated no tests for `ship`: it has no `impl`",
+      "tsverify test generated no tests for `ship`: it has no `impl`",
     );
   });
 
@@ -94,7 +94,7 @@ describe("skipped", () => {
     const result = run(spec);
     expect(result.files).toEqual([]);
     expect(result.skipped.at(-1)?.message).toBe(
-      "tsv test generated no tests: `fixtures.entity` has no string or number `id` (the key of the stored Order)",
+      "tsverify test generated no tests: `fixtures.entity` has no string or number `id` (the key of the stored Order)",
     );
   });
 });

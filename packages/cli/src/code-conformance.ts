@@ -16,7 +16,7 @@ export interface CodeConformanceOptions {
   maxStates?: number;
 }
 
-/** Steps 3–5 of `tsv check` for one spec. */
+/** Steps 3–5 of `tsverify check` for one spec. */
 export interface CodeOutcome {
   /** Project root relative to the cwd (`.` for the cwd); `null` when none was found. */
   project: string | null;
@@ -33,7 +33,7 @@ export interface CodeOutcome {
   root?: string;
   /**
    * The spec model as the extractor saw it (locations relative to `root`). Present when the spec
-   * is valid and its project was extracted. `tsv test` generates tests from it and `code`.
+   * is valid and its project was extracted. `tsverify test` generates tests from it and `code`.
    */
   spec?: BehaviorModel;
   /** The as-implemented model (locations relative to `root`), when the extractor built one. */

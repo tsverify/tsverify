@@ -1,7 +1,7 @@
 /**
  * Counterexample playback: a step cursor over a trace plus a play/pause status. Specified in
  * `playback.behavior.yaml`; each status change lives in its own method (`play`, `pause`, `tick`,
- * `hold`, `arrive`, `reset`), so `tsv check packages/viewer/src` can compare the two.
+ * `hold`, `arrive`, `reset`), so `tsverify check packages/viewer/src` can compare the two.
  *
  * Pure: no timers and no DOM. The UI calls `tick()` from its own interval while `status` is
  * `playing`, and re-renders after every call.

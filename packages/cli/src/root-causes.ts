@@ -3,7 +3,7 @@ import type { BehaviorModel, Finding, Trace } from "@tsverify/ir";
 /**
  * Root-cause links: `causedBy` on code-model checker findings (`implementation-property`) that a
  * conformance finding of the same run explains. Only the CLI sees both kinds, so it links them
- * after steps 3–5 of `tsv check` (see `code-conformance.ts`).
+ * after steps 3–5 of `tsverify check` (see `code-conformance.ts`).
  *
  * The rule is deliberately conservative. A cause is linked only when the counterexample uses
  * the mismatch, i.e. some step of the trace is impossible under the spec for exactly the reason

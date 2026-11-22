@@ -14,7 +14,8 @@ let connection: Connection = "connecting";
 function draw(): void {
   if (!root) return;
   if (!data) {
-    root.textContent = connection === "offline" ? "Cannot reach the tsv view server." : "Loading…";
+    root.textContent =
+      connection === "offline" ? "Cannot reach the tsverify view server." : "Loading…";
     return;
   }
   render(h(App, { data, connection }), root);

@@ -38,7 +38,7 @@ export function replayVerdict(r: {
   return "replay-disagrees";
 }
 
-/** JSON-safe summary of one replay, for the sidecar file `tsv test` reads back. */
+/** JSON-safe summary of one replay, for the sidecar file `tsverify test` reads back. */
 export interface ReplayResult {
   verdict: ReplayVerdict;
   followed: boolean;

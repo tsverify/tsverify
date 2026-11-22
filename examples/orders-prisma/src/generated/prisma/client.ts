@@ -12,7 +12,7 @@
  * compare-and-set, as in SQL. Interactive transactions are serialized only at the `Serializable`
  * isolation level; at the default level they take no lock, like READ COMMITTED.
  *
- * `tsv` never runs or reads this implementation: it recognizes the call shapes on the client
+ * `tsverify` never runs or reads this implementation: it recognizes the call shapes on the client
  * bound in `bindings.clients`, and generated tests replace `src/db.ts` with `@tsverify/runtime`'s fake.
  */
 import { roundTrip } from "../../fakes/round-trip";

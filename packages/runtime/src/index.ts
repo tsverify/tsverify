@@ -1,4 +1,4 @@
-// @tsverify/runtime: imported by tests that tsv generates. Zero internal dependencies (doc 6 §2 rule 5).
+// @tsverify/runtime: imported by tests that tsverify generates. Zero internal dependencies (doc 6 §2 rule 5).
 // See ../README.md for the semantics and the shape of a generated replay test.
 
 import { effects } from "./instrument/effects";

@@ -29,7 +29,7 @@ const trace = JSON.parse(
 ) as Trace;
 
 /**
- * Model action → code gate. In tsv this table is derived from the extractor's `Transition.sites`
+ * Model action → code gate. In tsverify this table is derived from the extractor's `Transition.sites`
  * (read/write call sites resolved to client call paths) and the spec's `bindings.effects`.
  */
 const MAPPING: ReplayMapping = {

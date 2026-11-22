@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 
 /**
- * Read-only access to the local `git` binary, for `tsv diff`. Every call runs in the repository
+ * Read-only access to the local `git` binary, for `tsverify diff`. Every call runs in the repository
  * root, so paths in and out are repository-relative with `/` separators. Nothing here writes to
  * the repository or the network.
  */

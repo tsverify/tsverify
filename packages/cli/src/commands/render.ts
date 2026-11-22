@@ -15,7 +15,7 @@ type View = keyof typeof VIEWS;
 export type RenderCommandOptions = { [K in View]?: unknown };
 
 /**
- * `tsv render <spec> [--mermaid | --matrix | --summary]` (default `--mermaid`): one spec as a
+ * `tsverify render <spec> [--mermaid | --matrix | --summary]` (default `--mermaid`): one spec as a
  * Mermaid state diagram, a Markdown permission matrix, or a plain-English summary on stdout.
  * Findings go to stderr, so stdout stays pipeable; an invalid spec renders nothing (exit 2).
  */

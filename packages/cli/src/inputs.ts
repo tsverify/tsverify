@@ -20,7 +20,7 @@ export interface LoadedSpec {
  * `**\/*.behavior.yaml`; files are taken as given, so a missing file surfaces as an
  * `invalid-spec` finding from `loadSpec`. Deduplicated, sorted, relative to `cwd`.
  *
- * `existingOnly` (`tsv diff`, where the other side may have the files): a missing path and a
+ * `existingOnly` (`tsverify diff`, where the other side may have the files): a missing path and a
  * directory without specs contribute nothing instead of an error.
  */
 export async function resolveSpecFiles(

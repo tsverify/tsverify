@@ -11,7 +11,7 @@
       "type": "string"
     },
     "enforced": {
-      "description": "Marks the spec as one CI should block on (default false). tsv itself never acts on it: it is reported in --format json|sarif and selected with --enforced-only",
+      "description": "Marks the spec as one CI should block on (default false). tsverify itself never acts on it: it is reported in --format json|sarif and selected with --enforced-only",
       "type": "boolean"
     },
     "kind": {
@@ -367,6 +367,6 @@
   },
   "required": ["behavior", "entity", "actors", "transitions"],
   "additionalProperties": false,
-  "title": "tsv behavior spec (v1)",
+  "title": "tsverify behavior spec (v1)",
   "description": "A `*.behavior.yaml` file. See docs/behavior-format.md."
 }

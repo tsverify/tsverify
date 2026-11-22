@@ -8,7 +8,7 @@ import { terminalFormatter } from "./pretty";
 export const DIFF_FORMATS = ["markdown", "json", "pretty"] as const;
 export type DiffFormat = (typeof DIFF_FORMATS)[number];
 
-/** Validates a raw `tsv diff --format` value from cac. */
+/** Validates a raw `tsverify diff --format` value from cac. */
 export function parseDiffFormat(value: unknown): DiffFormat {
   const format = DIFF_FORMATS.find((f) => f === value);
   if (format === undefined) {
@@ -37,7 +37,7 @@ export interface DiffRun {
 }
 
 /**
- * The `tsv diff --format json` document. A contract for CI and agents like `JsonReport`: bump
+ * The `tsverify diff --format json` document. A contract for CI and agents like `JsonReport`: bump
  * `version` on any breaking change. Deterministic.
  */
 export interface JsonDiffReport {
@@ -84,7 +84,7 @@ export function isEnforced(pair: DiffPair): boolean {
   return pair.base?.enforced === true || pair.head?.enforced === true;
 }
 
-/** The whole stdout of `tsv diff`. */
+/** The whole stdout of `tsverify diff`. */
 export function formatDiff(run: DiffRun, format: DiffFormat, io: Io): string {
   if (format === "json") return `${JSON.stringify(toJsonDiffReport(run), null, 2)}\n`;
   const entries: DiffEntry[] = [...run.pairs].sort((a, b) => compareStrings(a.file, b.file));

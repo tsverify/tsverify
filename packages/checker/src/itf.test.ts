@@ -35,7 +35,7 @@ describe("toItf", () => {
       "#meta": {
         format: "ITF",
         "format-description": "https://apalache-mc.org/docs/adr/015adr-trace.html",
-        description: "tsv counterexample: effect-multiplicity in B",
+        description: "tsverify counterexample: effect-multiplicity in B",
         behavior: "B",
         model: "code",
         property: "effect-multiplicity",

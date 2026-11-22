@@ -18,7 +18,7 @@ export function toItf(trace: Trace): Record<string, unknown> {
     "#meta": {
       format: "ITF",
       "format-description": "https://apalache-mc.org/docs/adr/015adr-trace.html",
-      description: `tsv counterexample: ${trace.property} in ${trace.behavior}`,
+      description: `tsverify counterexample: ${trace.property} in ${trace.behavior}`,
       behavior: trace.behavior,
       model: trace.model,
       property: trace.property,

@@ -20,7 +20,7 @@ import { generate } from "../src/index";
 import { gateMapping, planReplay } from "../src/replay-plan";
 import traces from "./fixtures/traces.json" with { type: "json" };
 
-const OUT = ".tsv/generated/order-lifecycle";
+const OUT = ".tsverify/generated/order-lifecycle";
 const code = prismaCode as unknown as BehaviorModel;
 
 /** examples/orders-prisma's spec: the canonical one with Prisma bindings. */

@@ -1,7 +1,7 @@
 import type { Finding, SourceLocation } from "@tsverify/ir";
 
 /**
- * An `info` finding (category `not-generated`) that explains why `tsv test` generated no test for
+ * An `info` finding (category `not-generated`) that explains why `tsverify test` generated no test for
  * something. Ids are `not-generated:<behavior>:testgen[:<subject>]`.
  */
 export function skipFinding(

@@ -16,7 +16,7 @@ import { orderModel } from "@tsverify/ir/testing";
  * Test-only spec and code models for the Order app (`examples/orders-app`). The clean code
  * model is what the extractor should build from the clean app; each variant applies a small
  * mutation mirroring one seeded bug in `examples/orders-app/variants`. Locations are the real
- * positions in those files, so findings read like the ones `tsv check` prints.
+ * positions in those files, so findings read like the ones `tsverify check` prints.
  */
 
 const SPEC_FILE = "src/orders/order.behavior.yaml";

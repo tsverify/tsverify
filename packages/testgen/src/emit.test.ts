@@ -5,7 +5,7 @@ import { buildArgs } from "./invoke";
 
 describe("relativeImport", () => {
   it("goes from the generated directory to a project file", () => {
-    expect(relativeImport(".tsv/generated/order-lifecycle", "src/db.ts")).toBe(
+    expect(relativeImport(".tsverify/generated/order-lifecycle", "src/db.ts")).toBe(
       "../../../src/db.ts",
     );
     expect(relativeImport("gen", "gen/x.json")).toBe("./x.json");

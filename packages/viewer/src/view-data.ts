@@ -3,7 +3,7 @@ import { toMermaid } from "@tsverify/render";
 
 /**
  * Everything the viewer shows, as served by `GET /api/data`. The CLI builds it with the same
- * pipeline as `tsv check` (`buildViewData`), and the server rebuilds it when watched files change.
+ * pipeline as `tsverify check` (`buildViewData`), and the server rebuilds it when watched files change.
  */
 export interface ViewData {
   /** Increases by one on every rebuild of a running viewer (1 for the first load). */
@@ -33,7 +33,7 @@ export interface SpecView {
   spec?: BehaviorModel;
   /** The as-implemented model, when the extractor built one (locations relative to `project`). */
   code?: BehaviorModel;
-  /** Every finding of `tsv check` for this file, traces and `causedBy` links included. */
+  /** Every finding of `tsverify check` for this file, traces and `causedBy` links included. */
   findings: Finding[];
   /** Mermaid `stateDiagram-v2` sources from `@tsverify/render`, without highlights. */
   mermaid: { spec?: string; code?: string };

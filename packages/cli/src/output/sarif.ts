@@ -6,7 +6,7 @@ import type { Report } from "../report";
 
 /**
  * `--format sarif`: SARIF 2.1.0 for GitHub code scanning and other SARIF viewers. One run, tool
- * driver `tsv`, one rule per finding category. Deterministic for a given cwd: no timings, rules
+ * driver `tsverify`, one rule per finding category. Deterministic for a given cwd: no timings, rules
  * in a fixed order, results in report order.
  */
 
@@ -31,8 +31,8 @@ export const CATEGORY_DESCRIPTIONS: Record<FindingCategory, string> = {
   "generated-test-failed": "A test generated from the spec failed against the code.",
   "replay-confirmed": "Replaying a counterexample against the real code reproduced the violation.",
   "replay-disagrees": "Replaying a counterexample against the real code did not reproduce it.",
-  unanalyzable: "tsv could not analyze this part of the code or spec.",
-  "not-generated": "tsv test could not generate a test for this transition or actor.",
+  unanalyzable: "tsverify could not analyze this part of the code or spec.",
+  "not-generated": "tsverify test could not generate a test for this transition or actor.",
 };
 
 const RULE_IDS = Object.keys(CATEGORY_DESCRIPTIONS) as FindingCategory[];
@@ -40,10 +40,10 @@ const RULE_INDEX = new Map(RULE_IDS.map((id, i) => [id, i]));
 
 const LEVEL: Record<Severity, SarifLevel> = { error: "error", warning: "warning", info: "note" };
 
-/** The base every result URI is relative to: the cwd tsv ran in. */
+/** The base every result URI is relative to: the cwd tsverify ran in. */
 export const SRCROOT = "%SRCROOT%";
 /** `partialFingerprints` key: finding ids are stable across runs (see `Finding.id`). */
-export const FINGERPRINT_KEY = "tsvFindingId/v1";
+export const FINGERPRINT_KEY = "tsverifyFindingId/v1";
 
 export type SarifLevel = "error" | "warning" | "note";
 
@@ -55,7 +55,7 @@ export interface SarifLog {
 
 export interface SarifRun {
   tool: {
-    driver: { name: "tsv"; version: string; rules: SarifRule[] };
+    driver: { name: "tsverify"; version: string; rules: SarifRule[] };
   };
   originalUriBaseIds: Record<string, { uri: string }>;
   columnKind: "utf16CodeUnits";
@@ -88,7 +88,7 @@ export interface SarifResult {
   properties: SarifProperties;
 }
 
-/** tsv-specific data per result. Only the keys that apply are present. */
+/** tsverify-specific data per result. Only the keys that apply are present. */
 export interface SarifProperties {
   behavior?: string;
   transition?: string;
@@ -112,7 +112,7 @@ export function toSarif(report: Report, cwd: string): SarifLog {
       {
         tool: {
           driver: {
-            name: "tsv",
+            name: "tsverify",
             version: pkg.version,
             rules: RULE_IDS.map((id) => ({
               id,
