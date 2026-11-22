@@ -43,7 +43,7 @@ materialize every variant and typecheck it with `tsc --noEmit -p <root>/tsconfig
 - `expected` is a **lower bound**: the end-to-end suite requires each listed finding. A bug can have
   knock-on findings (for example, B1 and B4 let the as-implemented model pay twice, so the receipt's
   effect-multiplicity can fire too); those are pinned by the e2e golden output, not here.
-- Each entry matches only the fields it gives: `category` (a `FindingCategory` from `@tsv/ir`),
+- Each entry matches only the fields it gives: `category` (a `FindingCategory` from `@tsverify/ir`),
   `transition` and `property` against the same `Finding` fields, `subject` against the
   `:<subject>` suffix of `Finding.id`, and `file` against `Finding.codeAt.file`.
 
