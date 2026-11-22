@@ -309,7 +309,14 @@ describe("semantic errors", () => {
   it("allows unbound guards when no guard is bound (design-only spec)", () => {
     const { model, findings } = parseSpec(`${BASE}    requires: [owner]\n`, FILE);
     expect(findings).toEqual([]);
-    expect(model?.transitions[0]?.requires).toEqual([{ name: "owner", args: [], raw: "owner" }]);
+    expect(model?.transitions[0]?.requires).toEqual([
+      {
+        name: "owner",
+        args: [],
+        raw: "owner",
+        at: expect.objectContaining({ line: 15, column: 16 }),
+      },
+    ]);
   });
 
   it("reports every problem, sorted by position, with unique ids", () => {
@@ -371,7 +378,13 @@ describe("normalization", () => {
     const { model, findings } = parseSpec(text, FILE);
     expect(findings).toEqual([]);
     expect(model?.transitions[0]?.requires).toEqual([
-      { name: "role", args: ["admin"], raw: "role(admin)" },
+      {
+        name: "role",
+        args: ["admin"],
+        raw: "role(admin)",
+        // The whole scalar, including the spaces the canonical form drops.
+        at: { file: FILE, line: 15, column: 15, endLine: 15, endColumn: 28 },
+      },
     ]);
     expect(Object.keys(model?.bindings.guards ?? {})).toEqual(["role(admin)"]);
   });

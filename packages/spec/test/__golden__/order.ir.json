@@ -39,7 +39,14 @@
           "args": [
             "admin"
           ],
-          "raw": "role(admin)"
+          "raw": "role(admin)",
+          "at": {
+            "file": "test/fixtures/valid/order.behavior.yaml",
+            "line": 14,
+            "column": 44,
+            "endLine": 14,
+            "endColumn": 55
+          }
         }
       ],
       "at": {
@@ -101,7 +108,14 @@
         {
           "name": "owner",
           "args": [],
-          "raw": "owner"
+          "raw": "owner",
+          "at": {
+            "file": "test/fixtures/valid/order.behavior.yaml",
+            "line": 23,
+            "column": 16,
+            "endLine": 23,
+            "endColumn": 21
+          }
         }
       ],
       "effects": [],
@@ -117,7 +131,25 @@
         "column": 3,
         "endLine": 25,
         "endColumn": 42
-      }
+      },
+      "fromAt": [
+        {
+          "file": "test/fixtures/valid/order.behavior.yaml",
+          "line": 20,
+          "column": 11,
+          "endLine": 20,
+          "endColumn": 16
+        }
+      ],
+      "byAt": [
+        {
+          "file": "test/fixtures/valid/order.behavior.yaml",
+          "line": 22,
+          "column": 9,
+          "endLine": 22,
+          "endColumn": 17
+        }
+      ]
     },
     {
       "name": "expire",
@@ -143,7 +175,25 @@
         "column": 3,
         "endLine": 43,
         "endColumn": 48
-      }
+      },
+      "fromAt": [
+        {
+          "file": "test/fixtures/valid/order.behavior.yaml",
+          "line": 38,
+          "column": 11,
+          "endLine": 38,
+          "endColumn": 26
+        }
+      ],
+      "byAt": [
+        {
+          "file": "test/fixtures/valid/order.behavior.yaml",
+          "line": 40,
+          "column": 9,
+          "endLine": 40,
+          "endColumn": 15
+        }
+      ]
     },
     {
       "name": "payment_succeeded",
@@ -180,7 +230,25 @@
         "column": 3,
         "endLine": 35,
         "endColumn": 53
-      }
+      },
+      "fromAt": [
+        {
+          "file": "test/fixtures/valid/order.behavior.yaml",
+          "line": 28,
+          "column": 11,
+          "endLine": 28,
+          "endColumn": 26
+        }
+      ],
+      "byAt": [
+        {
+          "file": "test/fixtures/valid/order.behavior.yaml",
+          "line": 30,
+          "column": 9,
+          "endLine": 30,
+          "endColumn": 15
+        }
+      ]
     },
     {
       "name": "refund",
@@ -217,7 +285,25 @@
         "column": 3,
         "endLine": 59,
         "endColumn": 43
-      }
+      },
+      "fromAt": [
+        {
+          "file": "test/fixtures/valid/order.behavior.yaml",
+          "line": 53,
+          "column": 11,
+          "endLine": 53,
+          "endColumn": 15
+        }
+      ],
+      "byAt": [
+        {
+          "file": "test/fixtures/valid/order.behavior.yaml",
+          "line": 55,
+          "column": 9,
+          "endLine": 55,
+          "endColumn": 14
+        }
+      ]
     },
     {
       "name": "ship",
@@ -242,7 +328,25 @@
         "column": 3,
         "endLine": 50,
         "endColumn": 40
-      }
+      },
+      "fromAt": [
+        {
+          "file": "test/fixtures/valid/order.behavior.yaml",
+          "line": 46,
+          "column": 11,
+          "endLine": 46,
+          "endColumn": 15
+        }
+      ],
+      "byAt": [
+        {
+          "file": "test/fixtures/valid/order.behavior.yaml",
+          "line": 48,
+          "column": 9,
+          "endLine": 48,
+          "endColumn": 14
+        }
+      ]
     }
   ],
   "rules": [
@@ -385,6 +489,22 @@
     "effects": {
       "email.receipt": "email.send",
       "stripe.refund": "stripe.refunds.create"
+    },
+    "effectsAt": {
+      "email.receipt": {
+        "file": "test/fixtures/valid/order.behavior.yaml",
+        "line": 85,
+        "column": 5,
+        "endLine": 85,
+        "endColumn": 30
+      },
+      "stripe.refund": {
+        "file": "test/fixtures/valid/order.behavior.yaml",
+        "line": 84,
+        "column": 5,
+        "endLine": 84,
+        "endColumn": 41
+      }
     }
   },
   "fixtures": {

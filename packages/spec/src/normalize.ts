@@ -110,11 +110,13 @@ class Normalizer {
   transition(name: string, t: TransitionInput): Transition {
     const base = ["transitions", name];
     const label = `transition "${name}"`;
+    const from = t.from === "*" ? undefined : itemsOf(t.from, [...base, "from"]);
+    const by = itemsOf(t.by, [...base, "by"]);
     const transition: Transition = {
       name,
-      from: t.from === "*" ? "*" : itemsOf(t.from, []).map((i) => i.value),
+      from: from === undefined ? "*" : from.map((i) => i.value),
       to: t.to,
-      by: itemsOf(t.by, []).map((i) => i.value),
+      by: by.map((i) => i.value),
       requires: this.guards(t.requires, [...base, "requires"], label, name),
       effects: (t.effects ?? []).map((e, i) => this.effect(e, [...base, "effects", i])),
       atomic: t.atomic ?? false,
@@ -133,6 +135,8 @@ class Normalizer {
       }
     }
     transition.at = this.locator.entry(base);
+    if (from !== undefined) transition.fromAt = from.map((i) => this.locator.value(i.path));
+    transition.byAt = by.map((i) => this.locator.value(i.path));
     return transition;
   }
 
@@ -215,8 +219,12 @@ class Normalizer {
     }
     guards.sort((x, y) => compareStrings(x[0], y[0]));
 
-    const effects = Object.fromEntries(
-      Object.entries(b?.effects ?? {}).sort((x, y) => compareStrings(x[0], y[0])),
+    const effectEntries = Object.entries(b?.effects ?? {}).sort((x, y) =>
+      compareStrings(x[0], y[0]),
+    );
+    const effects = Object.fromEntries(effectEntries);
+    const effectsAt = Object.fromEntries(
+      effectEntries.map(([key]) => [key, this.locator.entry(["bindings", "effects", key])]),
     );
 
     return {
@@ -224,6 +232,7 @@ class Normalizer {
       clients,
       guards: Object.fromEntries(guards),
       effects,
+      effectsAt,
     };
   }
 
@@ -244,6 +253,7 @@ class Normalizer {
         );
         continue;
       }
+      ref.at = this.locator.value(item.path);
       this.paths.set(ref, item.path);
       refs.push(ref);
     }
