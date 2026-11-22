@@ -653,11 +653,11 @@ describe("extractAll", () => {
 
   it("does not extract with an adapter that does not exist yet", () => {
     const spec = orderSpec([]);
-    spec.bindings.persistence = "prisma";
+    spec.bindings.persistence = "drizzle";
     const result = extractFixture("transaction-atomic", spec);
     expect(result.model).toBeUndefined();
     expect(result.findings.map((f) => [f.id, f.severity])).toEqual([
-      ["unanalyzable:Fixture orders:persistence:prisma", "warning"],
+      ["unanalyzable:Fixture orders:persistence:drizzle", "warning"],
     ]);
   });
 

@@ -1,0 +1,5 @@
+{
+  "extends": "../tsconfig.fixture.json",
+  "compilerOptions": { "paths": { "@prisma/client": ["../_prisma/client.ts"] } },
+  "include": ["src"]
+}

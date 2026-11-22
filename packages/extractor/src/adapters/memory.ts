@@ -67,6 +67,7 @@ function entityKeyOf(ref: ts.Expression, checker: ts.TypeChecker): ts.Expression
 
 export const memoryAdapter: PersistenceAdapter = {
   kind: "memory",
+  writeKinds: new Set(["assign", "spread"]),
   scopeAliasParam: -1,
 
   scopeKind() {
