@@ -14,6 +14,11 @@ does, and turns every mismatch into a failing test. Local-only: install + YAML f
 (`npm install --save-dev @tsverify/cli`, then `npx tsverify …`; Node.js 22.12 or later). Until then, run it from a
 checkout of this repository with `pnpm install`, then `pnpm tsverify <command>`.
 
+tsverify bundles no TypeScript: it reads your code with **your project's** `typescript`, through the compiler API
+of TypeScript 5.4–6.x, so those projects need nothing else. TypeScript 7 no longer ships that API: a TS-7 project
+also adds Microsoft's `@typescript/typescript6` (`npm install --save-dev @typescript/typescript6`), which tsverify
+uses instead.
+
 **2. Write a spec** next to the entity it describes, e.g. `src/orders/order.behavior.yaml`:
 
 ```yaml

@@ -24,6 +24,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `from-state-unconstrained` points at the first `from` item of the transition.
 - The `non-atomic` hint for `memory` persistence asks for a synchronous check and write (no `await`/`yield`
   between them) instead of a transaction or conditional update.
+- tsverify no longer bundles TypeScript (ts-morph and its private TypeScript 6.0.2, about 15 MB): it reads code
+  with the analyzed project's own `typescript` 5.4–6.x. TypeScript 7 has no JavaScript compiler API, so TS-7
+  projects add `@typescript/typescript6` as a devDependency; both are optional peer dependencies of
+  `@tsverify/cli`. Without either, `check` and `test` exit 2 with a message that names the project's TypeScript
+  version and the fix. Results are unchanged.
 
 ### Added
 - `--strict` on `check` and `test`: `unanalyzable` warnings are reported as errors (exit 1), so code tsverify

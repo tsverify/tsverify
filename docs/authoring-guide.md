@@ -190,7 +190,7 @@ turn a finding into a passing warning. Use it wherever `tsverify` blocks a merge
 |---|---|---|
 | `0` | No error-severity findings (warnings and info never fail a run) | Done. Still read the warnings |
 | `1` | Violations: behavior bugs or conformance mismatches; with `--strict`, also `unanalyzable` warnings | Fix them ([§6](#6-reading-findings)) |
-| `2` | Invalid input: bad spec, broken `impl`/client/guard link, bad CLI usage. Takes precedence over 1 | Fix the spec or the command |
+| `2` | Invalid input: bad spec, broken `impl`/client/guard link, bad CLI usage, no usable TypeScript ([§11](#11-common-mistakes)). Takes precedence over 1 | Fix the spec, the command or the install |
 | `3` | Internal error in `tsverify` | Report it. Don't work around it by editing the spec |
 
 ---
@@ -660,6 +660,7 @@ transitions:
 | Leaving `unanalyzable` warnings unexplained | The code is unchecked, and CI stays green | Restructure ([§7.5](#75-restructuring-unanalyzable-code)) or explain each one in the PR |
 | Writing the state when creating an entity (`order.status = "draft"` on a new object) | `undeclared-transition` | Create entities with an object literal or ORM `create` |
 | Test files in the analyzed tsconfig | `undeclared-transition` from tests | `"include": ["src"]` in the project's tsconfig |
+| A TypeScript 7 project without `@typescript/typescript6` | `check` and `test` exit 2: "tsverify needs the TypeScript compiler API to read your code. This project has TypeScript 7.x, which no longer includes it" | `npm i -D @typescript/typescript6`. tsverify reads code with the project's own TypeScript; 5.4–6.x has the API it needs, 7 does not, older versions are not supported. `--spec-only` needs no TypeScript |
 
 ---
 
