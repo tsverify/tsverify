@@ -4,6 +4,7 @@
  *   is named after its function; collisions get `~2`, `~3`, … (linked first, then by location)
  * - `by`, `idempotent` from the linked spec transition (`[]` / `false` when unlinked)
  * - `requires` = bound guards that dominate the write; `atomic` = read and write share one scope
+ *   (`memory`: no suspension point between the impl's entry and the write, scope `synchronous`)
  * - effect multiplicity from the spec's declaration of that effect (`at-least-once` if undeclared)
  * - `concurrency` copies the linked spec transition's bound (2 when unlinked)
  * - name, entity, actors, rules, bindings and file are copied from the spec; transitions sorted
@@ -30,7 +31,7 @@ import type {
 } from "@tsv/ir";
 import { compareStrings, parseGuardRef } from "@tsv/ir";
 import type { ts } from "ts-morph";
-import type { PersistenceFacts } from "./adapters/types";
+import type { PersistenceAdapter, PersistenceFacts } from "./adapters/types";
 import { frameNaming, frameOf, type Reach } from "./callgraph";
 import type { FunctionLike } from "./cfg";
 import type { ClientCall, ClientCalls } from "./client-calls";
@@ -67,6 +68,7 @@ export interface AssembleEnv {
   dominance: Dominance;
   persistenceClients: ReadonlySet<string>;
   persistence: PersistenceKind;
+  adapter: PersistenceAdapter;
   /** Collects findings (appended to). */
   findings: Finding[];
 }
@@ -137,8 +139,8 @@ function invocationOf(
 ): InvocationShape | undefined {
   const checker = env.ctx.checker;
   const impl = implRefOf(env.ctx, d);
-  const read = d.write.persistence.read;
-  const idArg = read?.call.arguments[0];
+  const p = d.write.persistence;
+  const idArg = p.read?.call.arguments[0] ?? p.entityKey;
   if (!impl || !idArg) return undefined;
   const entityId = traceToRoot(idArg, d.reach, checker);
   if (!entityId) return undefined;
@@ -165,6 +167,18 @@ function buildTransition(
   const p = m.persistence;
   const t = d.linked;
   const naming = frameNaming(m.frame);
+  const linkAtomicity = env.adapter.linkAtomicity?.({
+    write: m.write,
+    frame: m.frame,
+    reach: d.reach,
+  });
+  let atomicScope: CodeSites["atomic"];
+  if (linkAtomicity) {
+    if (linkAtomicity.atomic && linkAtomicity.kind)
+      atomicScope = { kind: linkAtomicity.kind, at: m.at };
+  } else if (p.scope) {
+    atomicScope = { kind: p.scope.kind, at: ctx.loc(p.scope.call), gate: p.scope.gate };
+  }
 
   const guardFacts = dominance.analyze(d.reach, m.frame, m.write.expr);
   const requires: GuardRef[] = [...guardFacts.dominating]
@@ -242,9 +256,7 @@ function buildTransition(
     fromState,
     ...(p.read ? { read: callSite(ctx, calls, p.read, d.reach) } : {}),
     ...(p.commit ? { commit: callSite(ctx, calls, p.commit, d.reach) } : {}),
-    ...(p.scope
-      ? { atomic: { kind: p.scope.kind, at: ctx.loc(p.scope.call), gate: p.scope.gate } }
-      : {}),
+    ...(atomicScope ? { atomic: atomicScope } : {}),
     guards,
     effects,
     ...(invocation ? { invocation } : {}),
@@ -258,7 +270,7 @@ function buildTransition(
     by: t ? [...t.by] : [],
     requires,
     effects: effectDecls,
-    atomic: p.atomic,
+    atomic: linkAtomicity?.atomic ?? p.atomic,
     idempotent: t?.idempotent ?? false,
     ...(impl ? { impl: { ...impl } } : {}),
     at: m.at,

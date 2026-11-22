@@ -38,7 +38,12 @@ export function loadProject(projectRoot: string, tsconfig?: string): LoadedProje
     tsconfig === undefined ? path.join(root, "tsconfig.json") : path.resolve(root, tsconfig),
   );
   if (!ts.sys.fileExists(configPath)) {
-    return { error: `no tsconfig at ${path.posix.relative(root, configPath) || configPath}` };
+    return {
+      error:
+        tsconfig === undefined
+          ? `no tsconfig.json in the project directory ${root}`
+          : `no tsconfig at ${configPath}`,
+    };
   }
   let project: Project;
   try {

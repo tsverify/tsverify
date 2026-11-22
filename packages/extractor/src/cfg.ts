@@ -1,7 +1,9 @@
 /**
- * Control-flow graph of one function body, at the granularity dominance needs: one node per call
- * (after its callee and arguments are evaluated), per plain assignment and per object literal,
- * plus synthetic join nodes. Expressions are visited in evaluation order.
+ * Control-flow graph of one function body, at the granularity dominance and suspension analysis
+ * need: one node per call (after its callee and arguments are evaluated), per plain assignment,
+ * per object literal and per suspension point (`await` / `yield` after their operand; a
+ * `for await` loop's statement at every iteration's step), plus synthetic join nodes.
+ * Expressions are visited in evaluation order.
  *
  * Modelled: `if`, `?:`, `&&` / `||` / `??` (and their assignment forms), optional calls, loops
  * with `break` / `continue` (labels too), `switch` with fall-through, `return`, `throw`,
@@ -15,7 +17,9 @@
  * nested functions are separate frames (see `callgraph.ts`).
  *
  * Not modelled (over-approximations): truthiness of conditions (both branches are always
- * possible), `return` inside `try` skipping `finally`, generators.
+ * possible), `return` inside `try` skipping `finally`, generator resumption (a `yield` is only a
+ * suspension point). An `await` adds no throw edge of its own: the awaited call's edge covers a
+ * rejection.
  */
 import { ts } from "ts-morph";
 
@@ -228,9 +232,11 @@ class Builder {
       const e = this.expr(s.expression, f);
       const head = this.join();
       this.connect(e, head);
-      const { out, breakTo } = this.loop(labels, head, s.statement, [head]);
+      // `for await`: every step (including the one that finds the end) awaits `next()`.
+      const step = ts.isForOfStatement(s) && s.awaitModifier ? this.node(s, [head]) : [head];
+      const { out, breakTo } = this.loop(labels, head, s.statement, step);
       this.connect(out, head);
-      return [head, breakTo];
+      return [...step, breakTo];
     }
     if (ts.isSwitchStatement(s)) {
       const labels = this.takeLabels();
@@ -351,6 +357,9 @@ class Builder {
       for (const cb of callbacks) cur = [...cur, ...this.inline(cb, cur)];
       this.connect(cur, this.throwTo);
       return [...this.node(e, cur), ...skip];
+    }
+    if (ts.isAwaitExpression(e) || ts.isYieldExpression(e)) {
+      return this.node(e, this.expr(e.expression, f));
     }
     if (ts.isObjectLiteralExpression(e)) {
       let cur = f;

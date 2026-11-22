@@ -12,8 +12,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "ci": "pnpm lint && pnpm typecheck && pnpm test",
-    "tsv": "tsx packages/cli/src/index.ts"
+    "ci": "pnpm lint && pnpm typecheck && pnpm test && pnpm verify",
+    "tsv": "tsx packages/cli/src/index.ts",
+    "verify": "pnpm tsv check packages/runtime/src"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.8",

@@ -1,0 +1,83 @@
+/**
+ * `memory` persistence: in-process objects with no client. The state changes by plain
+ * assignment to the entity's state field, and nothing reads or commits it through a client.
+ *
+ * ```ts
+ * markWaiting(workerId: string): void {
+ *   const w = this.workers.get(workerId);   // entity key: the `get` / element-access argument
+ *   if (w?.status !== "running") throw …;   // check (narrowing, as for every adapter)
+ *   w.status = "waiting";                    // write; atomic: no suspension since the impl's entry
+ * }
+ * ```
+ *
+ * - No `read` / `commit` sites, no `storage`, no `unanalyzable` "no read" warnings.
+ * - Atomic iff no `await` / `yield` / `for await` step (or deferred callback) lies on a path from
+ *   the impl's entry to the write, across the impl → helper calls that lead to it
+ *   (`suspensionBefore` in `atomicity.ts`); then `CodeSites.atomic` is `synchronous`, at the write.
+ * - Entity key, for `InvocationShape.entityId`: when the entity reference is (a `const` initialized
+ *   with) `<expr>.get(key)` or `<expr>[key]`. An entity that is `this`, or a parameter passed as
+ *   the object itself, has no key, so no invocation shape is recorded.
+ *
+ * Never auto-detected: set `bindings.persistence: memory`.
+ */
+import { ts } from "ts-morph";
+import { suspensionBefore } from "../atomicity";
+import { symbolOf } from "../resolve";
+import type { AdapterInput, PersistenceAdapter, PersistenceFacts } from "./types";
+
+function strip(e: ts.Expression): ts.Expression {
+  let cur = e;
+  while (
+    ts.isParenthesizedExpression(cur) ||
+    ts.isAsExpression(cur) ||
+    ts.isSatisfiesExpression(cur) ||
+    ts.isNonNullExpression(cur)
+  ) {
+    cur = cur.expression;
+  }
+  return cur;
+}
+
+function keyOfLookup(e: ts.Expression): ts.Expression | undefined {
+  if (
+    ts.isCallExpression(e) &&
+    ts.isPropertyAccessExpression(e.expression) &&
+    e.expression.name.text === "get" &&
+    e.arguments.length === 1
+  ) {
+    const arg = e.arguments[0] as ts.Expression;
+    return ts.isSpreadElement(arg) ? undefined : arg;
+  }
+  if (ts.isElementAccessExpression(e)) return e.argumentExpression;
+  return undefined;
+}
+
+/** The id expression of a keyed lookup the entity reference comes from, if any. */
+function entityKeyOf(ref: ts.Expression, checker: ts.TypeChecker): ts.Expression | undefined {
+  const e = strip(ref);
+  if (!ts.isIdentifier(e)) return keyOfLookup(e);
+  const decl = symbolOf(e, checker)?.valueDeclaration;
+  if (!decl || !ts.isVariableDeclaration(decl) || !decl.initializer) return undefined;
+  const list = decl.parent;
+  if (!ts.isVariableDeclarationList(list) || !(list.flags & ts.NodeFlags.Const)) return undefined;
+  return keyOfLookup(strip(decl.initializer));
+}
+
+export const memoryAdapter: PersistenceAdapter = {
+  kind: "memory",
+  scopeAliasParam: -1,
+
+  scopeKind() {
+    return undefined;
+  },
+
+  analyzeWrite(input: AdapterInput): PersistenceFacts {
+    const entityKey = entityKeyOf(input.write.ref, input.checker);
+    return { atomic: false, problems: [], ...(entityKey ? { entityKey } : {}) };
+  },
+
+  linkAtomicity({ write, frame, reach }) {
+    const atomic = suspensionBefore(reach, frame, write.expr) === undefined;
+    return atomic ? { atomic, kind: "synchronous" } : { atomic };
+  },
+};

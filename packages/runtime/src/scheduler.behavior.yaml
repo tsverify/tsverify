@@ -79,3 +79,8 @@ rules:
   # The model has no deadlocks; in code a wait-for cycle is reported as a `deadlock` divergence.
   - name: Every worker can still settle
     eventually: status in [done, failed]
+
+bindings:
+  # Workers are in-process objects with no client: a transition is atomic when no await/yield
+  # lies between the impl's entry and the status write (the extractor's `memory` adapter).
+  persistence: memory

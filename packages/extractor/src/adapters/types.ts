@@ -2,8 +2,9 @@
  * A persistence adapter knows one ORM / data-access style: how a transition reads the entity, how
  * it commits the write, and which construct makes the two atomic.
  */
-import type { PersistenceKind } from "@tsv/ir";
+import type { AtomicScope, PersistenceKind } from "@tsv/ir";
 import type { ts } from "ts-morph";
+import type { Reach } from "../callgraph";
 import type { FunctionLike } from "../cfg";
 import type { ClientCall, ClientCalls, ScopeRef } from "../client-calls";
 import type { WriteNode } from "../writes";
@@ -18,6 +19,12 @@ export interface PersistenceFacts {
   /** Read and write (and commit) run inside one atomic scope. */
   atomic: boolean;
   storage?: { client: string; collection: string; key: string };
+  /**
+   * The expression carrying the entity's id, when there is no read call whose first argument
+   * carries it (`workerId` in `this.workers.get(workerId)`). Traced to the impl's parameters for
+   * `InvocationShape.entityId`.
+   */
+  entityKey?: ts.Expression;
   /** Why something could not be determined (becomes an `unanalyzable` warning). */
   problems: string[];
 }
@@ -32,6 +39,20 @@ export interface AdapterInput {
   checker: ts.TypeChecker;
 }
 
+/** One write as reached from one impl (or, unlinked, from its own frame). */
+export interface LinkInput {
+  write: WriteNode;
+  frame: FunctionLike;
+  reach: Reach;
+}
+
+/** Atomicity that depends on the path from the impl to the write. */
+export interface LinkAtomicity {
+  atomic: boolean;
+  /** The scope kind recorded in `CodeSites.atomic` (at the write) when atomic. */
+  kind?: AtomicScope["kind"];
+}
+
 export interface PersistenceAdapter {
   readonly kind: PersistenceKind;
   /** Which parameter of a scope callback aliases the client (`tx` in `db.transaction(async (tx) => …)`). */
@@ -42,4 +63,9 @@ export interface PersistenceAdapter {
    */
   scopeKind(path: string, argIndex: number): ScopeRef["kind"] | undefined;
   analyzeWrite(input: AdapterInput): PersistenceFacts;
+  /**
+   * Atomicity per linked impl, for adapters where it depends on the call path (`memory`). When
+   * present, it replaces `PersistenceFacts.atomic` and `scope`.
+   */
+  linkAtomicity?(input: LinkInput): LinkAtomicity;
 }
