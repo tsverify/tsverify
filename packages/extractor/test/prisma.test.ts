@@ -146,15 +146,8 @@ describe("prisma adapter", () => {
       expect(r.atomic).toBe(false);
       expect(r.sites?.read?.gate).toBe("db.order.findUniqueOrThrow");
       expect(r.sites?.commit?.gate).toBe("db.order.update");
-      const note = result.findings.find(
-        (f) => f.id === "non-atomic:Fixture orders:refundTxDefault:isolation-level",
-      );
-      expect(note).toMatchObject({
-        category: "non-atomic",
-        severity: "info",
-        transition: "refundTxDefault",
-        codeAt: { file: IMPL, line: 65 },
-      });
+      const note = r.sites?.atomicNote;
+      expect(note?.at).toMatchObject({ file: IMPL, line: 65 });
       expect(note?.message).toContain("default isolation level (READ COMMITTED on PostgreSQL)");
       expect(note?.hint).toContain("updateMany");
       expect(note?.hint).toContain("Serializable");
@@ -180,10 +173,9 @@ describe("prisma adapter", () => {
 
     it("RepeatableRead is not Serializable", () => {
       expect(t("refundTxRepeatable").atomic).toBe(false);
-      const note = result.findings.find(
-        (f) => f.id === "non-atomic:Fixture orders:refundTxRepeatable:isolation-level",
+      expect(t("refundTxRepeatable").sites?.atomicNote?.message).toContain(
+        "isolation level RepeatableRead",
       );
-      expect(note?.message).toContain("isolation level RepeatableRead");
     });
 
     it("a read through the root client inside a Serializable transaction is outside it", () => {
@@ -196,11 +188,7 @@ describe("prisma adapter", () => {
       const r = t("refundArray");
       expect(r.atomic).toBe(false);
       expect(r.from).toEqual(["paid"]);
-      expect(
-        result.findings.find(
-          (f) => f.id === "non-atomic:Fixture orders:refundArray:array-transaction",
-        )?.message,
-      ).toContain("array form of db.$transaction");
+      expect(r.sites?.atomicNote?.message).toContain("array form of db.$transaction");
     });
 
     it("a read hidden in a helper, named by `where: { id: order.id }`", () => {
@@ -223,21 +211,16 @@ describe("prisma adapter", () => {
     expect(r.sites?.invocation?.entityId).toEqual({ param: 0, path: ["orderId"] });
   });
 
-  it("reports only the OR from-state and the atomicity notes", () => {
+  it("reports only the OR from-state (atomicity notes live on the sites)", () => {
     expect(result.findings.map((f) => `${f.severity} ${f.id}`)).toEqual([
-      "info non-atomic:Fixture orders:refundArray:array-transaction",
-      "info non-atomic:Fixture orders:refundTxDefault:isolation-level",
-      "info non-atomic:Fixture orders:refundTxRepeatable:isolation-level",
       "warning unanalyzable:Fixture orders:from-state:refundOr",
     ]);
   });
 
-  it("notes nothing when the spec does not ask for atomic", () => {
-    const relaxed = transitions.map((x) => ({ ...x, atomic: false }));
-    const r = extractFixture("prisma-patterns", orderSpec(relaxed, prismaBindings()));
-    expect(r.findings.map((f) => f.id)).toEqual([
-      "unanalyzable:Fixture orders:from-state:refundOr",
-    ]);
+  it("puts no note on atomic writes", () => {
+    for (const name of ["refundTxSerializable", "shipTxSerializable", "payBlind"]) {
+      expect(t(name).sites?.atomicNote).toBeUndefined();
+    }
   });
 });
 

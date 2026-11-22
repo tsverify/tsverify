@@ -254,20 +254,8 @@ function buildTransition(
     );
   }
   const atomic = linkAtomicity?.atomic ?? p.atomic;
-  // Why a scoped-looking write is still not atomic: only worth saying when the spec asks for it.
-  for (const note of t?.atomic && !atomic ? (p.notes ?? []) : []) {
-    if (!t) break;
-    env.findings.push({
-      id: `non-atomic:${spec.name}:${t.name}:${note.subject}`,
-      category: "non-atomic",
-      severity: "info",
-      message: `${t.name}: ${note.message}`,
-      behavior: spec.name,
-      transition: t.name,
-      codeAt: ctx.loc(note.at),
-      hint: note.hint,
-    });
-  }
+  // Why a scoped-looking write is still not atomic: conformance reports it in `non-atomic`.
+  const note = atomic ? undefined : p.notes?.[0];
 
   const invocation = invocationOf(env, d, guardCalls);
   const sites: CodeSites = {
@@ -283,6 +271,9 @@ function buildTransition(
     ...(p.read ? { read: callSite(ctx, calls, p.read, d.reach) } : {}),
     ...(p.commit ? { commit: callSite(ctx, calls, p.commit, d.reach) } : {}),
     ...(atomicScope ? { atomic: atomicScope } : {}),
+    ...(note
+      ? { atomicNote: { message: note.message, hint: note.hint, at: ctx.loc(note.at) } }
+      : {}),
     guards,
     effects,
     ...(invocation ? { invocation } : {}),

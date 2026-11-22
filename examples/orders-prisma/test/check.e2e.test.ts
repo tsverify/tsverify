@@ -43,24 +43,19 @@ describe("tsv check on examples/orders-prisma", { timeout: 60_000 }, () => {
     );
   });
 
-  it("b7: a default-isolation $transaction is a race, with the isolation note", async () => {
+  it("b7: a default-isolation $transaction is a race, and the finding says why", async () => {
     const run = await tsvCheck("b7-tx-read-committed");
     expect(run.report.findings.map((f) => `${f.severity} ${f.id}`)).toEqual([
-      "info non-atomic:Order lifecycle:refund:isolation-level",
       "error non-atomic:Order lifecycle:refund",
       "error implementation-property:Order lifecycle:rule:Refund issued at most once per order",
       "error implementation-property:Order lifecycle:effect-multiplicity:stripe.refund",
     ]);
-    const note = run.report.findings[0];
-    expect(note).toMatchObject({
-      transition: "refund",
-      codeAt: { file: "src/orders/refund.ts", line: 14 },
-    });
-    expect(note?.message).toContain(
-      "refund: the interactive prisma.$transaction runs at the database's default isolation level (READ COMMITTED on PostgreSQL)",
+    const finding = run.report.findings[0];
+    expect(finding?.message).toContain(
+      "but the interactive prisma.$transaction runs at the database's default isolation level (READ COMMITTED on PostgreSQL)",
     );
-    expect(note?.hint).toContain("order.updateMany({ where: { id, status: <from-state> }");
-    expect(note?.hint).toContain("Prisma.TransactionIsolationLevel.Serializable");
+    expect(finding?.hint).toContain("order.updateMany({ where: { id, status: <from-state> }");
+    expect(finding?.hint).toContain("Prisma.TransactionIsolationLevel.Serializable");
     const effect = run.report.findings.find(
       (f) => f.id === "implementation-property:Order lifecycle:effect-multiplicity:stripe.refund",
     );

@@ -33,11 +33,12 @@
  *    - `$transaction(async (tx) => …)` with read and update both through `tx` is atomic **only**
  *      with `{ isolationLevel: "Serializable" }` (or `Prisma.TransactionIsolationLevel.Serializable`,
  *      or anything typed as that literal). At the default level (READ COMMITTED on PostgreSQL) a
- *      read-then-write inside the transaction still races: it is reported `non-atomic`, plus an
- *      `info` note (`non-atomic:…:isolation-level`) that says so and suggests a conditional
- *      `updateMany` or Serializable. `RepeatableRead` and lower count as not Serializable.
+ *      read-then-write inside the transaction still races: it is not atomic, and
+ *      `CodeSites.atomicNote` says why, so conformance's `non-atomic` finding gives that reason
+ *      and suggests a conditional `updateMany` or Serializable. `RepeatableRead` and lower count
+ *      as not Serializable.
  *    - The array form `$transaction([a, b])` runs its operations in one transaction but cannot
- *      check a read's result before the write: not atomic (note `…:array-transaction`).
+ *      check a read's result before the write: not atomic (with an `atomicNote` saying so).
  *    - A read through the root client inside the callback (`prisma.order.findUnique` instead of
  *      `tx.order…`) is outside the transaction: not atomic.
  * 3. **Blind update** (no state field in `where`, no read reference): nothing checks the stored
