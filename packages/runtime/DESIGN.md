@@ -7,7 +7,7 @@ replaced (`vi.mock`) by instrumented in-memory fakes, and every call on them pas
 
 Proven in [spike X2](../../spikes/x2-gating/README.md); this package is its production port.
 
-- **Zero internal dependencies** (doc 6 §2 rule 5): it runs inside the user's test process. Inputs
+- **Zero internal dependencies**: it runs inside the user's test process. Inputs
   that come from `@tsverify/ir` (`Trace`, `CodeSites`) are declared as structural types;
   `test/ir-compat.test.ts` proves the `ir` types are assignable.
 - **Framework-agnostic.** Nothing here imports vitest. The `vi.mock` wiring lives in the generated
@@ -92,7 +92,7 @@ every `await`, promise continuation and timer it creates. Worker status (`Worker
 | `done` / `failed` | `fn` returned / threw | no |
 
 The lifecycle is specified in [`src/scheduler.behavior.yaml`](src/scheduler.behavior.yaml)
-(dogfooding, doc 6 §6); each status change is one method of `Scheduler`.
+(dogfooding); each status change is one method of `Scheduler`.
 
 A step resumes exactly one worker and waits until it **stops running** (parks, waits, or settles),
 learned from events, never by counting microtasks. After it stops, the step lets one macrotask
@@ -227,7 +227,7 @@ Clean app → `blocked` at step 2, Stripe ×1, `replay-disagrees`. B3 variant �
 ## Shape of a generated replay test
 
 Executable version against the demo app: [`test/generated-shape.test.ts`](test/generated-shape.test.ts).
-Testgen may not import this package (doc 6 §2 rule 2), so the generated file plans at test time
+Testgen may not import this package, so the generated file plans at test time
 from JSON sidecars (the trace and the `CodeSites` subset); both import without a cast.
 
 ```ts

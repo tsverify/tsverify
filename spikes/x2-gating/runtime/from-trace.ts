@@ -28,7 +28,7 @@ export interface TraceReplayPlan {
 }
 
 /**
- * How a replay outcome maps onto findings (doc 3, Part C "How the outcomes combine"):
+ * How a replay outcome maps onto findings:
  * - `confirmed`: schedule followed and the property is violated in the real code.
  * - `confirmed-divergent`: the code diverged from the schedule but still violated the property
  *   (after draining). A real bug, reached by a different interleaving; report the divergence too.

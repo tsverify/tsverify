@@ -224,7 +224,7 @@ export interface BehaviorModel {
   summary?: string;
   /**
    * The spec's `enforced: true`: the team marked it as one CI should block on. `tsverify` never acts
-   * on it by itself (D4); it is carried into `--format json|sarif` and selectable with
+   * on it by itself (CI decides policy); it is carried into `--format json|sarif` and selectable with
    * `--enforced-only`, so a pipeline can block on enforced specs and stay advisory elsewhere.
    */
   enforced?: boolean;

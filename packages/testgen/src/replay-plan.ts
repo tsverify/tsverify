@@ -1,6 +1,6 @@
 /**
  * Generation-time view of how `@tsverify/runtime`'s `planFromTrace` will replay a counterexample.
- * Testgen may not import the runtime (doc 6 §2), so this mirrors the two parts it needs, kept in
+ * Testgen may not import the runtime, so this mirrors the two parts it needs, kept in
  * step with `packages/runtime/src/plan.ts` and `sites.ts` (`test/runtime-cross-check.test.ts`
  * checks both against the real runtime):
  *

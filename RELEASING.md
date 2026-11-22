@@ -6,7 +6,7 @@ into the CLI. All workspace packages share one version.
 
 ## Once
 
-- Claim the `tsverify` npm org and GitHub org ([idea/7](idea/7.%20name-and-license.md)).
+- Claim the `tsverify` npm org and GitHub org.
 - Create an npm automation token with publish rights on `@tsverify` and store it as the `NPM_TOKEN` repository
   secret.
 

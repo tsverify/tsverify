@@ -1,5 +1,5 @@
 /**
- * How a replay outcome maps onto findings (doc 3, Part C "How the outcomes combine"):
+ * How a replay outcome maps onto findings:
  *
  * | Followed? | Property violated? | Verdict               |
  * |-----------|--------------------|-----------------------|

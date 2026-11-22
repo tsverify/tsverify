@@ -12,3 +12,6 @@ packages/*/CHANGELOG.md
 packages/cli/README.md
 packages/cli/behavior.schema.json
 *.tgz
+
+# Design log: kept locally, not part of the repository
+idea/

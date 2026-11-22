@@ -1,5 +1,5 @@
 /**
- * Checker throughput benchmark (doc 5 §5 budget: ≥ 500k states/s on a synthetic entity model).
+ * Checker throughput benchmark (budget: ≥ 500k states/s on a synthetic entity model).
  *
  *   pnpm exec tsx packages/checker/bench/throughput.ts [transitions=5] [concurrency=3]
  *

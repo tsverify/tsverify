@@ -1,4 +1,4 @@
-# Dogfooding (doc 6 §6): the lifecycle of one replay worker in src/scheduler.ts.
+# Dogfooding: the lifecycle of one replay worker in src/scheduler.ts.
 # Project root is packages/runtime (its tsconfig.json), so impl paths are relative to it.
 #
 # Not expressible in v1 (rules are about one entity): "at most one worker is running at a time"

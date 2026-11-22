@@ -6,7 +6,7 @@ Verify TypeScript code against human-readable **behavior files** (`*.behavior.ya
 *and* the behavior spec; `tsverify` renders the spec as diagrams, model-checks it, extracts what the code actually
 does, and turns every mismatch into a failing test. Local-only: install + YAML files, nothing else.
 
-> Status: pre-alpha, under construction. Design log: [`idea/`](idea/) · Format: [`docs/behavior-format.md`](docs/behavior-format.md)
+> Status: pre-alpha, under construction. Format: [`docs/behavior-format.md`](docs/behavior-format.md)
 
 ## Quick start
 
@@ -93,8 +93,6 @@ A ready-to-copy GitHub Actions workflow: [`examples/ci/github/tsverify.yml`](exa
 pnpm install
 pnpm run ci      # lint + typecheck + test
 ```
-
-Repository layout and package ownership: [`idea/6. repo-structure.md`](idea/6.%20repo-structure.md).
 
 ## License
 

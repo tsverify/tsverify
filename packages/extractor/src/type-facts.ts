@@ -1,6 +1,6 @@
 /**
  * Type facts the extractor needs from the TypeScript checker, behind a seam so a TS 7 (tsgo)
- * backend can replace the ts-morph (TS 6) one later (doc 5, spike X1).
+ * backend can replace the ts-morph (TS 6) one later (spike X1).
  *
  * Narrowing uses X1's **probe-first injection**: every candidate state write `W` is rewritten to
  * `(ref.field, W)` in the in-memory project *before* the first type query. The comma operator

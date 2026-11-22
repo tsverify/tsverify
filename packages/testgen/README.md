@@ -1,6 +1,6 @@
 # @tsverify/testgen
 
-Generates the vitest files `tsverify test` writes and runs. Depends only on `@tsverify/ir` (doc 6 §2): it
+Generates the vitest files `tsverify test` writes and runs. Depends only on `@tsverify/ir`: it
 never imports `@tsverify/runtime` in `src/` (only its tests do, as a devDependency); the **generated
 code** imports it at test time. Pure: data in, files (as strings) out, deterministic.
 

@@ -1,6 +1,6 @@
 # Spike X1: from-state inference via narrowing
 
-**Question** (`idea/4. prototype-plan.md` §8): can ts-morph give the **narrowed literal-union
+**Question**: can ts-morph give the **narrowed literal-union
 type** of `entity.status` at an arbitrary write site, and what is the best way to ask?
 
 **Answer: yes. Go.** Use **probe injection, "probe-first"**: before the checker runs, wrap
@@ -139,7 +139,7 @@ Notes:
   *inside* a callback that has its own guard (case 10) works.
 - **L12 and L17 are unsound in the other direction**: the checker keeps `paid` across an
   `await` and across a call that mutates the entity. Narrowing describes the value that was
-  read, not the state at write time. The atomicity check (doc 3, Part B) and an "entity passed
+  read, not the state at write time. The atomicity check and an "entity passed
   to a call between guard and write" heuristic must cover this.
 
 ## Recommendation: probe-first injection (T2)
@@ -197,7 +197,7 @@ no equivalent on TS 7, where the AST lives in the Go process. Do not build on it
   maps onto it directly. `ts7.ts` serves the probed files from memory, queries the position of
   each probe's `status` name, and gets **31/31 identical answers**. It is also covered by the
   vitest suite.
-- Implications: the `TypeFacts` seam from doc 5 holds. A TS 7 backend is a small amount of code,
+- Implications: the `TypeFacts` seam holds. A TS 7 backend is a small amount of code,
   not a rewrite. The API is explicitly *unstable* in 7.0, so pin the exact version and expect
   changes by 7.1. tsgo comes as a per-platform optional dependency
   (`@typescript/typescript-linux-x64`, …). Anything that relies on JS-side compiler internals

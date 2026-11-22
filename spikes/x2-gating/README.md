@@ -1,6 +1,6 @@
 # Spike X2: gating
 
-**Question** ([plan §8](../../idea/4.%20prototype-plan.md)): can `vi.mock` + `AsyncLocalStorage` +
+**Question**: can `vi.mock` + `AsyncLocalStorage` +
 gates on instrumented clients force a specific interleaving of real async code, deterministically?
 
 **Answer: yes, go.** A replay of the B3 race against unmodified application code refunds twice in

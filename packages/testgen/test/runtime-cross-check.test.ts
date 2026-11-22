@@ -1,6 +1,6 @@
 /**
- * Drift check: testgen mirrors parts of `@tsverify/runtime` at generation time (doc 6 §2: `src/` may
- * not import it), so this runs the real runtime (a devDependency) on the same inputs and expects
+ * Drift check: testgen mirrors parts of `@tsverify/runtime` at generation time (its `src/` may not
+ * import it), so this runs the real runtime (a devDependency) on the same inputs and expects
  * identical results:
  *
  * - `gateMapping` (src/replay-plan.ts) ≡ `mappingFromCode(code).transitions`;

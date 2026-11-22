@@ -1,7 +1,7 @@
 import type { Finding } from "@tsverify/ir";
 import { INPUT_ERROR_CATEGORIES } from "@tsverify/ir";
 
-/** The exit code contract (doc 3, D4). CI decides policy from these; the tool never does. */
+/** The exit code contract. CI decides policy from these; the tool never does. */
 export const ExitCode = {
   /** No error-severity findings. Warnings and info never fail a run. */
   Ok: 0,

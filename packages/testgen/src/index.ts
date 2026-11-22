@@ -1,4 +1,4 @@
-// @tsverify/testgen: generated vitest files (doc 6 §3.7). Depends only on @tsverify/ir; the generated code
+// @tsverify/testgen: generated vitest files. Depends only on @tsverify/ir; the generated code
 // imports @tsverify/runtime at test time. Pure: no filesystem, deterministic output.
 import { buildContext } from "./context";
 import { forbiddenFile } from "./forbidden";

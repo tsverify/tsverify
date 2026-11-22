@@ -16,7 +16,7 @@ const PAIRING_RULES: ((p: Pairing) => Finding[])[] = [
 
 /**
  * Compares a spec model with the as-implemented code model the extractor built from it and
- * reports every mismatch (doc 6 §3.6). Pure and deterministic: findings are ordered by spec
+ * reports every mismatch. Pure and deterministic: findings are ordered by spec
  * transition name, then category, then id; findings for unlinked code writes come last, by name.
  *
  * Throws (programmer error) when the origins are not `spec` / `code`, when the entities differ,

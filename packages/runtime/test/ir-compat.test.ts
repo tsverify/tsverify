@@ -1,4 +1,4 @@
-// The runtime cannot import @tsverify/ir (doc 6 §2 rule 5), so it declares structural input types.
+// The runtime cannot import @tsverify/ir, so it declares structural input types.
 // These checks run in `pnpm typecheck`: if an ir type drifts away from what the runtime reads,
 // this file stops compiling.
 import type { BehaviorModel, CallSite, CodeSites, Trace, TraceStep } from "@tsverify/ir";

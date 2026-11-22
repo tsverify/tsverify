@@ -1,5 +1,5 @@
 /**
- * Vitest results of the generated tests → findings (doc 3 Part C, "How the outcomes combine"):
+ * Vitest results of the generated tests → findings:
  *
  * | Generated test                          | Finding                                   |
  * |-----------------------------------------|-------------------------------------------|

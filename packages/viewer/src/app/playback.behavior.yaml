@@ -1,4 +1,4 @@
-# Dogfooding (doc 6 §6): counterexample playback in the viewer, src/app/playback.ts.
+# Dogfooding: counterexample playback in the viewer, src/app/playback.ts.
 # Project root is packages/viewer (its tsconfig.json), so impl paths are relative to it.
 #
 # The controller also holds a step cursor (0 … last), which v1 rules cannot talk about (they see

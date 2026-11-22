@@ -1,7 +1,7 @@
 # Using `tsverify` in CI
 
 `tsverify` never decides policy. It returns a fixed exit code and machine-readable output, and your CI decides what
-blocks a merge ([decision D4](../idea/3.%20decisions-and-answers.md)). This page covers the three recommended
+blocks a merge. This page covers the three recommended
 workflows, the exit codes they build on, and where each output format goes.
 
 A ready-to-copy GitHub Actions workflow that does all of this is in
