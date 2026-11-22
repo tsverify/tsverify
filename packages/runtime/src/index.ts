@@ -26,6 +26,16 @@ export type {
 } from "./instrument/store";
 export { UninstrumentedCallError } from "./instrument/strict";
 export {
+  type ModelActionKind,
+  type PlannedWorker,
+  type PlanOptions,
+  planFromTrace,
+  type ReplayMapping,
+  type ReplayPlan,
+  type TraceInput,
+  type TraceStepInput,
+} from "./plan";
+export {
   type EffectCall,
   type Outcome,
   type PlayOutcome,
@@ -37,6 +47,14 @@ export {
   UNTIL_DONE,
   type WorkerStatus,
 } from "./scheduler";
+export {
+  type CallSiteInput,
+  type CodeModelInput,
+  type CodeSitesInput,
+  effectsConfigFromCode,
+  mappingFromCode,
+  storeConfigFromCode,
+} from "./sites";
 export { type ReplayResult, type ReplayVerdict, replayResult, replayVerdict } from "./verdict";
 
 /** In-memory fakes for the app's clients. `fake.client` is what a `vi.mock` factory exports. */
