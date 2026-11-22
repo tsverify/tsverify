@@ -348,3 +348,89 @@ describe("check: code conformance", () => {
     expect(outcome?.findings.map((f) => f.specAt?.file)).toContain("app/src/light.behavior.yaml");
   });
 });
+
+describe("check: by lists alternative actors (owner or admin)", () => {
+  const SPEC = `behavior: Order cancel
+entity:
+  name: Order
+  state: status
+  states: [paid, cancelled]
+  initial: paid
+  terminal: [cancelled]
+actors:
+  customer: { trust: authenticated, requires: owner }
+  admin: { trust: authenticated, requires: role(admin) }
+transitions:
+  cancel:
+    from: paid
+    to: cancelled
+    by: [customer, admin]
+    impl: src/cancel.ts#cancelOrder
+bindings:
+  guards:
+    owner: src/guards.ts#requireOwner
+    role(admin): src/guards.ts#requireRole("admin")
+`;
+  const GUARDS = `export interface Actor {
+  id: string;
+  roles: string[];
+}
+
+export function requireOwner(actor: Actor, order: { ownerId: string }): void {
+  if (order.ownerId !== actor.id) throw new Error("not the owner");
+}
+
+export function requireRole(actor: Actor, role: string): void {
+  if (!actor.roles.includes(role)) throw new Error(\`not \${role}\`);
+}
+`;
+  const cancel = (
+    guards: string,
+  ) => `import { type Actor, requireOwner, requireRole } from "./guards";
+
+export interface Order {
+  id: string;
+  ownerId: string;
+  status: "paid" | "cancelled";
+}
+
+export function cancelOrder(actor: Actor, order: Order): void {
+  const isAdmin = actor.roles.includes("admin");
+${guards}
+  if (order.status !== "paid") throw new Error("not paid");
+  order.status = "cancelled";
+}
+`;
+  const project = (guards: string) =>
+    tempSpecDir({
+      "tsconfig.json": TSCONFIG,
+      "src/order.behavior.yaml": SPEC,
+      "src/guards.ts": GUARDS,
+      "src/cancel.ts": cancel(guards),
+    });
+
+  it("accepts a path per actor: requireRole for admins, requireOwner otherwise", async () => {
+    const cwd = await project(
+      '  if (isAdmin) requireRole(actor, "admin");\n  else requireOwner(actor, order);',
+    );
+    const r = await tsverify(["check", "--format", "json"], { cwd });
+    expect(r.code).toBe(0);
+    expect(parse(r.stdout).findings).toEqual([]);
+  });
+
+  it("names the admin alternative when the admin path skips requireRole", async () => {
+    const cwd = await project("  void requireRole;\n  if (!isAdmin) requireOwner(actor, order);");
+    const r = await tsverify(["check", "--format", "json"], { cwd });
+    expect(r.code).toBe(1);
+    expect(parse(r.stdout).findings).toEqual([
+      expect.objectContaining({
+        id: "guard-not-dominating:Order cancel:cancel:path:{}",
+        message:
+          "cancel: cancelOrder reaches the write on a path that passes no guard; it must pass owner to act as customer, or role(admin) to act as admin.",
+        hint: "Call requireOwner (as customer) or requireRole (as admin) on every path from cancelOrder to the write, before any early return.",
+        // The requireOwner call that only some paths reach.
+        codeAt: expect.objectContaining({ file: "src/cancel.ts", line: 12, column: 17 }),
+      }),
+    ]);
+  });
+});
