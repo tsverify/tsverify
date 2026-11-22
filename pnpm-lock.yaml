@@ -56,9 +56,15 @@ importers:
       '@tsv/render':
         specifier: workspace:*
         version: link:../render
+      '@tsv/runtime':
+        specifier: workspace:*
+        version: link:../runtime
       '@tsv/spec':
         specifier: workspace:*
         version: link:../spec
+      '@tsv/testgen':
+        specifier: workspace:*
+        version: link:../testgen
       cac:
         specifier: 7.1.1
         version: 7.1.1
@@ -68,6 +74,9 @@ importers:
       tsx:
         specifier: 4.23.15
         version: 4.23.15
+      vitest:
+        specifier: 5.1.1
+        version: 5.1.1(@types/node@22.20.5)(vite@8.3.8(@types/node@22.20.5)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/conformance:
     dependencies:
