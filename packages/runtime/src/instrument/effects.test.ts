@@ -33,6 +33,25 @@ describe("instrument.effects", () => {
     ]);
   });
 
+  test('path "" makes the client itself the recording function, gated by the client name', async () => {
+    const s = scheduler();
+    const email = effects(s, { client: "email", calls: ["", "batch.send"] });
+    expect(s.knownGates()).toEqual(["email", "email.batch.send"]);
+    expect(typeof email.client).toBe("function");
+    expect(await email.client("a@example.com", "welcome")).toEqual({ id: "email_fake_1" });
+    await email.client.batch.send(["b@example.com"]);
+    expect(email.calls("")).toEqual([
+      { seq: 0, worker: null, effect: "email", args: ["a@example.com", "welcome"] },
+    ]);
+    expect(s.effects().map((e) => e.effect)).toEqual(["email", "email.batch.send"]);
+    expect(() => (email.client as unknown as { other: () => void }).other()).toThrow(
+      'email.other is not instrumented: the effects fake for client "email" only records email, email.batch.send.',
+    );
+    expect(() => effects(scheduler(), { client: "x", calls: ["", ""] })).toThrow(
+      'effects fake "x": call path "" is listed twice',
+    );
+  });
+
   test("arguments are recorded as they were at call time; results come from `returns`", async () => {
     const s = scheduler();
     const email = effects(s, {

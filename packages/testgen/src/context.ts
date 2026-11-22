@@ -300,8 +300,9 @@ export function buildContext(input: ContextInput): { ctx?: Context; skipped: Fin
       client,
       calls: sortedUnique([
         ...allSites.flatMap((s) => s.effects.filter((e) => e.client === client).map((e) => e.path)),
+        // A gate equal to the client name: the client export is the function called (path "").
         ...Object.values(spec.bindings.effects)
-          .filter((gate) => gate.startsWith(`${client}.`))
+          .filter((gate) => gate === client || gate.startsWith(`${client}.`))
           .map((gate) => gate.slice(client.length + 1)),
       ]),
     }));

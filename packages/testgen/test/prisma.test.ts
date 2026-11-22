@@ -71,7 +71,14 @@ describe("clean orders-prisma app", () => {
   it("fakes the Prisma client with instrument.prisma", async () => {
     const paths = result.files.find((f) => f.path === "paths.test.ts")?.content;
     expect(paths).toContain("const prisma = instrument.prisma(s, {");
-    expect(paths).toContain('vi.mock("../../../src/db.ts", () => ({ prisma: prisma.client }));');
+    expect(paths).toContain(
+      [
+        'vi.mock("../../../src/db.ts", async (importOriginal) => ({',
+        "  ...(await importOriginal<Record<string, unknown>>()),",
+        "  prisma: prisma.client,",
+        "}));",
+      ].join("\n"),
+    );
     await expect(paths).toMatchFileSnapshot("__golden__/prisma-clean/paths.test.ts.txt");
   });
 });
