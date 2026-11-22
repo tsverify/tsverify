@@ -333,6 +333,16 @@ export function assemble(spec: BehaviorModel, drafts: Draft[], env: AssembleEnv)
     rules: spec.rules,
     bindings: spec.bindings,
   });
+  // The code may write or check states the spec doesn't declare (`light.status = "broken"`).
+  // The as-implemented entity has them, so the code model stays checkable; conformance reports
+  // each such write as `undeclared-transition`.
+  const declared = new Set(copy.entity.states);
+  const extra = new Set<string>();
+  for (const t of transitions) {
+    for (const s of [t.to, ...(t.from === "*" ? [] : t.from)]) if (!declared.has(s)) extra.add(s);
+  }
+  copy.entity.states.push(...[...extra].sort(compareStrings));
+
   return {
     kind: "entity",
     name: spec.name,
