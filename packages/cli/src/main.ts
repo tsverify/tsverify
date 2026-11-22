@@ -8,6 +8,7 @@ import { type RenderCommandOptions, renderCommand } from "./commands/render";
 import { schemaCommand } from "./commands/schema";
 import { type TestCommandOptions, testCommand } from "./commands/test";
 import { type ValidateCommandOptions, validateCommand } from "./commands/validate";
+import { type ViewCommandOptions, viewCommand } from "./commands/view";
 import { ExitCode, UsageError } from "./exit-codes";
 import { helpText } from "./help";
 import type { Io } from "./io";
@@ -115,6 +116,27 @@ function program(io: Io): CAC {
     })
     .option("--enforced-only", "Keep only specs with `enforced: true` on either side")
     .action((paths: string[], options: DiffCommandOptions) => diffCommand(io, paths, options));
+
+  cli
+    .command(
+      "view [...paths]",
+      "Run check and serve its results in a local browser viewer (diagram, matrix, summary, findings, counterexample playback) that reloads when the specs or code change",
+    )
+    .option("--port <n>", "Port to listen on; 0 picks a free one", { default: 0 })
+    .option("--host <address>", "Address to listen on (keep it on loopback)", {
+      default: "127.0.0.1",
+    })
+    .option("--open", "Open the viewer in the default browser")
+    .option("--max-states <n>", "Stop exploring a model after this many states", {
+      default: DEFAULT_MAX_STATES,
+    })
+    .option("--spec-only", "Check the specs only: skip code extraction and conformance")
+    .option("--enforced-only", ENFORCED_ONLY_HELP)
+    .option(
+      "--project <dir>",
+      "TypeScript project root for all specs (default: per spec, the nearest tsconfig.json dir)",
+    )
+    .action((paths: string[], options: ViewCommandOptions) => viewCommand(io, paths, options));
 
   cli
     .command("render <spec>", "Render one spec (default: --mermaid)")

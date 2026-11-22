@@ -1,0 +1,2514 @@
+{
+  "file": "src/orders/order.behavior.yaml",
+  "behavior": "Order lifecycle",
+  "project": ".",
+  "spec": {
+    "kind": "entity",
+    "name": "Order lifecycle",
+    "summary": "A customer checks out and pays; an admin ships or refunds; unpaid orders expire.",
+    "origin": "spec",
+    "file": "src/orders/order.behavior.yaml",
+    "entity": {
+      "name": "Order",
+      "stateField": "status",
+      "states": [
+        "draft",
+        "pending_payment",
+        "paid",
+        "shipped",
+        "refunded",
+        "cancelled"
+      ],
+      "initial": "draft",
+      "terminal": [
+        "shipped",
+        "refunded",
+        "cancelled"
+      ],
+      "at": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 5,
+        "column": 1,
+        "endLine": 10,
+        "endColumn": 43
+      }
+    },
+    "actors": {
+      "admin": {
+        "name": "admin",
+        "trust": "authenticated",
+        "requires": [
+          {
+            "name": "role",
+            "args": [
+              "admin"
+            ],
+            "raw": "role(admin)",
+            "at": {
+              "file": "src/orders/order.behavior.yaml",
+              "line": 14,
+              "column": 44,
+              "endLine": 14,
+              "endColumn": 55
+            }
+          }
+        ],
+        "at": {
+          "file": "src/orders/order.behavior.yaml",
+          "line": 14,
+          "column": 3,
+          "endLine": 14,
+          "endColumn": 57
+        }
+      },
+      "customer": {
+        "name": "customer",
+        "trust": "untrusted",
+        "requires": [],
+        "at": {
+          "file": "src/orders/order.behavior.yaml",
+          "line": 13,
+          "column": 3,
+          "endLine": 13,
+          "endColumn": 33
+        }
+      },
+      "stripe": {
+        "name": "stripe",
+        "trust": "signed-webhook",
+        "requires": [],
+        "at": {
+          "file": "src/orders/order.behavior.yaml",
+          "line": 15,
+          "column": 3,
+          "endLine": 15,
+          "endColumn": 36
+        }
+      },
+      "system": {
+        "name": "system",
+        "trust": "internal",
+        "requires": [],
+        "at": {
+          "file": "src/orders/order.behavior.yaml",
+          "line": 16,
+          "column": 3,
+          "endLine": 16,
+          "endColumn": 30
+        }
+      }
+    },
+    "transitions": [
+      {
+        "name": "checkout",
+        "from": [
+          "draft"
+        ],
+        "to": "pending_payment",
+        "by": [
+          "customer"
+        ],
+        "requires": [
+          {
+            "name": "owner",
+            "args": [],
+            "raw": "owner",
+            "at": {
+              "file": "src/orders/order.behavior.yaml",
+              "line": 23,
+              "column": 16,
+              "endLine": 23,
+              "endColumn": 21
+            }
+          }
+        ],
+        "effects": [],
+        "atomic": true,
+        "idempotent": false,
+        "impl": {
+          "file": "src/orders/checkout.ts",
+          "symbol": "checkout"
+        },
+        "at": {
+          "file": "src/orders/order.behavior.yaml",
+          "line": 19,
+          "column": 3,
+          "endLine": 25,
+          "endColumn": 42
+        },
+        "fromAt": [
+          {
+            "file": "src/orders/order.behavior.yaml",
+            "line": 20,
+            "column": 11,
+            "endLine": 20,
+            "endColumn": 16
+          }
+        ],
+        "byAt": [
+          {
+            "file": "src/orders/order.behavior.yaml",
+            "line": 22,
+            "column": 9,
+            "endLine": 22,
+            "endColumn": 17
+          }
+        ]
+      },
+      {
+        "name": "expire",
+        "from": [
+          "pending_payment"
+        ],
+        "to": "cancelled",
+        "by": [
+          "system"
+        ],
+        "requires": [],
+        "effects": [],
+        "atomic": true,
+        "idempotent": false,
+        "after": "30m",
+        "impl": {
+          "file": "src/jobs/expire-orders.ts",
+          "symbol": "expireOrder"
+        },
+        "at": {
+          "file": "src/orders/order.behavior.yaml",
+          "line": 37,
+          "column": 3,
+          "endLine": 43,
+          "endColumn": 48
+        },
+        "fromAt": [
+          {
+            "file": "src/orders/order.behavior.yaml",
+            "line": 38,
+            "column": 11,
+            "endLine": 38,
+            "endColumn": 26
+          }
+        ],
+        "byAt": [
+          {
+            "file": "src/orders/order.behavior.yaml",
+            "line": 40,
+            "column": 9,
+            "endLine": 40,
+            "endColumn": 15
+          }
+        ]
+      },
+      {
+        "name": "payment_succeeded",
+        "from": [
+          "pending_payment"
+        ],
+        "to": "paid",
+        "by": [
+          "stripe"
+        ],
+        "requires": [],
+        "effects": [
+          {
+            "name": "email.receipt",
+            "multiplicity": "exactly-once",
+            "at": {
+              "file": "src/orders/order.behavior.yaml",
+              "line": 34,
+              "column": 9,
+              "endLine": 34,
+              "endColumn": 36
+            }
+          }
+        ],
+        "atomic": true,
+        "idempotent": true,
+        "impl": {
+          "file": "src/payments/webhook.ts",
+          "symbol": "onPaymentSucceeded"
+        },
+        "at": {
+          "file": "src/orders/order.behavior.yaml",
+          "line": 27,
+          "column": 3,
+          "endLine": 35,
+          "endColumn": 53
+        },
+        "fromAt": [
+          {
+            "file": "src/orders/order.behavior.yaml",
+            "line": 28,
+            "column": 11,
+            "endLine": 28,
+            "endColumn": 26
+          }
+        ],
+        "byAt": [
+          {
+            "file": "src/orders/order.behavior.yaml",
+            "line": 30,
+            "column": 9,
+            "endLine": 30,
+            "endColumn": 15
+          }
+        ]
+      },
+      {
+        "name": "refund",
+        "from": [
+          "paid"
+        ],
+        "to": "refunded",
+        "by": [
+          "admin"
+        ],
+        "requires": [],
+        "effects": [
+          {
+            "name": "stripe.refund",
+            "multiplicity": "exactly-once",
+            "at": {
+              "file": "src/orders/order.behavior.yaml",
+              "line": 58,
+              "column": 9,
+              "endLine": 58,
+              "endColumn": 36
+            }
+          }
+        ],
+        "atomic": false,
+        "idempotent": false,
+        "impl": {
+          "file": "src/orders/refund.ts",
+          "symbol": "refundOrder"
+        },
+        "at": {
+          "file": "src/orders/order.behavior.yaml",
+          "line": 52,
+          "column": 3,
+          "endLine": 59,
+          "endColumn": 43
+        },
+        "fromAt": [
+          {
+            "file": "src/orders/order.behavior.yaml",
+            "line": 53,
+            "column": 11,
+            "endLine": 53,
+            "endColumn": 15
+          }
+        ],
+        "byAt": [
+          {
+            "file": "src/orders/order.behavior.yaml",
+            "line": 55,
+            "column": 9,
+            "endLine": 55,
+            "endColumn": 14
+          }
+        ]
+      },
+      {
+        "name": "ship",
+        "from": [
+          "paid"
+        ],
+        "to": "shipped",
+        "by": [
+          "admin"
+        ],
+        "requires": [],
+        "effects": [],
+        "atomic": true,
+        "idempotent": false,
+        "impl": {
+          "file": "src/admin/orders.ts",
+          "symbol": "shipOrder"
+        },
+        "at": {
+          "file": "src/orders/order.behavior.yaml",
+          "line": 45,
+          "column": 3,
+          "endLine": 50,
+          "endColumn": 40
+        },
+        "fromAt": [
+          {
+            "file": "src/orders/order.behavior.yaml",
+            "line": 46,
+            "column": 11,
+            "endLine": 46,
+            "endColumn": 15
+          }
+        ],
+        "byAt": [
+          {
+            "file": "src/orders/order.behavior.yaml",
+            "line": 48,
+            "column": 9,
+            "endLine": 48,
+            "endColumn": 14
+          }
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "name": "Refund issued at most once per order",
+        "kind": "always",
+        "expr": {
+          "type": "effect-count",
+          "effect": "stripe.refund",
+          "op": "<=",
+          "value": 1
+        },
+        "source": "count(effect stripe.refund) <= 1",
+        "at": {
+          "file": "src/orders/order.behavior.yaml",
+          "line": 62,
+          "column": 5,
+          "endLine": 63,
+          "endColumn": 45
+        }
+      },
+      {
+        "name": "Unpaid orders don't linger",
+        "kind": "eventually",
+        "expr": {
+          "type": "status-cmp",
+          "op": "!=",
+          "value": "pending_payment"
+        },
+        "source": "status != pending_payment",
+        "at": {
+          "file": "src/orders/order.behavior.yaml",
+          "line": 64,
+          "column": 5,
+          "endLine": 65,
+          "endColumn": 42
+        }
+      },
+      {
+        "name": "Shipped orders are never refunded",
+        "kind": "never",
+        "expr": {
+          "type": "and",
+          "left": {
+            "type": "status-cmp",
+            "op": "==",
+            "value": "shipped"
+          },
+          "right": {
+            "type": "effect-count",
+            "effect": "stripe.refund",
+            "op": ">",
+            "value": 0
+          }
+        },
+        "source": "status == shipped and count(effect stripe.refund) > 0",
+        "at": {
+          "file": "src/orders/order.behavior.yaml",
+          "line": 66,
+          "column": 5,
+          "endLine": 67,
+          "endColumn": 65
+        }
+      }
+    ],
+    "concurrency": {
+      "checkout": 2,
+      "expire": 2,
+      "payment_succeeded": 2,
+      "refund": 2,
+      "ship": 2
+    },
+    "bindings": {
+      "persistence": "assign",
+      "clients": {
+        "db": {
+          "module": "src/db.ts",
+          "export": "db",
+          "at": {
+            "file": "src/orders/order.behavior.yaml",
+            "line": 77,
+            "column": 5,
+            "endLine": 77,
+            "endColumn": 42
+          }
+        },
+        "email": {
+          "module": "src/notify/email.ts",
+          "export": "email",
+          "at": {
+            "file": "src/orders/order.behavior.yaml",
+            "line": 79,
+            "column": 5,
+            "endLine": 79,
+            "endColumn": 58
+          }
+        },
+        "stripe": {
+          "module": "src/payments/stripe.ts",
+          "export": "stripe",
+          "at": {
+            "file": "src/orders/order.behavior.yaml",
+            "line": 78,
+            "column": 5,
+            "endLine": 78,
+            "endColumn": 63
+          }
+        }
+      },
+      "guards": {
+        "owner": {
+          "file": "src/auth/guards.ts",
+          "symbol": "requireOwner",
+          "args": [],
+          "raw": "src/auth/guards.ts#requireOwner",
+          "at": {
+            "file": "src/orders/order.behavior.yaml",
+            "line": 81,
+            "column": 5,
+            "endLine": 81,
+            "endColumn": 43
+          }
+        },
+        "role(admin)": {
+          "file": "src/auth/guards.ts",
+          "symbol": "requireRole",
+          "args": [
+            "admin"
+          ],
+          "raw": "src/auth/guards.ts#requireRole(\"admin\")",
+          "at": {
+            "file": "src/orders/order.behavior.yaml",
+            "line": 82,
+            "column": 5,
+            "endLine": 82,
+            "endColumn": 57
+          }
+        }
+      },
+      "effects": {
+        "email.receipt": "email.send",
+        "stripe.refund": "stripe.refunds.create"
+      },
+      "effectsAt": {
+        "email.receipt": {
+          "file": "src/orders/order.behavior.yaml",
+          "line": 85,
+          "column": 5,
+          "endLine": 85,
+          "endColumn": 30
+        },
+        "stripe.refund": {
+          "file": "src/orders/order.behavior.yaml",
+          "line": 84,
+          "column": 5,
+          "endLine": 84,
+          "endColumn": 41
+        }
+      }
+    },
+    "fixtures": {
+      "entity": {
+        "id": "o1",
+        "ownerId": "c1",
+        "email": "c1@example.com",
+        "chargeId": "ch_1"
+      },
+      "actors": {
+        "customer": {
+          "id": "c1",
+          "roles": []
+        },
+        "admin": {
+          "id": "a1",
+          "roles": [
+            "admin"
+          ]
+        }
+      },
+      "args": {
+        "payment_succeeded": [
+          {
+            "id": "evt_1",
+            "orderId": "$id",
+            "chargeId": "ch_1"
+          }
+        ]
+      },
+      "at": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 87,
+        "column": 1,
+        "endLine": 93,
+        "endColumn": 69
+      }
+    }
+  },
+  "code": {
+    "kind": "entity",
+    "name": "Order lifecycle",
+    "origin": "code",
+    "file": "src/orders/order.behavior.yaml",
+    "entity": {
+      "name": "Order",
+      "stateField": "status",
+      "states": [
+        "draft",
+        "pending_payment",
+        "paid",
+        "shipped",
+        "refunded",
+        "cancelled"
+      ],
+      "initial": "draft",
+      "terminal": [
+        "shipped",
+        "refunded",
+        "cancelled"
+      ],
+      "at": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 5,
+        "column": 1,
+        "endLine": 10,
+        "endColumn": 43
+      }
+    },
+    "actors": {
+      "admin": {
+        "name": "admin",
+        "trust": "authenticated",
+        "requires": [
+          {
+            "name": "role",
+            "args": [
+              "admin"
+            ],
+            "raw": "role(admin)",
+            "at": {
+              "file": "src/orders/order.behavior.yaml",
+              "line": 14,
+              "column": 44,
+              "endLine": 14,
+              "endColumn": 55
+            }
+          }
+        ],
+        "at": {
+          "file": "src/orders/order.behavior.yaml",
+          "line": 14,
+          "column": 3,
+          "endLine": 14,
+          "endColumn": 57
+        }
+      },
+      "customer": {
+        "name": "customer",
+        "trust": "untrusted",
+        "requires": [],
+        "at": {
+          "file": "src/orders/order.behavior.yaml",
+          "line": 13,
+          "column": 3,
+          "endLine": 13,
+          "endColumn": 33
+        }
+      },
+      "stripe": {
+        "name": "stripe",
+        "trust": "signed-webhook",
+        "requires": [],
+        "at": {
+          "file": "src/orders/order.behavior.yaml",
+          "line": 15,
+          "column": 3,
+          "endLine": 15,
+          "endColumn": 36
+        }
+      },
+      "system": {
+        "name": "system",
+        "trust": "internal",
+        "requires": [],
+        "at": {
+          "file": "src/orders/order.behavior.yaml",
+          "line": 16,
+          "column": 3,
+          "endLine": 16,
+          "endColumn": 30
+        }
+      }
+    },
+    "transitions": [
+      {
+        "name": "checkout",
+        "from": [
+          "draft"
+        ],
+        "to": "pending_payment",
+        "by": [
+          "customer"
+        ],
+        "requires": [
+          {
+            "name": "owner",
+            "args": [],
+            "raw": "owner"
+          }
+        ],
+        "effects": [],
+        "atomic": true,
+        "idempotent": false,
+        "impl": {
+          "file": "src/orders/checkout.ts",
+          "symbol": "checkout"
+        },
+        "at": {
+          "file": "src/orders/checkout.ts",
+          "line": 13,
+          "column": 5,
+          "endLine": 13,
+          "endColumn": 37
+        },
+        "sites": {
+          "persistence": "assign",
+          "write": {
+            "file": "src/orders/checkout.ts",
+            "line": 13,
+            "column": 5,
+            "endLine": 13,
+            "endColumn": 37
+          },
+          "function": {
+            "file": "src/orders/checkout.ts",
+            "name": "checkout",
+            "at": {
+              "file": "src/orders/checkout.ts",
+              "line": 8,
+              "column": 23,
+              "endLine": 8,
+              "endColumn": 31
+            }
+          },
+          "specTransition": "checkout",
+          "fromState": {
+            "values": [
+              "draft"
+            ],
+            "unconstrained": false
+          },
+          "read": {
+            "at": {
+              "file": "src/orders/checkout.ts",
+              "line": 10,
+              "column": 25,
+              "endLine": 10,
+              "endColumn": 47
+            },
+            "client": "db",
+            "path": "orders.get",
+            "gate": "db.orders.get",
+            "occurrence": 0
+          },
+          "commit": {
+            "at": {
+              "file": "src/orders/checkout.ts",
+              "line": 14,
+              "column": 11,
+              "endLine": 14,
+              "endColumn": 32
+            },
+            "client": "db",
+            "path": "orders.save",
+            "gate": "db.orders.save",
+            "occurrence": 0
+          },
+          "atomic": {
+            "kind": "transaction",
+            "at": {
+              "file": "src/orders/checkout.ts",
+              "line": 9,
+              "column": 10,
+              "endLine": 16,
+              "endColumn": 5
+            },
+            "gate": "db.transaction"
+          },
+          "guards": [
+            {
+              "guard": "owner",
+              "at": {
+                "file": "src/orders/checkout.ts",
+                "line": 11,
+                "column": 5,
+                "endLine": 11,
+                "endColumn": 35
+              },
+              "dominates": true
+            }
+          ],
+          "effects": [],
+          "invocation": {
+            "impl": {
+              "file": "src/orders/checkout.ts",
+              "symbol": "checkout"
+            },
+            "entityId": {
+              "param": 1,
+              "path": []
+            },
+            "actor": {
+              "param": 0,
+              "path": [
+                "actor"
+              ]
+            }
+          },
+          "storage": {
+            "client": "db",
+            "collection": "orders",
+            "key": "id"
+          }
+        }
+      },
+      {
+        "name": "expire",
+        "from": [
+          "pending_payment"
+        ],
+        "to": "cancelled",
+        "by": [
+          "system"
+        ],
+        "requires": [],
+        "effects": [],
+        "atomic": true,
+        "idempotent": false,
+        "impl": {
+          "file": "src/jobs/expire-orders.ts",
+          "symbol": "expireOrder"
+        },
+        "at": {
+          "file": "src/jobs/expire-orders.ts",
+          "line": 13,
+          "column": 5,
+          "endLine": 13,
+          "endColumn": 31
+        },
+        "sites": {
+          "persistence": "assign",
+          "write": {
+            "file": "src/jobs/expire-orders.ts",
+            "line": 13,
+            "column": 5,
+            "endLine": 13,
+            "endColumn": 31
+          },
+          "function": {
+            "file": "src/jobs/expire-orders.ts",
+            "name": "expireOrder",
+            "at": {
+              "file": "src/jobs/expire-orders.ts",
+              "line": 9,
+              "column": 23,
+              "endLine": 9,
+              "endColumn": 34
+            }
+          },
+          "specTransition": "expire",
+          "fromState": {
+            "values": [
+              "pending_payment"
+            ],
+            "unconstrained": false
+          },
+          "read": {
+            "at": {
+              "file": "src/jobs/expire-orders.ts",
+              "line": 11,
+              "column": 25,
+              "endLine": 11,
+              "endColumn": 47
+            },
+            "client": "db",
+            "path": "orders.get",
+            "gate": "db.orders.get",
+            "occurrence": 0
+          },
+          "commit": {
+            "at": {
+              "file": "src/jobs/expire-orders.ts",
+              "line": 14,
+              "column": 11,
+              "endLine": 14,
+              "endColumn": 32
+            },
+            "client": "db",
+            "path": "orders.save",
+            "gate": "db.orders.save",
+            "occurrence": 0
+          },
+          "atomic": {
+            "kind": "transaction",
+            "at": {
+              "file": "src/jobs/expire-orders.ts",
+              "line": 10,
+              "column": 10,
+              "endLine": 16,
+              "endColumn": 5
+            },
+            "gate": "db.transaction"
+          },
+          "guards": [],
+          "effects": [],
+          "invocation": {
+            "impl": {
+              "file": "src/jobs/expire-orders.ts",
+              "symbol": "expireOrder"
+            },
+            "entityId": {
+              "param": 0,
+              "path": []
+            }
+          },
+          "storage": {
+            "client": "db",
+            "collection": "orders",
+            "key": "id"
+          }
+        }
+      },
+      {
+        "name": "payment_succeeded",
+        "from": [
+          "pending_payment"
+        ],
+        "to": "paid",
+        "by": [
+          "stripe"
+        ],
+        "requires": [],
+        "effects": [
+          {
+            "name": "email.receipt",
+            "multiplicity": "exactly-once"
+          }
+        ],
+        "atomic": true,
+        "idempotent": true,
+        "impl": {
+          "file": "src/payments/webhook.ts",
+          "symbol": "onPaymentSucceeded"
+        },
+        "at": {
+          "file": "src/payments/webhook.ts",
+          "line": 22,
+          "column": 5,
+          "endLine": 22,
+          "endColumn": 26
+        },
+        "sites": {
+          "persistence": "assign",
+          "write": {
+            "file": "src/payments/webhook.ts",
+            "line": 22,
+            "column": 5,
+            "endLine": 22,
+            "endColumn": 26
+          },
+          "function": {
+            "file": "src/payments/webhook.ts",
+            "name": "onPaymentSucceeded",
+            "at": {
+              "file": "src/payments/webhook.ts",
+              "line": 18,
+              "column": 23,
+              "endLine": 18,
+              "endColumn": 41
+            }
+          },
+          "specTransition": "payment_succeeded",
+          "fromState": {
+            "values": [
+              "pending_payment"
+            ],
+            "unconstrained": false
+          },
+          "read": {
+            "at": {
+              "file": "src/payments/webhook.ts",
+              "line": 20,
+              "column": 25,
+              "endLine": 20,
+              "endColumn": 53
+            },
+            "client": "db",
+            "path": "orders.get",
+            "gate": "db.orders.get",
+            "occurrence": 0
+          },
+          "commit": {
+            "at": {
+              "file": "src/payments/webhook.ts",
+              "line": 24,
+              "column": 11,
+              "endLine": 24,
+              "endColumn": 32
+            },
+            "client": "db",
+            "path": "orders.save",
+            "gate": "db.orders.save",
+            "occurrence": 0
+          },
+          "atomic": {
+            "kind": "transaction",
+            "at": {
+              "file": "src/payments/webhook.ts",
+              "line": 19,
+              "column": 22,
+              "endLine": 26,
+              "endColumn": 5
+            },
+            "gate": "db.transaction"
+          },
+          "guards": [],
+          "effects": [
+            {
+              "at": {
+                "file": "src/payments/webhook.ts",
+                "line": 28,
+                "column": 9,
+                "endLine": 28,
+                "endColumn": 60
+              },
+              "client": "email",
+              "path": "send",
+              "gate": "email.send",
+              "occurrence": 0,
+              "effect": "email.receipt"
+            }
+          ],
+          "invocation": {
+            "impl": {
+              "file": "src/payments/webhook.ts",
+              "symbol": "onPaymentSucceeded"
+            },
+            "entityId": {
+              "param": 0,
+              "path": [
+                "orderId"
+              ]
+            }
+          },
+          "storage": {
+            "client": "db",
+            "collection": "orders",
+            "key": "id"
+          }
+        }
+      },
+      {
+        "name": "refund",
+        "from": [
+          "paid"
+        ],
+        "to": "refunded",
+        "by": [
+          "admin"
+        ],
+        "requires": [
+          {
+            "name": "role",
+            "args": [
+              "admin"
+            ],
+            "raw": "role(admin)"
+          }
+        ],
+        "effects": [
+          {
+            "name": "stripe.refund",
+            "multiplicity": "exactly-once"
+          }
+        ],
+        "atomic": true,
+        "idempotent": false,
+        "impl": {
+          "file": "src/orders/refund.ts",
+          "symbol": "refundOrder"
+        },
+        "at": {
+          "file": "src/orders/refund.ts",
+          "line": 17,
+          "column": 5,
+          "endLine": 17,
+          "endColumn": 30
+        },
+        "sites": {
+          "persistence": "assign",
+          "write": {
+            "file": "src/orders/refund.ts",
+            "line": 17,
+            "column": 5,
+            "endLine": 17,
+            "endColumn": 30
+          },
+          "function": {
+            "file": "src/orders/refund.ts",
+            "name": "refundOrder",
+            "at": {
+              "file": "src/orders/refund.ts",
+              "line": 11,
+              "column": 23,
+              "endLine": 11,
+              "endColumn": 34
+            }
+          },
+          "specTransition": "refund",
+          "fromState": {
+            "values": [
+              "paid"
+            ],
+            "unconstrained": false
+          },
+          "read": {
+            "at": {
+              "file": "src/orders/refund.ts",
+              "line": 14,
+              "column": 25,
+              "endLine": 14,
+              "endColumn": 47
+            },
+            "client": "db",
+            "path": "orders.get",
+            "gate": "db.orders.get",
+            "occurrence": 0
+          },
+          "commit": {
+            "at": {
+              "file": "src/orders/refund.ts",
+              "line": 18,
+              "column": 11,
+              "endLine": 18,
+              "endColumn": 32
+            },
+            "client": "db",
+            "path": "orders.save",
+            "gate": "db.orders.save",
+            "occurrence": 0
+          },
+          "atomic": {
+            "kind": "transaction",
+            "at": {
+              "file": "src/orders/refund.ts",
+              "line": 13,
+              "column": 24,
+              "endLine": 20,
+              "endColumn": 5
+            },
+            "gate": "db.transaction"
+          },
+          "guards": [
+            {
+              "guard": "role(admin)",
+              "at": {
+                "file": "src/orders/refund.ts",
+                "line": 12,
+                "column": 3,
+                "endLine": 12,
+                "endColumn": 34
+              },
+              "dominates": true
+            }
+          ],
+          "effects": [
+            {
+              "at": {
+                "file": "src/orders/refund.ts",
+                "line": 21,
+                "column": 10,
+                "endLine": 21,
+                "endColumn": 43
+              },
+              "client": "stripe",
+              "path": "refunds.create",
+              "gate": "stripe.refunds.create",
+              "occurrence": 0,
+              "effect": "stripe.refund"
+            }
+          ],
+          "invocation": {
+            "impl": {
+              "file": "src/orders/refund.ts",
+              "symbol": "refundOrder"
+            },
+            "entityId": {
+              "param": 1,
+              "path": []
+            },
+            "actor": {
+              "param": 0,
+              "path": [
+                "actor"
+              ]
+            }
+          },
+          "storage": {
+            "client": "db",
+            "collection": "orders",
+            "key": "id"
+          }
+        }
+      },
+      {
+        "name": "ship",
+        "from": [
+          "paid"
+        ],
+        "to": "shipped",
+        "by": [
+          "admin"
+        ],
+        "requires": [
+          {
+            "name": "role",
+            "args": [
+              "admin"
+            ],
+            "raw": "role(admin)"
+          }
+        ],
+        "effects": [],
+        "atomic": true,
+        "idempotent": false,
+        "impl": {
+          "file": "src/admin/orders.ts",
+          "symbol": "shipOrder"
+        },
+        "at": {
+          "file": "src/admin/orders.ts",
+          "line": 13,
+          "column": 5,
+          "endLine": 13,
+          "endColumn": 29
+        },
+        "sites": {
+          "persistence": "assign",
+          "write": {
+            "file": "src/admin/orders.ts",
+            "line": 13,
+            "column": 5,
+            "endLine": 13,
+            "endColumn": 29
+          },
+          "function": {
+            "file": "src/admin/orders.ts",
+            "name": "shipOrder",
+            "at": {
+              "file": "src/admin/orders.ts",
+              "line": 8,
+              "column": 23,
+              "endLine": 8,
+              "endColumn": 32
+            }
+          },
+          "specTransition": "ship",
+          "fromState": {
+            "values": [
+              "paid"
+            ],
+            "unconstrained": false
+          },
+          "read": {
+            "at": {
+              "file": "src/admin/orders.ts",
+              "line": 11,
+              "column": 25,
+              "endLine": 11,
+              "endColumn": 47
+            },
+            "client": "db",
+            "path": "orders.get",
+            "gate": "db.orders.get",
+            "occurrence": 0
+          },
+          "commit": {
+            "at": {
+              "file": "src/admin/orders.ts",
+              "line": 14,
+              "column": 11,
+              "endLine": 14,
+              "endColumn": 32
+            },
+            "client": "db",
+            "path": "orders.save",
+            "gate": "db.orders.save",
+            "occurrence": 0
+          },
+          "atomic": {
+            "kind": "transaction",
+            "at": {
+              "file": "src/admin/orders.ts",
+              "line": 10,
+              "column": 10,
+              "endLine": 16,
+              "endColumn": 5
+            },
+            "gate": "db.transaction"
+          },
+          "guards": [
+            {
+              "guard": "role(admin)",
+              "at": {
+                "file": "src/admin/orders.ts",
+                "line": 9,
+                "column": 3,
+                "endLine": 9,
+                "endColumn": 34
+              },
+              "dominates": true
+            }
+          ],
+          "effects": [],
+          "invocation": {
+            "impl": {
+              "file": "src/admin/orders.ts",
+              "symbol": "shipOrder"
+            },
+            "entityId": {
+              "param": 1,
+              "path": []
+            },
+            "actor": {
+              "param": 0,
+              "path": [
+                "actor"
+              ]
+            }
+          },
+          "storage": {
+            "client": "db",
+            "collection": "orders",
+            "key": "id"
+          }
+        }
+      }
+    ],
+    "rules": [
+      {
+        "name": "Refund issued at most once per order",
+        "kind": "always",
+        "expr": {
+          "type": "effect-count",
+          "effect": "stripe.refund",
+          "op": "<=",
+          "value": 1
+        },
+        "source": "count(effect stripe.refund) <= 1",
+        "at": {
+          "file": "src/orders/order.behavior.yaml",
+          "line": 62,
+          "column": 5,
+          "endLine": 63,
+          "endColumn": 45
+        }
+      },
+      {
+        "name": "Unpaid orders don't linger",
+        "kind": "eventually",
+        "expr": {
+          "type": "status-cmp",
+          "op": "!=",
+          "value": "pending_payment"
+        },
+        "source": "status != pending_payment",
+        "at": {
+          "file": "src/orders/order.behavior.yaml",
+          "line": 64,
+          "column": 5,
+          "endLine": 65,
+          "endColumn": 42
+        }
+      },
+      {
+        "name": "Shipped orders are never refunded",
+        "kind": "never",
+        "expr": {
+          "type": "and",
+          "left": {
+            "type": "status-cmp",
+            "op": "==",
+            "value": "shipped"
+          },
+          "right": {
+            "type": "effect-count",
+            "effect": "stripe.refund",
+            "op": ">",
+            "value": 0
+          }
+        },
+        "source": "status == shipped and count(effect stripe.refund) > 0",
+        "at": {
+          "file": "src/orders/order.behavior.yaml",
+          "line": 66,
+          "column": 5,
+          "endLine": 67,
+          "endColumn": 65
+        }
+      }
+    ],
+    "concurrency": {
+      "checkout": 2,
+      "expire": 2,
+      "payment_succeeded": 2,
+      "refund": 2,
+      "ship": 2
+    },
+    "bindings": {
+      "persistence": "assign",
+      "clients": {
+        "db": {
+          "module": "src/db.ts",
+          "export": "db",
+          "at": {
+            "file": "src/orders/order.behavior.yaml",
+            "line": 77,
+            "column": 5,
+            "endLine": 77,
+            "endColumn": 42
+          }
+        },
+        "email": {
+          "module": "src/notify/email.ts",
+          "export": "email",
+          "at": {
+            "file": "src/orders/order.behavior.yaml",
+            "line": 79,
+            "column": 5,
+            "endLine": 79,
+            "endColumn": 58
+          }
+        },
+        "stripe": {
+          "module": "src/payments/stripe.ts",
+          "export": "stripe",
+          "at": {
+            "file": "src/orders/order.behavior.yaml",
+            "line": 78,
+            "column": 5,
+            "endLine": 78,
+            "endColumn": 63
+          }
+        }
+      },
+      "guards": {
+        "owner": {
+          "file": "src/auth/guards.ts",
+          "symbol": "requireOwner",
+          "args": [],
+          "raw": "src/auth/guards.ts#requireOwner",
+          "at": {
+            "file": "src/orders/order.behavior.yaml",
+            "line": 81,
+            "column": 5,
+            "endLine": 81,
+            "endColumn": 43
+          }
+        },
+        "role(admin)": {
+          "file": "src/auth/guards.ts",
+          "symbol": "requireRole",
+          "args": [
+            "admin"
+          ],
+          "raw": "src/auth/guards.ts#requireRole(\"admin\")",
+          "at": {
+            "file": "src/orders/order.behavior.yaml",
+            "line": 82,
+            "column": 5,
+            "endLine": 82,
+            "endColumn": 57
+          }
+        }
+      },
+      "effects": {
+        "email.receipt": "email.send",
+        "stripe.refund": "stripe.refunds.create"
+      },
+      "effectsAt": {
+        "email.receipt": {
+          "file": "src/orders/order.behavior.yaml",
+          "line": 85,
+          "column": 5,
+          "endLine": 85,
+          "endColumn": 30
+        },
+        "stripe.refund": {
+          "file": "src/orders/order.behavior.yaml",
+          "line": 84,
+          "column": 5,
+          "endLine": 84,
+          "endColumn": 41
+        }
+      }
+    },
+    "implAt": {
+      "checkout": {
+        "file": "src/orders/checkout.ts",
+        "line": 8,
+        "column": 23,
+        "endLine": 8,
+        "endColumn": 31
+      },
+      "expire": {
+        "file": "src/jobs/expire-orders.ts",
+        "line": 9,
+        "column": 23,
+        "endLine": 9,
+        "endColumn": 34
+      },
+      "payment_succeeded": {
+        "file": "src/payments/webhook.ts",
+        "line": 18,
+        "column": 23,
+        "endLine": 18,
+        "endColumn": 41
+      },
+      "refund": {
+        "file": "src/orders/refund.ts",
+        "line": 11,
+        "column": 23,
+        "endLine": 11,
+        "endColumn": 34
+      },
+      "ship": {
+        "file": "src/admin/orders.ts",
+        "line": 8,
+        "column": 23,
+        "endLine": 8,
+        "endColumn": 32
+      }
+    }
+  },
+  "findings": [
+    {
+      "id": "spec-property:Order lifecycle:rule:Refund issued at most once per order",
+      "category": "spec-property",
+      "behavior": "Order lifecycle",
+      "property": "rule:Refund issued at most once per order",
+      "severity": "error",
+      "message": "Rule \"Refund issued at most once per order\" (always: count(effect stripe.refund) <= 1) is violated: a reachable state breaks it.",
+      "specAt": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 62,
+        "column": 5,
+        "endLine": 63,
+        "endColumn": 45
+      },
+      "trace": {
+        "behavior": "Order lifecycle",
+        "entity": "Order",
+        "model": "spec",
+        "property": "rule:Refund issued at most once per order",
+        "kind": "invariant",
+        "steps": [
+          {
+            "index": 0,
+            "state": {
+              "status": "draft",
+              "effects": {
+                "email.receipt": 0,
+                "stripe.refund": 0
+              },
+              "workers": [
+                {
+                  "id": "checkout#1",
+                  "transition": "checkout",
+                  "phase": "idle"
+                },
+                {
+                  "id": "checkout#2",
+                  "transition": "checkout",
+                  "phase": "idle"
+                },
+                {
+                  "id": "expire#1",
+                  "transition": "expire",
+                  "phase": "idle"
+                },
+                {
+                  "id": "expire#2",
+                  "transition": "expire",
+                  "phase": "idle"
+                },
+                {
+                  "id": "payment_succeeded#1",
+                  "transition": "payment_succeeded",
+                  "phase": "idle"
+                },
+                {
+                  "id": "payment_succeeded#2",
+                  "transition": "payment_succeeded",
+                  "phase": "idle",
+                  "duplicate": true
+                },
+                {
+                  "id": "refund#1",
+                  "transition": "refund",
+                  "phase": "idle"
+                },
+                {
+                  "id": "refund#2",
+                  "transition": "refund",
+                  "phase": "idle"
+                },
+                {
+                  "id": "ship#1",
+                  "transition": "ship",
+                  "phase": "idle"
+                },
+                {
+                  "id": "ship#2",
+                  "transition": "ship",
+                  "phase": "idle"
+                }
+              ]
+            }
+          },
+          {
+            "index": 1,
+            "action": {
+              "worker": "checkout#1",
+              "transition": "checkout",
+              "kind": "atomic",
+              "outcome": "proceed"
+            },
+            "state": {
+              "status": "pending_payment",
+              "effects": {
+                "email.receipt": 0,
+                "stripe.refund": 0
+              },
+              "workers": [
+                {
+                  "id": "checkout#1",
+                  "transition": "checkout",
+                  "phase": "done"
+                },
+                {
+                  "id": "checkout#2",
+                  "transition": "checkout",
+                  "phase": "idle"
+                },
+                {
+                  "id": "expire#1",
+                  "transition": "expire",
+                  "phase": "idle"
+                },
+                {
+                  "id": "expire#2",
+                  "transition": "expire",
+                  "phase": "idle"
+                },
+                {
+                  "id": "payment_succeeded#1",
+                  "transition": "payment_succeeded",
+                  "phase": "idle"
+                },
+                {
+                  "id": "payment_succeeded#2",
+                  "transition": "payment_succeeded",
+                  "phase": "idle",
+                  "duplicate": true
+                },
+                {
+                  "id": "refund#1",
+                  "transition": "refund",
+                  "phase": "idle"
+                },
+                {
+                  "id": "refund#2",
+                  "transition": "refund",
+                  "phase": "idle"
+                },
+                {
+                  "id": "ship#1",
+                  "transition": "ship",
+                  "phase": "idle"
+                },
+                {
+                  "id": "ship#2",
+                  "transition": "ship",
+                  "phase": "idle"
+                }
+              ]
+            }
+          },
+          {
+            "index": 2,
+            "action": {
+              "worker": "payment_succeeded#1",
+              "transition": "payment_succeeded",
+              "kind": "atomic",
+              "outcome": "proceed"
+            },
+            "state": {
+              "status": "paid",
+              "effects": {
+                "email.receipt": 1,
+                "stripe.refund": 0
+              },
+              "workers": [
+                {
+                  "id": "checkout#1",
+                  "transition": "checkout",
+                  "phase": "done"
+                },
+                {
+                  "id": "checkout#2",
+                  "transition": "checkout",
+                  "phase": "idle"
+                },
+                {
+                  "id": "expire#1",
+                  "transition": "expire",
+                  "phase": "idle"
+                },
+                {
+                  "id": "expire#2",
+                  "transition": "expire",
+                  "phase": "idle"
+                },
+                {
+                  "id": "payment_succeeded#1",
+                  "transition": "payment_succeeded",
+                  "phase": "done"
+                },
+                {
+                  "id": "payment_succeeded#2",
+                  "transition": "payment_succeeded",
+                  "phase": "idle",
+                  "duplicate": true
+                },
+                {
+                  "id": "refund#1",
+                  "transition": "refund",
+                  "phase": "idle"
+                },
+                {
+                  "id": "refund#2",
+                  "transition": "refund",
+                  "phase": "idle"
+                },
+                {
+                  "id": "ship#1",
+                  "transition": "ship",
+                  "phase": "idle"
+                },
+                {
+                  "id": "ship#2",
+                  "transition": "ship",
+                  "phase": "idle"
+                }
+              ]
+            }
+          },
+          {
+            "index": 3,
+            "action": {
+              "worker": "refund#1",
+              "transition": "refund",
+              "kind": "read",
+              "outcome": "proceed"
+            },
+            "state": {
+              "status": "paid",
+              "effects": {
+                "email.receipt": 1,
+                "stripe.refund": 0
+              },
+              "workers": [
+                {
+                  "id": "checkout#1",
+                  "transition": "checkout",
+                  "phase": "done"
+                },
+                {
+                  "id": "checkout#2",
+                  "transition": "checkout",
+                  "phase": "idle"
+                },
+                {
+                  "id": "expire#1",
+                  "transition": "expire",
+                  "phase": "idle"
+                },
+                {
+                  "id": "expire#2",
+                  "transition": "expire",
+                  "phase": "idle"
+                },
+                {
+                  "id": "payment_succeeded#1",
+                  "transition": "payment_succeeded",
+                  "phase": "done"
+                },
+                {
+                  "id": "payment_succeeded#2",
+                  "transition": "payment_succeeded",
+                  "phase": "idle",
+                  "duplicate": true
+                },
+                {
+                  "id": "refund#1",
+                  "transition": "refund",
+                  "phase": "checked",
+                  "observed": "paid"
+                },
+                {
+                  "id": "refund#2",
+                  "transition": "refund",
+                  "phase": "idle"
+                },
+                {
+                  "id": "ship#1",
+                  "transition": "ship",
+                  "phase": "idle"
+                },
+                {
+                  "id": "ship#2",
+                  "transition": "ship",
+                  "phase": "idle"
+                }
+              ]
+            }
+          },
+          {
+            "index": 4,
+            "action": {
+              "worker": "refund#2",
+              "transition": "refund",
+              "kind": "read",
+              "outcome": "proceed"
+            },
+            "state": {
+              "status": "paid",
+              "effects": {
+                "email.receipt": 1,
+                "stripe.refund": 0
+              },
+              "workers": [
+                {
+                  "id": "checkout#1",
+                  "transition": "checkout",
+                  "phase": "done"
+                },
+                {
+                  "id": "checkout#2",
+                  "transition": "checkout",
+                  "phase": "idle"
+                },
+                {
+                  "id": "expire#1",
+                  "transition": "expire",
+                  "phase": "idle"
+                },
+                {
+                  "id": "expire#2",
+                  "transition": "expire",
+                  "phase": "idle"
+                },
+                {
+                  "id": "payment_succeeded#1",
+                  "transition": "payment_succeeded",
+                  "phase": "done"
+                },
+                {
+                  "id": "payment_succeeded#2",
+                  "transition": "payment_succeeded",
+                  "phase": "idle",
+                  "duplicate": true
+                },
+                {
+                  "id": "refund#1",
+                  "transition": "refund",
+                  "phase": "checked",
+                  "observed": "paid"
+                },
+                {
+                  "id": "refund#2",
+                  "transition": "refund",
+                  "phase": "checked",
+                  "observed": "paid"
+                },
+                {
+                  "id": "ship#1",
+                  "transition": "ship",
+                  "phase": "idle"
+                },
+                {
+                  "id": "ship#2",
+                  "transition": "ship",
+                  "phase": "idle"
+                }
+              ]
+            }
+          },
+          {
+            "index": 5,
+            "action": {
+              "worker": "refund#1",
+              "transition": "refund",
+              "kind": "write"
+            },
+            "state": {
+              "status": "refunded",
+              "effects": {
+                "email.receipt": 1,
+                "stripe.refund": 1
+              },
+              "workers": [
+                {
+                  "id": "checkout#1",
+                  "transition": "checkout",
+                  "phase": "done"
+                },
+                {
+                  "id": "checkout#2",
+                  "transition": "checkout",
+                  "phase": "idle"
+                },
+                {
+                  "id": "expire#1",
+                  "transition": "expire",
+                  "phase": "idle"
+                },
+                {
+                  "id": "expire#2",
+                  "transition": "expire",
+                  "phase": "idle"
+                },
+                {
+                  "id": "payment_succeeded#1",
+                  "transition": "payment_succeeded",
+                  "phase": "done"
+                },
+                {
+                  "id": "payment_succeeded#2",
+                  "transition": "payment_succeeded",
+                  "phase": "idle",
+                  "duplicate": true
+                },
+                {
+                  "id": "refund#1",
+                  "transition": "refund",
+                  "phase": "done",
+                  "observed": "paid"
+                },
+                {
+                  "id": "refund#2",
+                  "transition": "refund",
+                  "phase": "checked",
+                  "observed": "paid"
+                },
+                {
+                  "id": "ship#1",
+                  "transition": "ship",
+                  "phase": "idle"
+                },
+                {
+                  "id": "ship#2",
+                  "transition": "ship",
+                  "phase": "idle"
+                }
+              ]
+            }
+          },
+          {
+            "index": 6,
+            "action": {
+              "worker": "refund#2",
+              "transition": "refund",
+              "kind": "write"
+            },
+            "state": {
+              "status": "refunded",
+              "effects": {
+                "email.receipt": 1,
+                "stripe.refund": 2
+              },
+              "workers": [
+                {
+                  "id": "checkout#1",
+                  "transition": "checkout",
+                  "phase": "done"
+                },
+                {
+                  "id": "checkout#2",
+                  "transition": "checkout",
+                  "phase": "idle"
+                },
+                {
+                  "id": "expire#1",
+                  "transition": "expire",
+                  "phase": "idle"
+                },
+                {
+                  "id": "expire#2",
+                  "transition": "expire",
+                  "phase": "idle"
+                },
+                {
+                  "id": "payment_succeeded#1",
+                  "transition": "payment_succeeded",
+                  "phase": "done"
+                },
+                {
+                  "id": "payment_succeeded#2",
+                  "transition": "payment_succeeded",
+                  "phase": "idle",
+                  "duplicate": true
+                },
+                {
+                  "id": "refund#1",
+                  "transition": "refund",
+                  "phase": "done",
+                  "observed": "paid"
+                },
+                {
+                  "id": "refund#2",
+                  "transition": "refund",
+                  "phase": "done",
+                  "observed": "paid"
+                },
+                {
+                  "id": "ship#1",
+                  "transition": "ship",
+                  "phase": "idle"
+                },
+                {
+                  "id": "ship#2",
+                  "transition": "ship",
+                  "phase": "idle"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "hint": "mark `refund` atomic: true, or make its state write conditional"
+    },
+    {
+      "id": "spec-property:Order lifecycle:effect-multiplicity:stripe.refund",
+      "category": "spec-property",
+      "behavior": "Order lifecycle",
+      "property": "effect-multiplicity",
+      "severity": "error",
+      "message": "Exactly-once effect `stripe.refund` fires 2 times for one Order.",
+      "transition": "refund",
+      "specAt": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 58,
+        "column": 9,
+        "endLine": 58,
+        "endColumn": 36
+      },
+      "trace": {
+        "behavior": "Order lifecycle",
+        "entity": "Order",
+        "model": "spec",
+        "property": "effect-multiplicity",
+        "kind": "invariant",
+        "steps": [
+          {
+            "index": 0,
+            "state": {
+              "status": "draft",
+              "effects": {
+                "email.receipt": 0,
+                "stripe.refund": 0
+              },
+              "workers": [
+                {
+                  "id": "checkout#1",
+                  "transition": "checkout",
+                  "phase": "idle"
+                },
+                {
+                  "id": "checkout#2",
+                  "transition": "checkout",
+                  "phase": "idle"
+                },
+                {
+                  "id": "expire#1",
+                  "transition": "expire",
+                  "phase": "idle"
+                },
+                {
+                  "id": "expire#2",
+                  "transition": "expire",
+                  "phase": "idle"
+                },
+                {
+                  "id": "payment_succeeded#1",
+                  "transition": "payment_succeeded",
+                  "phase": "idle"
+                },
+                {
+                  "id": "payment_succeeded#2",
+                  "transition": "payment_succeeded",
+                  "phase": "idle",
+                  "duplicate": true
+                },
+                {
+                  "id": "refund#1",
+                  "transition": "refund",
+                  "phase": "idle"
+                },
+                {
+                  "id": "refund#2",
+                  "transition": "refund",
+                  "phase": "idle"
+                },
+                {
+                  "id": "ship#1",
+                  "transition": "ship",
+                  "phase": "idle"
+                },
+                {
+                  "id": "ship#2",
+                  "transition": "ship",
+                  "phase": "idle"
+                }
+              ]
+            }
+          },
+          {
+            "index": 1,
+            "action": {
+              "worker": "checkout#1",
+              "transition": "checkout",
+              "kind": "atomic",
+              "outcome": "proceed"
+            },
+            "state": {
+              "status": "pending_payment",
+              "effects": {
+                "email.receipt": 0,
+                "stripe.refund": 0
+              },
+              "workers": [
+                {
+                  "id": "checkout#1",
+                  "transition": "checkout",
+                  "phase": "done"
+                },
+                {
+                  "id": "checkout#2",
+                  "transition": "checkout",
+                  "phase": "idle"
+                },
+                {
+                  "id": "expire#1",
+                  "transition": "expire",
+                  "phase": "idle"
+                },
+                {
+                  "id": "expire#2",
+                  "transition": "expire",
+                  "phase": "idle"
+                },
+                {
+                  "id": "payment_succeeded#1",
+                  "transition": "payment_succeeded",
+                  "phase": "idle"
+                },
+                {
+                  "id": "payment_succeeded#2",
+                  "transition": "payment_succeeded",
+                  "phase": "idle",
+                  "duplicate": true
+                },
+                {
+                  "id": "refund#1",
+                  "transition": "refund",
+                  "phase": "idle"
+                },
+                {
+                  "id": "refund#2",
+                  "transition": "refund",
+                  "phase": "idle"
+                },
+                {
+                  "id": "ship#1",
+                  "transition": "ship",
+                  "phase": "idle"
+                },
+                {
+                  "id": "ship#2",
+                  "transition": "ship",
+                  "phase": "idle"
+                }
+              ]
+            }
+          },
+          {
+            "index": 2,
+            "action": {
+              "worker": "payment_succeeded#1",
+              "transition": "payment_succeeded",
+              "kind": "atomic",
+              "outcome": "proceed"
+            },
+            "state": {
+              "status": "paid",
+              "effects": {
+                "email.receipt": 1,
+                "stripe.refund": 0
+              },
+              "workers": [
+                {
+                  "id": "checkout#1",
+                  "transition": "checkout",
+                  "phase": "done"
+                },
+                {
+                  "id": "checkout#2",
+                  "transition": "checkout",
+                  "phase": "idle"
+                },
+                {
+                  "id": "expire#1",
+                  "transition": "expire",
+                  "phase": "idle"
+                },
+                {
+                  "id": "expire#2",
+                  "transition": "expire",
+                  "phase": "idle"
+                },
+                {
+                  "id": "payment_succeeded#1",
+                  "transition": "payment_succeeded",
+                  "phase": "done"
+                },
+                {
+                  "id": "payment_succeeded#2",
+                  "transition": "payment_succeeded",
+                  "phase": "idle",
+                  "duplicate": true
+                },
+                {
+                  "id": "refund#1",
+                  "transition": "refund",
+                  "phase": "idle"
+                },
+                {
+                  "id": "refund#2",
+                  "transition": "refund",
+                  "phase": "idle"
+                },
+                {
+                  "id": "ship#1",
+                  "transition": "ship",
+                  "phase": "idle"
+                },
+                {
+                  "id": "ship#2",
+                  "transition": "ship",
+                  "phase": "idle"
+                }
+              ]
+            }
+          },
+          {
+            "index": 3,
+            "action": {
+              "worker": "refund#1",
+              "transition": "refund",
+              "kind": "read",
+              "outcome": "proceed"
+            },
+            "state": {
+              "status": "paid",
+              "effects": {
+                "email.receipt": 1,
+                "stripe.refund": 0
+              },
+              "workers": [
+                {
+                  "id": "checkout#1",
+                  "transition": "checkout",
+                  "phase": "done"
+                },
+                {
+                  "id": "checkout#2",
+                  "transition": "checkout",
+                  "phase": "idle"
+                },
+                {
+                  "id": "expire#1",
+                  "transition": "expire",
+                  "phase": "idle"
+                },
+                {
+                  "id": "expire#2",
+                  "transition": "expire",
+                  "phase": "idle"
+                },
+                {
+                  "id": "payment_succeeded#1",
+                  "transition": "payment_succeeded",
+                  "phase": "done"
+                },
+                {
+                  "id": "payment_succeeded#2",
+                  "transition": "payment_succeeded",
+                  "phase": "idle",
+                  "duplicate": true
+                },
+                {
+                  "id": "refund#1",
+                  "transition": "refund",
+                  "phase": "checked",
+                  "observed": "paid"
+                },
+                {
+                  "id": "refund#2",
+                  "transition": "refund",
+                  "phase": "idle"
+                },
+                {
+                  "id": "ship#1",
+                  "transition": "ship",
+                  "phase": "idle"
+                },
+                {
+                  "id": "ship#2",
+                  "transition": "ship",
+                  "phase": "idle"
+                }
+              ]
+            }
+          },
+          {
+            "index": 4,
+            "action": {
+              "worker": "refund#2",
+              "transition": "refund",
+              "kind": "read",
+              "outcome": "proceed"
+            },
+            "state": {
+              "status": "paid",
+              "effects": {
+                "email.receipt": 1,
+                "stripe.refund": 0
+              },
+              "workers": [
+                {
+                  "id": "checkout#1",
+                  "transition": "checkout",
+                  "phase": "done"
+                },
+                {
+                  "id": "checkout#2",
+                  "transition": "checkout",
+                  "phase": "idle"
+                },
+                {
+                  "id": "expire#1",
+                  "transition": "expire",
+                  "phase": "idle"
+                },
+                {
+                  "id": "expire#2",
+                  "transition": "expire",
+                  "phase": "idle"
+                },
+                {
+                  "id": "payment_succeeded#1",
+                  "transition": "payment_succeeded",
+                  "phase": "done"
+                },
+                {
+                  "id": "payment_succeeded#2",
+                  "transition": "payment_succeeded",
+                  "phase": "idle",
+                  "duplicate": true
+                },
+                {
+                  "id": "refund#1",
+                  "transition": "refund",
+                  "phase": "checked",
+                  "observed": "paid"
+                },
+                {
+                  "id": "refund#2",
+                  "transition": "refund",
+                  "phase": "checked",
+                  "observed": "paid"
+                },
+                {
+                  "id": "ship#1",
+                  "transition": "ship",
+                  "phase": "idle"
+                },
+                {
+                  "id": "ship#2",
+                  "transition": "ship",
+                  "phase": "idle"
+                }
+              ]
+            }
+          },
+          {
+            "index": 5,
+            "action": {
+              "worker": "refund#1",
+              "transition": "refund",
+              "kind": "write"
+            },
+            "state": {
+              "status": "refunded",
+              "effects": {
+                "email.receipt": 1,
+                "stripe.refund": 1
+              },
+              "workers": [
+                {
+                  "id": "checkout#1",
+                  "transition": "checkout",
+                  "phase": "done"
+                },
+                {
+                  "id": "checkout#2",
+                  "transition": "checkout",
+                  "phase": "idle"
+                },
+                {
+                  "id": "expire#1",
+                  "transition": "expire",
+                  "phase": "idle"
+                },
+                {
+                  "id": "expire#2",
+                  "transition": "expire",
+                  "phase": "idle"
+                },
+                {
+                  "id": "payment_succeeded#1",
+                  "transition": "payment_succeeded",
+                  "phase": "done"
+                },
+                {
+                  "id": "payment_succeeded#2",
+                  "transition": "payment_succeeded",
+                  "phase": "idle",
+                  "duplicate": true
+                },
+                {
+                  "id": "refund#1",
+                  "transition": "refund",
+                  "phase": "done",
+                  "observed": "paid"
+                },
+                {
+                  "id": "refund#2",
+                  "transition": "refund",
+                  "phase": "checked",
+                  "observed": "paid"
+                },
+                {
+                  "id": "ship#1",
+                  "transition": "ship",
+                  "phase": "idle"
+                },
+                {
+                  "id": "ship#2",
+                  "transition": "ship",
+                  "phase": "idle"
+                }
+              ]
+            }
+          },
+          {
+            "index": 6,
+            "action": {
+              "worker": "refund#2",
+              "transition": "refund",
+              "kind": "write"
+            },
+            "state": {
+              "status": "refunded",
+              "effects": {
+                "email.receipt": 1,
+                "stripe.refund": 2
+              },
+              "workers": [
+                {
+                  "id": "checkout#1",
+                  "transition": "checkout",
+                  "phase": "done"
+                },
+                {
+                  "id": "checkout#2",
+                  "transition": "checkout",
+                  "phase": "idle"
+                },
+                {
+                  "id": "expire#1",
+                  "transition": "expire",
+                  "phase": "idle"
+                },
+                {
+                  "id": "expire#2",
+                  "transition": "expire",
+                  "phase": "idle"
+                },
+                {
+                  "id": "payment_succeeded#1",
+                  "transition": "payment_succeeded",
+                  "phase": "done"
+                },
+                {
+                  "id": "payment_succeeded#2",
+                  "transition": "payment_succeeded",
+                  "phase": "idle",
+                  "duplicate": true
+                },
+                {
+                  "id": "refund#1",
+                  "transition": "refund",
+                  "phase": "done",
+                  "observed": "paid"
+                },
+                {
+                  "id": "refund#2",
+                  "transition": "refund",
+                  "phase": "done",
+                  "observed": "paid"
+                },
+                {
+                  "id": "ship#1",
+                  "transition": "ship",
+                  "phase": "idle"
+                },
+                {
+                  "id": "ship#2",
+                  "transition": "ship",
+                  "phase": "idle"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "hint": "mark `refund` atomic: true, or make its state write conditional"
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 import { check } from "@tsv/checker";
-import { checkCode } from "../code-conformance";
+import { type CodeOutcome, checkCode } from "../code-conformance";
 import { type ExitCode, exitCodeFor, UsageError } from "../exit-codes";
-import { loadSpecs, resolveSpecFiles, selectEnforced } from "../inputs";
+import { type LoadedSpec, loadSpecs, resolveSpecFiles, selectEnforced } from "../inputs";
 import type { Io } from "../io";
 import { formatReport, parseFormat } from "../output/format";
 import { resolveProjectDir } from "../project-root";
@@ -33,11 +33,34 @@ export async function checkCommand(
   options: CheckCommandOptions,
 ): Promise<ExitCode> {
   const format = parseFormat(options.format ?? "pretty");
+  const { report } = await runCheck(io.cwd, paths, options);
+  io.stdout(formatReport(report, format, io));
+  return exitCodeFor(allFindings(report));
+}
+
+/** What one `tsv check` pipeline run produced, for `check` itself and for `tsv view`. */
+export interface CheckRun {
+  report: Report;
+  /** The specs that were checked (after `--enforced-only`), aligned with `report.specs`. */
+  specs: LoadedSpec[];
+  /** Code conformance per spec, aligned with `specs`; absent with `--spec-only`. */
+  code?: CodeOutcome[];
+}
+
+/**
+ * The `tsv check` pipeline without output: validate and model-check every spec under `paths`,
+ * then (unless `--spec-only`) run code conformance. Throws `UsageError` for bad options or paths.
+ */
+export async function runCheck(
+  cwd: string,
+  paths: readonly string[],
+  options: Omit<CheckCommandOptions, "format">,
+): Promise<CheckRun> {
   const maxStates = parseMaxStates(options.maxStates);
   const specOnly = options.specOnly === true;
-  const project = await parseProject(options.project, io.cwd);
-  const files = await resolveSpecFiles(paths, io.cwd);
-  const loaded = await loadSpecs(files, io.cwd);
+  const project = await parseProject(options.project, cwd);
+  const files = await resolveSpecFiles(paths, cwd);
+  const loaded = await loadSpecs(files, cwd);
   const enforcedOnly = options.enforcedOnly === true ? selectEnforced(loaded) : undefined;
   const specs = enforcedOnly?.kept ?? loaded;
 
@@ -52,16 +75,17 @@ export async function checkCommand(
       stats: result.stats,
     };
   });
+  let code: CodeOutcome[] | undefined;
   if (specOnly) {
     for (const r of reports) r.project = null;
   } else {
-    const outcomes = await checkCode(specs, { cwd: io.cwd, project, maxStates });
-    outcomes.forEach((code, i) => {
+    code = await checkCode(specs, { cwd, project, maxStates });
+    code.forEach((outcome, i) => {
       const r = reports[i] as SpecReport;
-      r.project = code.project;
-      r.findings.push(...code.findings);
-      if (code.extract) r.extract = code.extract;
-      if (code.codeStats) r.codeStats = code.codeStats;
+      r.project = outcome.project;
+      r.findings.push(...outcome.findings);
+      if (outcome.extract) r.extract = outcome.extract;
+      if (outcome.codeStats) r.codeStats = outcome.codeStats;
     });
   }
   for (const r of reports) r.findings = dedupeFindings(r.findings);
@@ -70,9 +94,7 @@ export async function checkCommand(
     ...(specOnly ? { specOnly } : {}),
     ...(enforcedOnly && { enforcedOnly: { skipped: enforcedOnly.skipped } }),
   };
-
-  io.stdout(formatReport(report, format, io));
-  return exitCodeFor(allFindings(report));
+  return { report, specs, ...(code && { code }) };
 }
 
 function parseMaxStates(value: unknown): number | undefined {

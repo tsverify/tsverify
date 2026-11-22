@@ -1,0 +1,268 @@
+<section class="playback" tabindex="-1" aria-label="Counterexample playback: effect-multiplicity">
+  <h3>
+    Counterexample (code model): 
+    <code>effect-multiplicity</code>
+  </h3>
+  <p class="muted keys">
+    Keys: ← → step · Space or K play/pause · Home first step · End last step
+  </p>
+  <div class="controls" role="group" aria-label="Playback controls">
+    <button type="button" aria-label="First step">⏮</button>
+    <button type="button" aria-label="Previous step">◀</button>
+    <button type="button" class="primary" aria-label="Play">▶ Play</button>
+    <button type="button" aria-label="Next step">▶</button>
+    <button type="button" aria-label="Last step">⏭</button>
+    <label class="speed">
+      Speed 
+      <select>
+        <option value="0.5">0.5×</option>
+        <option selected value="1">1×</option>
+        <option value="2">2×</option>
+        <option value="4">4×</option>
+      </select>
+    </label>
+    <span class="status-pill ended">ended</span>
+  </div>
+  <label class="slider">
+    <span class="visually-hidden">Step</span>
+    <input type="range" min="0" max="6" step="1" value="6" aria-valuetext="Step 6 of 6: refund#2 write" />
+  </label>
+  <p class="now" aria-live="polite">
+    <strong>Step 6 / 6</strong>
+     · refund#2 write · status 
+    <code>refunded</code>
+    <span class="violation"> ✗ effect-multiplicity</span>
+  </p>
+  <p class="violation-detail" role="note">
+    Violated: An exactly-once effect fires at most once per entity in every reachable state.
+  </p>
+  <div class="playback-grid">
+    <figure class="diagram" aria-label="State diagram at step 6: refunded highlighted">
+      <pre class="diagram-source">stateDiagram-v2
+        draft
+        pending_payment
+        paid
+        shipped
+        refunded
+        cancelled
+        [*] --> draft
+        draft --> pending_payment: checkout · customer (owner)
+        pending_payment --> cancelled: expire · system
+        pending_payment --> paid: payment_succeeded · stripe · ⟳ idempotent · email.receipt ×1
+        paid --> refunded: ▶ refund · admin (role(admin)) · stripe.refund ×1 · ⚠ non-atomic
+        paid --> shipped: ship · admin (role(admin))
+        shipped --> [*]
+        refunded --> [*]
+        cancelled --> [*]
+        classDef highlight fill:#fef3c7,stroke:#d97706,stroke-width:3px
+        class refunded highlight
+      </pre>
+    </figure>
+    <div class="counters">
+      <h4>Effects</h4>
+      <ul>
+        <li class="counter">
+          <code>email.receipt</code>
+          <span class="count">
+            1
+            <span class="muted"> / 1</span>
+          </span>
+        </li>
+        <li class="counter over violated">
+          <code>stripe.refund</code>
+          <span class="count">
+            2
+            <span class="muted"> / 1</span>
+          </span>
+          <span class="delta">+1</span>
+          <span class="violation"> ✗ violated</span>
+        </li>
+      </ul>
+    </div>
+  </div>
+  <div class="swimlanes">
+    <h4>Workers</h4>
+    <div class="table-scroll">
+      <table>
+        <caption class="visually-hidden">
+          Worker swimlanes: phase and observed status per step
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Worker</th>
+            <th scope="col">
+              <button type="button" class="link" aria-label="Go to step 0">0</button>
+            </th>
+            <th scope="col">
+              <button type="button" class="link" aria-label="Go to step 1">1</button>
+            </th>
+            <th scope="col">
+              <button type="button" class="link" aria-label="Go to step 2">2</button>
+            </th>
+            <th scope="col">
+              <button type="button" class="link" aria-label="Go to step 3">3</button>
+            </th>
+            <th scope="col">
+              <button type="button" class="link" aria-label="Go to step 4">4</button>
+            </th>
+            <th scope="col">
+              <button type="button" class="link" aria-label="Go to step 5">5</button>
+            </th>
+            <th scope="col" class="current">
+              <button type="button" class="link" aria-label="Go to step 6">6</button>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">checkout#1</th>
+            <td class="lane idle">
+              <span class="phase">idle</span>
+            </td>
+            <td class="lane done acting">
+              <span class="act">▶ atomic</span>
+              <span class="phase">done</span>
+            </td>
+            <td class="lane done">
+              <span class="phase">done</span>
+            </td>
+            <td class="lane done">
+              <span class="phase">done</span>
+            </td>
+            <td class="lane done">
+              <span class="phase">done</span>
+            </td>
+            <td class="lane done">
+              <span class="phase">done</span>
+            </td>
+            <td class="lane done current">
+              <span class="phase">done</span>
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">payment_succeeded#1</th>
+            <td class="lane idle">
+              <span class="phase">idle</span>
+            </td>
+            <td class="lane idle">
+              <span class="phase">idle</span>
+            </td>
+            <td class="lane done acting">
+              <span class="act">▶ atomic</span>
+              <span class="phase">done</span>
+            </td>
+            <td class="lane done">
+              <span class="phase">done</span>
+            </td>
+            <td class="lane done">
+              <span class="phase">done</span>
+            </td>
+            <td class="lane done">
+              <span class="phase">done</span>
+            </td>
+            <td class="lane done current">
+              <span class="phase">done</span>
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">refund#1</th>
+            <td class="lane idle">
+              <span class="phase">idle</span>
+            </td>
+            <td class="lane idle">
+              <span class="phase">idle</span>
+            </td>
+            <td class="lane idle">
+              <span class="phase">idle</span>
+            </td>
+            <td class="lane checked acting">
+              <span class="act">▶ read</span>
+              <span class="phase">checked</span>
+              <span class="observed">saw paid</span>
+            </td>
+            <td class="lane checked">
+              <span class="phase">checked</span>
+              <span class="observed">saw paid</span>
+            </td>
+            <td class="lane done acting">
+              <span class="act">▶ write</span>
+              <span class="phase">done</span>
+              <span class="observed">saw paid</span>
+            </td>
+            <td class="lane done current">
+              <span class="phase">done</span>
+              <span class="observed">saw paid</span>
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">refund#2</th>
+            <td class="lane idle">
+              <span class="phase">idle</span>
+            </td>
+            <td class="lane idle">
+              <span class="phase">idle</span>
+            </td>
+            <td class="lane idle">
+              <span class="phase">idle</span>
+            </td>
+            <td class="lane idle">
+              <span class="phase">idle</span>
+            </td>
+            <td class="lane checked acting">
+              <span class="act">▶ read</span>
+              <span class="phase">checked</span>
+              <span class="observed">saw paid</span>
+            </td>
+            <td class="lane checked">
+              <span class="phase">checked</span>
+              <span class="observed">saw paid</span>
+            </td>
+            <td class="lane done current acting">
+              <span class="act">▶ write</span>
+              <span class="phase">done</span>
+              <span class="observed">saw paid</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="muted">
+      Never act in this trace: checkout#2, expire#1, expire#2, payment_succeeded#2, ship#1, ship#2
+    </p>
+  </div>
+  <ol class="steps" start="0">
+    <li>
+      <button type="button" class="link">step 0  status=draft</button>
+    </li>
+    <li>
+      <button type="button" class="link">
+        step 1  checkout#1 atomic → proceed  status=pending_payment
+      </button>
+    </li>
+    <li>
+      <button type="button" class="link">
+        step 2  payment_succeeded#1 atomic → proceed  status=paid  email.receipt=1
+      </button>
+    </li>
+    <li>
+      <button type="button" class="link">
+        step 3  refund#1 read → proceed  status=paid
+      </button>
+    </li>
+    <li>
+      <button type="button" class="link">
+        step 4  refund#2 read → proceed  status=paid
+      </button>
+    </li>
+    <li>
+      <button type="button" class="link">
+        step 5  refund#1 write  status=refunded  stripe.refund=1
+      </button>
+    </li>
+    <li class="current" aria-current="step">
+      <button type="button" class="link">
+        step 6  refund#2 write  status=refunded  stripe.refund=2  ✗ effect-multiplicity
+      </button>
+    </li>
+  </ol>
+</section>

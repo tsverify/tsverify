@@ -10,4 +10,11 @@ export interface Io {
   /** Whether stdout is a terminal (enables colors unless `NO_COLOR` is set). */
   isTTY: boolean;
   env: Readonly<Record<string, string | undefined>>;
+  /**
+   * Long-running commands (`tsv view`) stop when the user asks: `listener` runs on the first
+   * interrupt (Ctrl+C / SIGINT, or SIGTERM). Returns a function that removes the listener. The bin
+   * installs the signal handlers only while a listener is registered, so other commands keep the
+   * default Ctrl+C behavior. Absent: the command runs until the process exits.
+   */
+  onInterrupt?(listener: () => void): () => void;
 }
