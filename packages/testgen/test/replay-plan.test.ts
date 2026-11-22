@@ -195,7 +195,10 @@ describe("generated replay options", () => {
       outDir: ".tsv/generated/order-lifecycle",
     });
     const test = result.files.find((f) => f.path === "replay-1.test.ts")?.content ?? "";
-    expect(test).toContain("inconclusive: true");
+    expect(test).toContain(
+      "  task.meta.tsvReplay = { ...replayResult(outcome, undefined), status, effects };",
+    );
+    expect(test).not.toContain("inconclusive?: boolean");
     expect(test).not.toContain("expect(result.violated");
     expect(result.tests.at(-1)).toMatchObject({ kind: "replay", evaluable: false });
   });

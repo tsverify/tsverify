@@ -56,7 +56,8 @@ entity in `plan.seedStatus`, spawns one worker per trace worker (each calls its 
 - **Properties.** `effect-multiplicity` and `always` / `never` rules over status checks and effect
   counts are evaluated (`effects[gate]` = fast-forwarded prefix + calls in the replay; `status` =
   the stored entity). Anything else (`eventually`, liveness, structural properties) gives an
-  **inconclusive** replay: it still runs, records `inconclusive: true` and passes.
+  **inconclusive** replay: it still runs, calls `replayResult(outcome, undefined)` (verdict
+  `inconclusive`) and passes.
 
 ### Verdict channel
 
@@ -64,15 +65,15 @@ Each replay test sets `task.meta.tsvReplay` before its assertion; `tsv test` rea
 vitest's `TestCase.meta()`:
 
 ```ts
-tsvReplay: ReplayResult & {          // { verdict, followed, violated, divergence? } from @tsv/runtime
-  inconclusive?: boolean;            // property not evaluable in code terms
+tsvReplay: ReplayResult & {          // { verdict, followed, violated?, divergence? } from @tsv/runtime
   status: unknown;                   // stored state after drain
   effects: Record<string, number>;   // calls per effect gate, seeded prefix included
 }
 ```
 
 `confirmed` and `confirmed-divergent` fail the test (`expect(result.violated, "<verdict>: the real
-code violates <property>…").toBe(false)`); `replay-disagrees` passes. A replay test that fails
+code violates <property>…").toBe(false)`); `replay-disagrees` and `inconclusive` (no `violated`)
+pass. A replay test that fails
 without `tsvReplay` could not run at all.
 
 ## Skipped (info findings)

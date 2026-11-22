@@ -125,7 +125,7 @@ describe("testFindings", () => {
     expect(disagrees?.causedBy).toBeUndefined();
     const [inconclusive] = map(
       [replay],
-      [outcome(replay, { meta: meta("replay-disagrees", { inconclusive: true }) })],
+      [outcome(replay, { meta: meta("inconclusive", { violated: undefined }) })],
     ).findings;
     expect(inconclusive).toMatchObject({ category: "unanalyzable", severity: "info" });
   });
