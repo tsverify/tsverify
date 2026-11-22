@@ -145,7 +145,7 @@ function invocationOf(
   const checker = env.ctx.checker;
   const impl = implRefOf(env.ctx, d);
   const p = d.write.persistence;
-  const idArg = p.read?.call.arguments[0] ?? p.entityKey;
+  const idArg = p.entityKey ?? p.read?.call.arguments[0];
   if (!impl || !idArg) return undefined;
   const entityId = traceToRoot(idArg, d.reach, checker);
   if (!entityId) return undefined;
@@ -182,6 +182,8 @@ function buildTransition(
   if (linkAtomicity) {
     if (linkAtomicity.atomic && linkAtomicity.kind)
       atomicScope = { kind: linkAtomicity.kind, at: m.at };
+  } else if (p.atomicAt) {
+    atomicScope = { kind: p.atomicAt.kind, at: ctx.loc(p.atomicAt.call), gate: p.atomicAt.gate };
   } else if (p.scope) {
     atomicScope = { kind: p.scope.kind, at: ctx.loc(p.scope.call), gate: p.scope.gate };
   }
@@ -221,7 +223,7 @@ function buildTransition(
     multiplicity: multiplicityOf(e, spec, t),
   }));
 
-  const fromState = fromStateOf(spec, m);
+  const fromState = p.fromState ?? fromStateOf(spec, m);
   const from =
     fromState.values === "*"
       ? "*"
@@ -251,6 +253,21 @@ function buildTransition(
       }),
     );
   }
+  const atomic = linkAtomicity?.atomic ?? p.atomic;
+  // Why a scoped-looking write is still not atomic: only worth saying when the spec asks for it.
+  for (const note of t?.atomic && !atomic ? (p.notes ?? []) : []) {
+    if (!t) break;
+    env.findings.push({
+      id: `non-atomic:${spec.name}:${t.name}:${note.subject}`,
+      category: "non-atomic",
+      severity: "info",
+      message: `${t.name}: ${note.message}`,
+      behavior: spec.name,
+      transition: t.name,
+      codeAt: ctx.loc(note.at),
+      hint: note.hint,
+    });
+  }
 
   const invocation = invocationOf(env, d, guardCalls);
   const sites: CodeSites = {
@@ -279,7 +296,7 @@ function buildTransition(
     by: t ? [...t.by] : [],
     requires,
     effects: effectDecls,
-    atomic: linkAtomicity?.atomic ?? p.atomic,
+    atomic,
     idempotent: t?.idempotent ?? false,
     ...(impl ? { impl: { ...impl } } : {}),
     at: m.at,

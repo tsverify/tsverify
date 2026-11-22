@@ -24,7 +24,7 @@ Proven in [spike X2](../../spikes/x2-gating/README.md); this package is its prod
 import {
   scheduler, instrument,                                   // replay
   planFromTrace, mappingFromCode,                          // counterexample → schedule
-  storeConfigFromCode, effectsConfigFromCode,              // CodeSites → fake configs
+  storeConfigFromCode, prismaConfigFromCode, effectsConfigFromCode, // CodeSites → fake configs
   replayVerdict, replayResult,                             // outcome → verdict
   ReplayDivergence, UninstrumentedCallError, UNTIL_DONE,
 } from "@tsv/runtime";
@@ -53,6 +53,13 @@ instrument.store(s, {
   missing?: "undefined" | ((collection, key) => Error),   // read of a missing key
 }) → { client, seed({ orders: rows }), read(collection, key), rows(collection) }
 
+instrument.prisma(s, {
+  client: "db",                                   // gate prefix = Bindings.clients key
+  models: { order: { key: "id", seed?: Row[] } }, // model delegates: db.order.<method>(args)
+  read: ["order.findUnique"],                     // sync gates (every other delegate method: transparent)
+  write: ["order.update", "order.updateMany"],    // sync gates; updateMany = one compare-and-set
+}) → { client, seed({ order: rows }), read(model, key), rows(model) }   // client.$transaction(fn | [ops], options?)
+
 instrument.effects(s, {
   client: "stripe",
   calls: ["refunds.create"],                      // nested paths → client.refunds.create(...)
@@ -63,7 +70,7 @@ instrument.effects(s, {
 mappingFromCode(codeModel) → ReplayMapping       // { transitions: { t: { read, write, atomic: gate[] } }, effects }
 planFromTrace(trace, mapping, { fastForward? = true } | { replayFrom: stepIndex }) → ReplayPlan
   // { property, startIndex, seedStatus, seedEffects, skipped, workers, schedule, origins, expectedEffects }
-storeConfigFromCode(codeModel, "db") / effectsConfigFromCode(codeModel, "stripe")
+storeConfigFromCode(codeModel, "db") / prismaConfigFromCode(codeModel, "db") / effectsConfigFromCode(codeModel, "stripe")
 
 replayVerdict({ followed, violated }) → "confirmed" | "confirmed-divergent" | "replay-disagrees" | "inconclusive"
 replayResult(playOutcome, violated | undefined) → { verdict, followed, violated?, divergence?: { kind, stepIndex, worker, message } }
@@ -161,7 +168,27 @@ is *passed* (a read sees the rows at pass time). Copy on read and copy on write
 applied when `fn` resolves and dropped when it throws. Not reentrant (a nested transaction is a
 `deadlock`). Config seeds are re-applied on every `reset()`; `seed()` rows last one run.
 
-Both fakes are **strict**: a member the config doesn't list is a stub that throws
+`instrument.prisma` models the `prisma` persistence pattern with the call shapes of a generated
+`PrismaClient` (`src/instrument/prisma.ts` has the full rules):
+
+- Every configured model gets the standard delegate methods (`findUnique(OrThrow)`,
+  `findFirst(OrThrow)`, `findMany`, `count`, `create`, `update`, `updateMany`, `upsert`, `delete`,
+  `deleteMany`). The `read` / `write` paths are sync gates, the others transparent. Each operation
+  runs in one synchronous step once its gate is passed, so `updateMany` (and an `update` with the
+  state in `where`) is an **atomic compare-and-set**, like the single SQL statement.
+- `where` supports equality, `equals` / `in` / `notIn` / `not` / comparisons / string filters and
+  `AND` / `OR` / `NOT`; `data` supports values and `set` / `increment` / `decrement` / `multiply` /
+  `divide`; `select` projects. Relations throw. Missing rows: `null`, or `PrismaFakeError` `P2025`
+  (`…OrThrow`, `update`, `delete`); `updateMany` returns `{ count: 0 }`.
+- Calls return lazy PrismaPromises (nothing runs until awaited or passed to `$transaction([…])`),
+  bound to the worker that made the call.
+- `$transaction` is a transparent gate. With `isolationLevel: "Serializable"` (interactive or
+  array form) it holds one scheduler lock per client, like the store's transaction. At any other
+  level (the default) it takes **no** lock: a read-then-write inside it interleaves with another
+  worker, so a replay shows the race the database would allow. Writes apply when their gate is
+  passed and are undone if the transaction fails.
+
+All fakes are **strict**: a member the config doesn't list is a stub that throws
 `UninstrumentedCallError` when called, e.g.
 
 ```
@@ -266,5 +293,7 @@ violated rule compiled to code terms.
 From the spike, still true: only gated clients are ordered (every client touching shared state
 must be faked); concurrent gated calls inside one worker are `stray-gate`; `worker_threads` and
 child processes are out of scope; the store's transaction is a serializable mutex, so a fake that
-is stronger than the real isolation level reports a false `replay-disagrees` (adapter fakes, M9);
+is stronger than the real isolation level reports a false `replay-disagrees` (the Prisma fake
+locks only Serializable transactions, and lets other workers see a transaction's writes before it
+commits, which is stronger visibility than READ COMMITTED, never weaker);
 fast-forwarding assumes the status is all of the relevant model state.

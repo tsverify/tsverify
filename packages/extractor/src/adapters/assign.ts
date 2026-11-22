@@ -146,7 +146,11 @@ function readThrough(
   return undefined;
 }
 
-function findRead(input: AdapterInput, refSym: ts.Symbol | undefined): ClientCall | undefined {
+/** The client read the reference was initialized with, directly or through helpers. */
+export function findRead(
+  input: AdapterInput,
+  refSym: ts.Symbol | undefined,
+): ClientCall | undefined {
   const decl = refSym?.valueDeclaration;
   if (!decl || !ts.isVariableDeclaration(decl) || !decl.initializer) return undefined;
   const init = strip(decl.initializer);
@@ -181,6 +185,7 @@ function findCommit(
 
 export const assignAdapter: PersistenceAdapter = {
   kind: "assign",
+  writeKinds: new Set(["assign", "spread"]),
   scopeAliasParam: 0,
 
   scopeKind,

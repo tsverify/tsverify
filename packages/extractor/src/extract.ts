@@ -12,6 +12,7 @@ import { compareStrings } from "@tsv/ir";
 import { ts } from "ts-morph";
 import { assignAdapter } from "./adapters/assign";
 import { memoryAdapter } from "./adapters/memory";
+import { prismaAdapter } from "./adapters/prisma";
 import type { PersistenceAdapter, PersistenceFacts } from "./adapters/types";
 import { assemble, type Draft, type MatchedWrite } from "./assemble";
 import { Callees, frameCalls, frameNaming, frameOf, type Reach, reach } from "./callgraph";
@@ -75,21 +76,38 @@ function now(): number {
   return globalThis.performance.now();
 }
 
+/** Imports `PrismaClient` by name (from a custom generator output such as `./generated/prisma`). */
+function importsPrismaClient(st: ts.ImportDeclaration): boolean {
+  const bindings = st.importClause?.namedBindings;
+  return (
+    bindings !== undefined &&
+    ts.isNamedImports(bindings) &&
+    bindings.elements.some((e) => (e.propertyName ?? e.name).text === "PrismaClient")
+  );
+}
+
+/**
+ * `bindings.persistence` when omitted: `prisma` for an `@prisma/*` import or any import of
+ * `PrismaClient` (custom generator outputs), `drizzle` for a `drizzle-orm` import, else `assign`.
+ */
 function detectPersistence(ctx: ProjectContext): PersistenceKind {
+  let prismaClient = false;
   for (const sf of ctx.analyzedFiles()) {
     for (const st of sf.statements) {
       if (!ts.isImportDeclaration(st) || !ts.isStringLiteral(st.moduleSpecifier)) continue;
       const m = st.moduleSpecifier.text;
       if (m === "@prisma/client" || m.startsWith("@prisma/")) return "prisma";
       if (m === "drizzle-orm" || m.startsWith("drizzle-orm/")) return "drizzle";
+      prismaClient ||= importsPrismaClient(st);
     }
   }
-  return "assign";
+  return prismaClient ? "prisma" : "assign";
 }
 
 const ADAPTERS: Partial<Record<PersistenceKind, PersistenceAdapter>> = {
   assign: assignAdapter,
   memory: memoryAdapter,
+  prisma: prismaAdapter,
 };
 
 function literalArgs(call: ts.CallExpression, checker: ts.TypeChecker): string[] {
@@ -211,7 +229,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
         kind,
         `persistence "${kind}" is not supported yet; no code model was extracted`,
         {
-          hint: "Only the `assign` and `memory` adapters exist in this version; set `bindings.persistence: assign` if the code assigns and saves whole objects, or `memory` for in-process objects.",
+          hint: "Only the `assign`, `memory` and `prisma` adapters exist in this version; set `bindings.persistence: assign` if the code assigns and saves whole objects, `prisma` for a Prisma client, or `memory` for in-process objects.",
         },
       ),
     );
@@ -321,9 +339,11 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
   // Writes of this spec's entity.
   const matched: MatchedWrite[] = [];
   env.writes.forEach((write, i) => {
-    if (write.field !== spec.entity.stateField) return;
+    if (write.field !== spec.entity.stateField || !adapter.writeKinds.has(write.kind)) return;
     const { narrowed, probed } = env.types[i] as WriteTypes;
-    const match = matchesEntity(spec.entity, narrowed.declared, narrowed.refTypeNames);
+    const match = adapter.matchEntity
+      ? adapter.matchEntity(write, calls, spec.entity) && "name"
+      : matchesEntity(spec.entity, narrowed.declared, narrowed.refTypeNames);
     if (!match) return;
     const frame = frameOf(write.expr);
     let persistence: PersistenceFacts | undefined;
@@ -335,6 +355,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
         calls,
         callees,
         checker,
+        entity: spec.entity,
       });
       return persistence;
     };

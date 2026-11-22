@@ -1,7 +1,8 @@
 /**
  * Everything the emitters share for one spec: which spec transitions can be driven (linked code
- * transition with an invocation shape and storage, `assign` persistence, actor fixtures), the
- * fake configurations derived from every code transition's `CodeSites`, and the fixtures.
+ * transition with an invocation shape and storage, `assign` or `prisma` persistence, actor
+ * fixtures), the fake configurations derived from every code transition's `CodeSites`, and the
+ * fixtures.
  * Whatever cannot be generated is recorded as an `info` finding instead.
  */
 import {
@@ -48,6 +49,17 @@ export interface StoreFakeConfig {
   transaction?: string;
 }
 
+/** `instrument.prisma` config: like the runtime's `prismaConfigFromCode`. */
+export interface PrismaFakeConfig {
+  client: string;
+  models: Record<string, { key: string }>;
+  read: string[];
+  write: string[];
+}
+
+/** Persistence kinds the generated tests have fakes for. */
+const FAKED: ReadonlySet<string> = new Set(["assign", "prisma"]);
+
 export interface EffectsFakeConfig {
   client: string;
   calls: string[];
@@ -66,7 +78,10 @@ export interface Context {
   storage: Storage;
   /** The seeded entity's key: `fixtures.entity[storage.key]`. */
   id: string | number;
+  /** `assign` storage clients (`instrument.store`). */
   stores: StoreFakeConfig[];
+  /** `prisma` storage clients (`instrument.prisma`). */
+  prismas: PrismaFakeConfig[];
   effects: EffectsFakeConfig[];
   /** Drivable spec transitions, by name (sorted). */
   linked: Map<string, Linked>;
@@ -104,7 +119,7 @@ export function buildContext(input: ContextInput): { ctx?: Context; skipped: Fin
     );
   }
 
-  // 1. Candidate transitions: linked, with invocation + storage, assign persistence.
+  // 1. Candidate transitions: linked, with invocation + storage, a persistence with fakes.
   const candidates: { spec: Transition; code: Transition; sites: CodeSites }[] = [];
   for (const t of [...spec.transitions].sort((a, b) => compareStrings(a.name, b.name))) {
     const skip = (message: string) =>
@@ -124,11 +139,11 @@ export function buildContext(input: ContextInput): { ctx?: Context; skipped: Fin
       skip(`the extractor found no write of \`${t.to}\` reached from ${formatSymbolRef(t.impl)}`);
       continue;
     }
-    if (sites.persistence !== "assign") {
+    if (!FAKED.has(sites.persistence)) {
       skip(
         sites.persistence === "memory"
           ? "`memory` persistence has no fakes or replay support yet"
-          : `\`${sites.persistence}\` persistence has no fakes yet (only \`assign\`)`,
+          : `\`${sites.persistence}\` persistence has no fakes yet (only \`assign\` and \`prisma\`)`,
       );
       continue;
     }
@@ -217,11 +232,8 @@ export function buildContext(input: ContextInput): { ctx?: Context; skipped: Fin
   const allSites = code.transitions.flatMap((t) => (t.sites ? [t.sites] : []));
   const storeClients = sortedUnique(allSites.flatMap((s) => (s.storage ? [s.storage.client] : [])));
   const stores: StoreFakeConfig[] = [];
+  const prismas: PrismaFakeConfig[] = [];
   for (const client of storeClients) {
-    const collections: Record<string, { key: string }> = {};
-    for (const s of allSites) {
-      if (s.storage?.client === client) collections[s.storage.collection] = { key: s.storage.key };
-    }
     const paths = (pick: (s: CodeSites) => { client: string; path: string } | undefined) =>
       sortedUnique(
         allSites.flatMap((s) => {
@@ -229,6 +241,22 @@ export function buildContext(input: ContextInput): { ctx?: Context; skipped: Fin
           return site?.client === client ? [site.path] : [];
         }),
       );
+    const kind = allSites.find((s) => s.storage?.client === client)?.persistence;
+    if (kind === "prisma") {
+      const models: Record<string, { key: string }> = {};
+      for (const s of allSites) {
+        if (s.storage?.client === client) models[s.storage.collection] = { key: s.storage.key };
+      }
+      const read = paths((s) => s.read);
+      const write = paths((s) => s.commit);
+      for (const path of [...read, ...write]) models[path.split(".")[0] ?? ""] ??= { key: "id" };
+      prismas.push({ client, models: sortKeys(models), read, write });
+      continue;
+    }
+    const collections: Record<string, { key: string }> = {};
+    for (const s of allSites) {
+      if (s.storage?.client === client) collections[s.storage.collection] = { key: s.storage.key };
+    }
     const transactions = sortedUnique(
       allSites.flatMap((s) =>
         s.atomic?.kind === "transaction" && s.atomic.gate?.startsWith(`${client}.`)
@@ -279,6 +307,7 @@ export function buildContext(input: ContextInput): { ctx?: Context; skipped: Fin
       storage,
       id,
       stores,
+      prismas,
       effects,
       linked,
     },

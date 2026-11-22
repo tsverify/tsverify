@@ -1,0 +1,29 @@
+// The schema src/generated/prisma/client.ts stands in for. `tsv` does not read this file, and the
+// example never runs `prisma generate`: the stand-in client is checked in.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrderStatus {
+  draft
+  pending_payment
+  paid
+  shipped
+  refunded
+  cancelled
+}
+
+model Order {
+  id       String      @id
+  ownerId  String
+  email    String
+  status   OrderStatus @default(draft)
+  chargeId String?
+}

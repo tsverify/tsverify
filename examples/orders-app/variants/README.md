@@ -47,7 +47,7 @@ materialize every variant and typecheck it with `tsc --noEmit -p <root>/tsconfig
   `transition` and `property` against the same `Finding` fields, `subject` against the
   `:<subject>` suffix of `Finding.id`, and `file` against `Finding.codeAt.file`.
 
-`parseManifest` in `test/materialize.ts` is the validator.
+`parseManifest` in `examples/shared/materialize.ts` (shared by every example app; `test/materialize.ts` binds it to this app) is the validator.
 
 ## Adding a variant
 

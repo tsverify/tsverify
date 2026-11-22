@@ -2,27 +2,44 @@
  * A persistence adapter knows one ORM / data-access style: how a transition reads the entity, how
  * it commits the write, and which construct makes the two atomic.
  */
-import type { AtomicScope, PersistenceKind } from "@tsv/ir";
+import type { AtomicScope, EntityDecl, FromState, PersistenceKind } from "@tsv/ir";
 import type { ts } from "ts-morph";
 import type { Callees, Reach } from "../callgraph";
 import type { FunctionLike } from "../cfg";
 import type { ClientCall, ClientCalls, ScopeRef } from "../client-calls";
-import type { WriteNode } from "../writes";
+import type { WriteKind, WriteNode } from "../writes";
+
+/** Context for a "not atomic" verdict, reported when the spec asks for `atomic: true`. */
+export interface AtomicityNote {
+  /** Stable id subject, e.g. `isolation-level`. */
+  subject: string;
+  message: string;
+  hint: string;
+  /** Where the note points (e.g. the `$transaction` call). */
+  at: ts.Node;
+}
 
 export interface PersistenceFacts {
   /** The client call whose result is the entity reference the write checks. */
   read?: ClientCall;
   /** The client call that persists the write. */
   commit?: ClientCall;
-  /** The scope read and write share, when they do. */
+  /** The scope read and write share, when they do (and it makes them atomic). */
   scope?: ScopeRef;
   /** Read and write (and commit) run inside one atomic scope. */
   atomic: boolean;
+  /**
+   * The atomic construct when it is not a shared callback scope, e.g. a conditional update:
+   * recorded as `CodeSites.atomic` at `call`. Takes precedence over `scope`.
+   */
+  atomicAt?: { kind: AtomicScope["kind"]; call: ts.CallExpression; gate: string };
+  /** The from-state when the persistence call itself decides it (an update's `where`). */
+  fromState?: FromState;
   storage?: { client: string; collection: string; key: string };
   /**
    * The expression carrying the entity's id, when there is no read call whose first argument
-   * carries it (`workerId` in `this.workers.get(workerId)`). Traced to the impl's parameters for
-   * `InvocationShape.entityId`.
+   * carries it (`workerId` in `this.workers.get(workerId)`, `orderId` in `where: { id: orderId }`).
+   * Traced to the impl's parameters for `InvocationShape.entityId`.
    */
   entityKey?: ts.Expression;
   /**
@@ -30,6 +47,8 @@ export interface PersistenceFacts {
    * spec transition is `atomic: true` (otherwise the answer does not matter).
    */
   problems: string[];
+  /** Why the write is not atomic although it looks scoped: `info` findings when the spec says atomic. */
+  notes?: AtomicityNote[];
 }
 
 export interface AdapterInput {
@@ -41,6 +60,8 @@ export interface AdapterInput {
   calls: ClientCalls;
   callees: Callees;
   checker: ts.TypeChecker;
+  /** The spec's entity. */
+  entity: EntityDecl;
 }
 
 /** One write as reached from one impl (or, unlinked, from its own frame). */
@@ -60,6 +81,8 @@ export interface LinkAtomicity {
 
 export interface PersistenceAdapter {
   readonly kind: PersistenceKind;
+  /** The candidate write shapes this adapter analyzes; other shapes are not state writes for it. */
+  readonly writeKinds: ReadonlySet<WriteKind>;
   /** Which parameter of a scope callback aliases the client (`tx` in `db.transaction(async (tx) => …)`). */
   readonly scopeAliasParam: number;
   /**
@@ -67,6 +90,11 @@ export interface PersistenceAdapter {
    * `argIndex`, or undefined when it opens none.
    */
   scopeKind(path: string, argIndex: number): ScopeRef["kind"] | undefined;
+  /**
+   * Whether a write belongs to the spec's entity, when the adapter decides it from the call shape
+   * instead of the types (`entity.ts`): `prisma.order.update(…)` writes the `Order` model.
+   */
+  matchEntity?(write: WriteNode, calls: ClientCalls, entity: EntityDecl): boolean;
   analyzeWrite(input: AdapterInput): PersistenceFacts;
   /**
    * Atomicity per linked impl, for adapters where it depends on the call path (`memory`). When

@@ -33,6 +33,27 @@ importers:
         specifier: workspace:*
         version: link:../../packages/spec
 
+  examples/orders-prisma:
+    devDependencies:
+      '@tsv-examples/shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@tsv/cli':
+        specifier: workspace:*
+        version: link:../../packages/cli
+      '@tsv/ir':
+        specifier: workspace:*
+        version: link:../../packages/ir
+      '@tsv/spec':
+        specifier: workspace:*
+        version: link:../../packages/spec
+
+  examples/shared:
+    devDependencies:
+      '@tsv/ir':
+        specifier: workspace:*
+        version: link:../../packages/ir
+
   packages/checker:
     dependencies:
       '@tsv/ir':

@@ -93,6 +93,19 @@ export function prelude(ctx: Context, options: PreludeOptions): Prelude {
     }
     lines.push("});");
   }
+  for (const fake of ctx.prismas) {
+    const name = names.allocate(fake.client);
+    clients.set(fake.client, name);
+    const models = Object.entries(fake.models)
+      .map(([m, { key }]) => `${propertyKey(m)}: { key: ${JSON.stringify(key)} }`)
+      .join(", ");
+    lines.push(`const ${name} = instrument.prisma(${SCHEDULER}, {`);
+    lines.push(`  client: ${JSON.stringify(fake.client)},`);
+    lines.push(`  models: { ${models} },`);
+    lines.push(`  read: ${literal(fake.read)},`);
+    lines.push(`  write: ${literal(fake.write)},`);
+    lines.push("});");
+  }
   for (const fake of ctx.effects) {
     const name = names.allocate(fake.client);
     clients.set(fake.client, name);
