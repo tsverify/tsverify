@@ -1,0 +1,23 @@
+flowchart LR
+  start(("start"))
+  draft("draft")
+  pending_payment("pending_payment")
+  paid("paid")
+  shipped(["shipped"])
+  refunded(["refunded"])
+  cancelled(["cancelled"])
+  on_hold("+ on_hold")
+  start --> draft
+  draft -->|"checkout · customer (owner)"| pending_payment
+  pending_payment -.->|"− expire · system · after 30m"| cancelled
+  paid ==>|"+ hold · admin"| on_hold
+  pending_payment -->|"payment_succeeded · stripe · ⟳ idempotent · email.receipt ×1"| paid
+  paid -->|"~ refund · admin · stripe.refund ×1 · ⚠ non-atomic"| refunded
+  on_hold ==>|"+ release · admin"| paid
+  paid -->|"~ ship · admin"| shipped
+  on_hold ==>|"+ ship · admin"| shipped
+  linkStyle 3,6,8 stroke:#16a34a,stroke-width:3px
+  linkStyle 2 stroke:#dc2626,stroke-width:3px
+  linkStyle 5,7 stroke:#d97706,stroke-width:3px
+  classDef added fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#111827
+  class on_hold added

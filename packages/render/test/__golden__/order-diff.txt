@@ -1,0 +1,14 @@
+src/orders/order.behavior.yaml  Order lifecycle  changed · enforced
+  ~1 top-level field, +1 state, +2 transitions, −1 transition, ~2 transitions, −1 rule, ~1 binding
+  ~ enforced  no → yes
+  + state on_hold
+  − transition expire
+  + transition hold
+  ~ transition refund  atomic: yes → no
+  + transition release
+  ~ transition ship  from: paid → on_hold, paid
+  − rule Unpaid orders don't linger
+  ~ binding effect:stripe.refund  stripe.refunds.create → stripe.refunds.createV2
+src/other.behavior.yaml  Order lifecycle  unchanged
+
+1 of 2 behavior files changed (origin/main → working tree)

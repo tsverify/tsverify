@@ -4,8 +4,11 @@ Golden outputs live in `__golden__/` and are compared with vitest's `toMatchFile
 After an intentional output change, regenerate them with:
 
 ```sh
-pnpm vitest run packages/render -u
+pnpm vitest run packages/render --update
 ```
+
+(Not `-u packages/render`: `-u` then takes the path as its value and every snapshot in the repo is
+updated.)
 
 Review the regenerated files in the diff before committing.
 
@@ -23,3 +26,9 @@ The `.mmd` files are plain Mermaid source. To see them rendered:
 Things to check by eye: state order and edge order are stable, `[*]` start and end markers are
 present, highlighted states are filled and highlighted edges start with `▶`, and escaped labels
 (`#58;` for `:`, `#35;` for `#`, and so on) show the original characters once rendered.
+
+The `*-diff.mmd` goldens are `flowchart LR` diagrams (`toMermaidDiff`), not state diagrams: only
+flowcharts can style edges. Check that added edges are thick (`==>`) and labelled `+`, removed
+ones dotted (`-.->`) and labelled `−`, changed ones labelled `~`, and that the `linkStyle` colors
+land on those same edges. The `*-diff.md` goldens are whole PR comments; paste one into a GitHub
+comment preview to see it as reviewers will.

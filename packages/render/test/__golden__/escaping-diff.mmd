@@ -1,0 +1,12 @@
+flowchart LR
+  start(("start"))
+  open("open")
+  on_hold_2("on-hold")
+  on_hold("on_hold")
+  s_end(["end"])
+  start --> open
+  open -->|"close · agent"| s_end
+  on_hold_2 -->|"close · agent"| s_end
+  open -->|"hold#58; see #35;42 · agent (team(a#59;b)) · notify#60;ops#62; ×n"| on_hold_2
+  on_hold_2 -.->|"− page · ops#58;pager · ⟳ idempotent · pager#123;duty#125; ⟳"| on_hold
+  linkStyle 4 stroke:#dc2626,stroke-width:3px

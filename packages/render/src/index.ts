@@ -1,3 +1,11 @@
+export type { DiffEntry, DiffRenderOptions, DiffTextOptions } from "./diff";
+export {
+  DIFF_COMMENT_MARKER,
+  diffSummary,
+  renderDiffMarkdown,
+  renderDiffText,
+} from "./diff";
+export { DIFF_MARKERS, toMermaidDiff } from "./diff-mermaid";
 export type { FormatFindingsOptions, Formatter } from "./findings";
 export { formatFindings, plainFormatter } from "./findings";
 export type { PermissionCell, PermissionMatrix } from "./matrix";
