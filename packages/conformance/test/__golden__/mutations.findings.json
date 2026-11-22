@@ -165,8 +165,8 @@
       "transition": "checkout",
       "specAt": {
         "file": "src/orders/order.behavior.yaml",
-        "line": 19,
-        "column": 3
+        "line": 20,
+        "column": 11
       },
       "codeAt": {
         "file": "src/orders/checkout.ts",
@@ -186,8 +186,8 @@
       "transition": "expire",
       "specAt": {
         "file": "src/orders/order.behavior.yaml",
-        "line": 37,
-        "column": 3
+        "line": 38,
+        "column": 12
       },
       "codeAt": {
         "file": "src/jobs/expire-orders.ts",

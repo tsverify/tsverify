@@ -429,6 +429,18 @@ export function extraRefundWrite(to: string): Write {
   return { ...cleanWrite("refund"), name: `refund->${to}`, to, write: [19, 5], effects: [] };
 }
 
+/** `expire` with `from: [draft, pending_payment]` (on line 38), which the code does not match. */
+export function strictExpire(t: Transition): Transition {
+  return {
+    ...t,
+    from: ["draft", "pending_payment"],
+    fromAt: [
+      { file: SPEC_FILE, line: 38, column: 12 },
+      { file: SPEC_FILE, line: 38, column: 19 },
+    ],
+  };
+}
+
 /** Synthetic mutations covering the rules no seeded bug exercises. */
 export const MUTATION_CASES = {
   "missing-effect": () =>
@@ -460,10 +472,7 @@ export const MUTATION_CASES = {
       })),
     ),
   "strict-from": () => {
-    const spec = patchSpec(specModel(), "expire", (t) => ({
-      ...t,
-      from: ["draft", "pending_payment"],
-    }));
+    const spec = patchSpec(specModel(), "expire", strictExpire);
     return { spec, code: buildCodeModel(spec, cleanWrites()) };
   },
   "no-impl": () => {
