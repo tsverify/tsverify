@@ -127,3 +127,21 @@ export function orderDiffHead(): BehaviorModel {
     },
   };
 }
+
+/**
+ * `refund` by `[customer, admin]`, alternatives: a customer that owns the order, or an admin by
+ * role. Both must pass the transition's own `verified`.
+ */
+export function ownerOrAdminModel(): BehaviorModel {
+  const model = withTransition(orderModel(), "refund", {
+    by: ["customer", "admin"],
+    requires: [{ name: "verified", args: [], raw: "verified" }],
+  });
+  const customer = model.actors.customer;
+  if (customer === undefined) throw new Error("fixture changed");
+  model.actors = {
+    ...model.actors,
+    customer: { ...customer, requires: [{ name: "owner", args: [], raw: "owner" }] },
+  };
+  return model;
+}

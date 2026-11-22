@@ -15,7 +15,7 @@ explicitly.
 | Code | Meaning | Typical CI reaction |
 |---|---|---|
 | `0` | No error-severity findings (warnings and info never fail a run). For `tsverify diff`: the diff was computed, whether or not anything changed | pass |
-| `1` | Violations: behavior bugs or conformance mismatches (`check`, `test`) | your choice: see the workflows below |
+| `1` | Violations: behavior bugs or conformance mismatches (`check`, `test`); with `--strict`, also code `tsverify` could not analyze | your choice: see the workflows below |
 | `2` | Invalid input: a spec that doesn't parse or validate, a broken `impl` link, bad CLI usage; for `tsverify diff` also an unknown ref or no git repository | fail: the run could not do its job |
 | `3` | Internal error in `tsverify` | fail, and please report it |
 
@@ -32,15 +32,17 @@ Invalid input (2) takes precedence over violations (1).
 
 - **JSON** (`check`, `test`, `validate`): `{ version: 1, findings, specs, summary }`. Every finding has a stable `id`,
   `category`, `severity`, `message`, and `specAt` / `codeAt` locations relative to the cwd. `specs[].enforced` is
-  present (and `true`) for specs marked `enforced: true`. Bumping `version` is a breaking change.
+  present (and `true`) for specs marked `enforced: true`; `strict: true` is present for a `--strict` run. Bumping
+  `version` is a breaking change.
 - **JSON** (`diff`): `{ version: 1, base: { ref, commit }, head: "working tree", specs: [{ file, enforced?, diff }],
   summary }`, where `diff` is the `BehaviorDiff` from `@tsverify/ir` (field changes as `base` / `head` strings).
 - **SARIF 2.1.0**: one run, tool `tsverify`, one rule per finding category. Each result's primary location is the code
   site when there is one, else the spec; the other one is a related location. URIs are relative to the cwd under
   `%SRCROOT%`, so **run `tsverify` from the repository root** (or set `checkout_path` on the upload). The finding id is
   the `partialFingerprints` entry `tsverifyFindingId/v1`, so code scanning tracks a finding across pushes.
-  `properties` carry `behavior`, `transition`, `property`, `enforced`, `causedBy` (ids of the findings this one is
-  a consequence of) and a compact `trace` (one line per step).
+  `properties` carry `behavior`, `transition`, `property`, `enforced`, `strict` (an `unanalyzable` result that
+  `--strict` raised to `error`), `causedBy` (ids of the findings this one is a consequence of) and a compact `trace`
+  (one line per step).
 - **Markdown** (`diff`): one section per added, removed or changed behavior, with a one-line summary
   (`+1 transition, ~1 transition, −1 rule`), a Mermaid diagram of the head state machine with added (`+`, thick),
   removed (`−`, dotted) and changed (`~`) edges and states, and a `base → head` table per kind of change. The
@@ -61,15 +63,33 @@ errors (3).
 
 ## Workflow 2: blocking (fail on exit 1)
 
-Any violation fails the job:
+Any violation fails the job. Add `--strict` (recommended when blocking):
 
 ```sh
-tsverify check --format sarif > tsverify.sarif    # exit 1 fails the step
+tsverify check --strict --format sarif > tsverify.sarif    # exit 1 fails the step
 ```
 
 Upload the SARIF in a step that runs even when this one fails (`if: always()` on GitHub), so reviewers see why.
-Add `tsverify test` as a second blocking step to also run the generated tests (paths, forbidden states, guards and
-counterexample replays); its findings are generated-test results only.
+Add `tsverify test --strict` as a second blocking step to also run the generated tests (paths, forbidden states,
+guards and counterexample replays); its findings are generated-test results only, plus, with `--strict`, the
+`unanalyzable` ones.
+
+### `--strict`
+
+`check` and `test` report an `unanalyzable` finding as a **warning** by default: `tsverify` could not analyze
+something, such as a state field typed `string`, a state write whose value is not a literal, a read it cannot
+place in an atomic scope, or a model that hit `--max-states`. A warning never fails a run, so reshaping code into
+a form `tsverify` cannot read would quietly turn an error into a pass. `--strict` reports those warnings as
+**errors**, so the run exits 1:
+
+- JSON: their `severity` is `error`, they count in `summary.errors`, and the document has `strict: true`.
+- SARIF: their `level` is `error`, with `properties.strict: true`.
+- Pretty: they print as `✗ unanalyzable`, and a line says how many `--strict` raised.
+- `tsverify test --strict` also reports the static `unanalyzable` warnings (normally left to `check`), since the
+  generated tests cannot cover what the extractor could not read.
+- `unanalyzable` infos stay infos: a transition without `impl` is the spec's own choice, visible in review.
+
+Fix the code (or the spec) until a strict run is clean, rather than dropping the flag.
 
 ## Workflow 3: blocking only for enforced specs
 

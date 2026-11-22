@@ -34,7 +34,8 @@ describe("from-states", () => {
           "payment_succeeded: onPaymentSucceeded writes paid from any state (no status check before the write); the spec allows only pending_payment.",
         behavior: "Order lifecycle",
         transition: "payment_succeeded",
-        specAt: { file: "src/orders/order.behavior.yaml", line: 27, column: 3 },
+        // The first `from` item, where the allowed states are listed.
+        specAt: { file: "src/orders/order.behavior.yaml", line: 28, column: 11 },
         codeAt: { file: "src/payments/webhook.ts", line: 18, column: 5 },
         hint: "Check that status is 'pending_payment' before the write, inside the same atomic scope.",
       },
@@ -48,6 +49,22 @@ describe("from-states", () => {
     expect(finding?.message).toBe(
       "ship: shipOrder writes shipped from any state (status is not checked before the write); the spec allows only paid.",
     );
+  });
+
+  it("leaves an unknown from-state to the extractor's unanalyzable finding", () => {
+    // `values: "*"` (e.g. a `string`-typed field) is reported once, by the extractor.
+    expect(run(withFrom("ship", "*", false))).toEqual([]);
+    expect(run(withFrom("ship", "*", true))).toEqual([]);
+  });
+
+  it("points an unconstrained write at the transition without from locations", () => {
+    const spec = patchSpec(specModel(), "ship", ({ fromAt: _, ...t }) => t);
+    const [finding] = run(withFrom("ship", specModel().entity.states, true), spec);
+    expect(finding?.specAt).toEqual({
+      file: "src/orders/order.behavior.yaml",
+      line: 45,
+      column: 3,
+    });
   });
 
   it("accepts an unconstrained write when the spec allows any state", () => {

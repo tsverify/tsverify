@@ -90,6 +90,8 @@ export interface Write {
   /** A `db.transaction` scope around the read and the write. */
   transaction?: Pos;
   guards: { guard: string; at: Pos; dominates: boolean }[];
+  /** `CodeSites.guardSets`: the guard sets the paths to the write pass, when enumerated. */
+  guardSets?: string[][];
   effects: { effect: string; gate: string; at: Pos }[];
   /** Entity id and actor parameters of the impl, as `[param, ...path]`. */
   entityId: [number, ...string[]];
@@ -143,6 +145,7 @@ function buildTransition(spec: BehaviorModel, w: Write): Transition {
       at: loc(w.file, g.at),
       dominates: g.dominates,
     })),
+    ...(w.guardSets === undefined ? {} : { guardSets: w.guardSets }),
     effects: w.effects.map((e) => ({ ...callSite(w.file, e.gate, e.at), effect: e.effect })),
     ...(linked?.impl === undefined
       ? {}
@@ -378,13 +381,13 @@ export const VARIANT_CASES = {
         };
       }),
     ),
-  /** The status check is gone: the transaction always writes paid. */
+  /** The status check is gone: the transaction always writes paid, from the full union. */
   "b4-webhook-dup": () =>
     codeCase(
       patchWrite(cleanWrites(), "payment_succeeded", (w) => ({
         ...w,
         fromState: {
-          values: "*",
+          values: [...orderModel().entity.states],
           unconstrained: true,
           reason: "no status check before the write",
         },

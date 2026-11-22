@@ -7,6 +7,7 @@ import { type Pairing, pairingFinding } from "./finding";
  * or the write when no read was found. A spec with `atomic: false` accepts either. When the
  * adapter knows why a scoped-looking read and write still race (`sites.atomicNote`, e.g. a
  * Prisma `$transaction` at READ COMMITTED), that reason and its hint replace the generic ones.
+ * For `memory` persistence the fix is to keep the check and the write synchronous.
  */
 export function checkAtomicity(p: Pairing): Finding[] {
   const { t, code, sites } = p;
@@ -31,7 +32,10 @@ export function checkAtomicity(p: Pairing): Finding[] {
       message:
         `${t.name}: ${sites.function.name} reads ${read} and writes ${t.to} outside one ` +
         "atomic scope; the spec says atomic.",
-      hint: "Wrap the read and write in one transaction or use a conditional update.",
+      hint:
+        sites.persistence === "memory"
+          ? "Make the check and the write synchronous: no `await`/`yield` between reading the state and writing it."
+          : "Wrap the read and write in one transaction or use a conditional update.",
       codeAt: sites.read?.at ?? sites.write,
     }),
   ];

@@ -37,7 +37,7 @@ describe("validate", () => {
       "validate",
       INVALID_SPEC,
       CANONICAL_SPEC,
-      "packages/cli/test/fixtures",
+      "packages/cli/test/fixtures/invalid",
     ]);
     expect(r.code).toBe(2);
     expect(r.stdout).toContain("✗ 2 specs, 1 error, 0 warnings");

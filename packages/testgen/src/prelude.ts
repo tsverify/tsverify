@@ -3,7 +3,8 @@
  * generated replay test"):
  *
  * 1. fakes as plain top-level consts (a `vi.mock` factory runs lazily, after them)
- * 2. one `vi.mock` per client module (`bindings.clients`), relative to the generated file
+ * 2. one `vi.mock` per client module (`bindings.clients`), relative to the generated file, that
+ *    replaces only the bound exports and keeps the module's other exports (guards, helpers)
  * 3. the impls, imported dynamically after (1); a static import would break the mock factories
  * 4. the fixtures: `ID`, `ENTITY`, `ACTORS`
  */
@@ -129,12 +130,16 @@ export function prelude(ctx: Context, options: PreludeOptions): Prelude {
     "// (2) The modules that construct the clients (bindings.clients), relative to this file.",
   );
   for (const module of [...byModule.keys()].sort(compareStrings)) {
+    // Only the bound exports are replaced: guards and helpers exported beside a client stay real.
     const exports = (byModule.get(module) ?? [])
       .sort((a, b) => compareStrings(a.exportName, b.exportName))
       .map((e) => `${propertyKey(e.exportName)}: ${e.fake}.client`)
       .join(", ");
     lines.push(
-      `vi.mock(${JSON.stringify(relativeImport(outDir, module))}, () => ({ ${exports} }));`,
+      `vi.mock(${JSON.stringify(relativeImport(outDir, module))}, async (importOriginal) => ({`,
+      "  ...(await importOriginal<Record<string, unknown>>()),",
+      `  ${exports},`,
+      "}));",
     );
   }
 

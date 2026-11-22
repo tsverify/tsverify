@@ -38,6 +38,8 @@ export interface Report {
   command?: "test";
   /** `--enforced-only`: how many specs were left out because they are not `enforced: true`. */
   enforcedOnly?: { skipped: number };
+  /** `--strict`: how many `unanalyzable` warnings were reported as errors (`applyStrict`). */
+  strict?: { promoted: number };
 }
 
 export function allFindings(report: Report): Finding[] {
@@ -56,4 +58,26 @@ export function dedupeFindings(findings: readonly Finding[]): Finding[] {
 
 export function countSeverity(findings: readonly Finding[], severity: Severity): number {
   return findings.filter((f) => f.severity === severity).length;
+}
+
+/** Whether `--strict` reports `f` as an error: an `unanalyzable` warning. */
+export function isStrictPromoted(f: Finding): boolean {
+  return f.category === "unanalyzable" && f.severity === "warning";
+}
+
+/**
+ * `--strict`: every `unanalyzable` warning (code or a model tsverify could not fully analyze, so a
+ * finding may be hiding there) becomes an error, so the run exits 1. `unanalyzable` infos (a
+ * transition without `impl`, a choice the spec states) stay infos. Sets `report.strict`.
+ */
+export function applyStrict(report: Report): void {
+  let promoted = 0;
+  for (const spec of report.specs) {
+    spec.findings = spec.findings.map((f) => {
+      if (!isStrictPromoted(f)) return f;
+      promoted++;
+      return { ...f, severity: "error" };
+    });
+  }
+  report.strict = { promoted };
 }

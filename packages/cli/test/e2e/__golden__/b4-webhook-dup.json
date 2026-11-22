@@ -10,10 +10,10 @@
       "transition": "payment_succeeded",
       "specAt": {
         "file": "src/orders/order.behavior.yaml",
-        "line": 27,
-        "column": 3,
-        "endLine": 35,
-        "endColumn": 53
+        "line": 28,
+        "column": 11,
+        "endLine": 28,
+        "endColumn": 26
       },
       "codeAt": {
         "file": "src/payments/webhook.ts",

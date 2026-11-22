@@ -80,6 +80,63 @@ describe("clean orders app: path, forbidden and guard tests", () => {
   });
 });
 
+describe("by lists alternatives: guard tests per listed actor", () => {
+  /** `ship` by admin or customer (owner); `refund` by admin or system (no fixture). */
+  function alternatives(): BehaviorModel {
+    const model = spec();
+    for (const t of model.transitions) {
+      if (t.name === "ship") t.by = ["admin", "customer"];
+      if (t.name === "refund") t.by = ["admin", "system"];
+    }
+    const customer = model.actors.customer;
+    if (customer) customer.requires = [{ name: "owner", args: [], raw: "owner" }];
+    return model;
+  }
+  const result = generate({ spec: alternatives(), code: clean, findings: [], outDir: OUT });
+
+  it("tests each other listed actor on its own, and actors outside by as rejected", async () => {
+    const guards = result.tests.filter((t) => t.kind === "guard").map((t) => t.name);
+    expect(guards).toEqual([
+      "checkout as admin (not in by: customer) is rejected from draft",
+      "refund as customer (not in by: admin, system) is rejected from paid",
+      "ship as customer (one of by: admin, customer) succeeds from paid",
+    ]);
+    const file = result.files.find((f) => f.path === "guards.test.ts");
+    await expect(file?.content).toMatchFileSnapshot("__golden__/alternatives/guards.test.ts.txt");
+  });
+
+  it("keeps the path tests acting as the first listed actor with a fixture", () => {
+    const ship = result.tests.filter((t) => t.kind === "path" && t.transition === "ship");
+    expect(ship.map((t) => t.name)).toEqual(["ship: paid → shipped (as admin)"]);
+  });
+
+  it("explains what it cannot generate: failing one actor's guards, actors without fixture", () => {
+    const skipped = result.skipped.filter((f) => f.id.includes(":guards:"));
+    expect(skipped.map((f) => [f.id, f.message])).toEqual([
+      [
+        "not-generated:Order lifecycle:testgen:guards:expire",
+        expect.stringContaining("expireOrder takes no actor"),
+      ],
+      [
+        "not-generated:Order lifecycle:testgen:guards:payment_succeeded",
+        expect.stringContaining("takes no actor"),
+      ],
+      [
+        "not-generated:Order lifecycle:testgen:guards:refund:system",
+        "tsverify test generated no test of `refund` acting as system: system is one of the actors in its by (admin, system) but has no fixture",
+      ],
+      [
+        "not-generated:Order lifecycle:testgen:guards:refund:failing",
+        "tsverify test generated no test of `refund` acting as one of its actors but failing that actor's guards (admin: role(admin)): `fixtures.actors` holds one value per actor, which passes its guards. The static check covers these (guard-not-dominating).",
+      ],
+      [
+        "not-generated:Order lifecycle:testgen:guards:ship:failing",
+        "tsverify test generated no test of `ship` acting as one of its actors but failing that actor's guards (admin: role(admin); customer: owner): `fixtures.actors` holds one value per actor, which passes its guards. The static check covers these (guard-not-dominating).",
+      ],
+    ]);
+  });
+});
+
 describe("B3 (refund race): replay tests", () => {
   const findings = b3.findings as unknown as Finding[];
   const result = generate({

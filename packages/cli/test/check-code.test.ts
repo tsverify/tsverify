@@ -133,8 +133,85 @@ describe("check: code conformance", () => {
     const unconstrained = doc.findings.find((f) => f.category === "from-state-unconstrained");
     expect(unconstrained).toMatchObject({
       transition: "switch_on",
-      specAt: { file: "app/src/light.behavior.yaml", line: 11, column: 3 },
+      // The first `from` item.
+      specAt: { file: "app/src/light.behavior.yaml", line: 12, column: 11 },
       codeAt: { file: "app/src/light.ts", line: 7, column: 3 },
+    });
+  });
+
+  it("reports a string-typed state field once, as the extractor's unanalyzable", async () => {
+    const code = UNGUARDED_CODE.replace('status: "off" | "on" | "broken";', "status: string;");
+    const cwd = await tempSpecDir(lightProject("", code));
+    const r = await tsverify(["check", "--format", "json"], { cwd });
+    expect(r.code).toBe(0);
+    const findings = parse(r.stdout).findings.filter((f) => f.transition === "switch_on");
+    expect(findings.map((f) => [f.id, f.severity])).toEqual([
+      ["unanalyzable:Light:from-state:switch_on", "warning"],
+    ]);
+  });
+
+  describe("--strict", () => {
+    const stringTyped = () =>
+      tempSpecDir(
+        lightProject(
+          "",
+          UNGUARDED_CODE.replace('status: "off" | "on" | "broken";', "status: string;"),
+        ),
+      );
+
+    it("reports unanalyzable warnings as errors and exits 1 (json)", async () => {
+      const cwd = await stringTyped();
+      const r = await tsverify(["check", "--strict", "--format", "json"], { cwd });
+      expect(r.code).toBe(1);
+      const doc = parse(r.stdout);
+      expect(doc.strict).toBe(true);
+      expect(doc.summary).toEqual({ errors: 1, warnings: 0 });
+      expect(doc.findings.map((f) => [f.id, f.severity])).toEqual([
+        ["unanalyzable:Light:from-state:switch_on", "error"],
+        // A transition without impl is the spec's choice: it stays an info.
+        ["unanalyzable:Light:smash", "info"],
+      ]);
+    });
+
+    it("marks the raised results in SARIF and says so in pretty output", async () => {
+      const cwd = await stringTyped();
+      const sarif = await tsverify(["check", "--strict", "--format", "sarif"], { cwd });
+      expect(sarif.code).toBe(1);
+      const results = (
+        JSON.parse(sarif.stdout) as {
+          runs: [{ results: { ruleId: string; level: string; properties: object }[] }];
+        }
+      ).runs[0].results;
+      expect(results.map((x) => [x.ruleId, x.level, x.properties])).toEqual([
+        ["unanalyzable", "error", { behavior: "Light", transition: "switch_on", strict: true }],
+        ["unanalyzable", "note", { behavior: "Light", transition: "smash" }],
+      ]);
+      const pretty = await tsverify(["check", "--strict"], { cwd });
+      expect(pretty.code).toBe(1);
+      expect(pretty.stdout).toContain("✗ unanalyzable");
+      expect(pretty.stdout).toContain("--strict: 1 unanalyzable finding reported as an error.");
+      expect(pretty.stdout).toMatch(/✗ 1 spec, 1 error, 0 warnings/);
+    });
+
+    it("changes nothing on code it can analyze", async () => {
+      const cwd = await tempSpecDir(lightProject());
+      const r = await tsverify(["check", "--strict"], { cwd });
+      expect(r.code).toBe(0);
+      expect(r.stdout).not.toContain("--strict");
+    });
+
+    it("makes tsverify test report the static unanalyzable warnings, as errors", async () => {
+      const cwd = await stringTyped();
+      const plain = await tsverify(["test", "--format", "json"], { cwd });
+      expect(plain.code).toBe(0);
+      expect(parse(plain.stdout).findings.map((f) => f.category)).not.toContain("unanalyzable");
+      const r = await tsverify(["test", "--strict", "--format", "json"], { cwd });
+      expect(r.code).toBe(1);
+      const doc = parse(r.stdout);
+      expect(doc.strict).toBe(true);
+      expect(
+        doc.findings.filter((f) => f.severity !== "info").map((f) => [f.id, f.severity]),
+      ).toEqual([["unanalyzable:Light:from-state:switch_on", "error"]]);
     });
   });
 
@@ -269,5 +346,91 @@ describe("check: code conformance", () => {
     );
     // Findings stay relative to the cwd.
     expect(outcome?.findings.map((f) => f.specAt?.file)).toContain("app/src/light.behavior.yaml");
+  });
+});
+
+describe("check: by lists alternative actors (owner or admin)", () => {
+  const SPEC = `behavior: Order cancel
+entity:
+  name: Order
+  state: status
+  states: [paid, cancelled]
+  initial: paid
+  terminal: [cancelled]
+actors:
+  customer: { trust: authenticated, requires: owner }
+  admin: { trust: authenticated, requires: role(admin) }
+transitions:
+  cancel:
+    from: paid
+    to: cancelled
+    by: [customer, admin]
+    impl: src/cancel.ts#cancelOrder
+bindings:
+  guards:
+    owner: src/guards.ts#requireOwner
+    role(admin): src/guards.ts#requireRole("admin")
+`;
+  const GUARDS = `export interface Actor {
+  id: string;
+  roles: string[];
+}
+
+export function requireOwner(actor: Actor, order: { ownerId: string }): void {
+  if (order.ownerId !== actor.id) throw new Error("not the owner");
+}
+
+export function requireRole(actor: Actor, role: string): void {
+  if (!actor.roles.includes(role)) throw new Error(\`not \${role}\`);
+}
+`;
+  const cancel = (
+    guards: string,
+  ) => `import { type Actor, requireOwner, requireRole } from "./guards";
+
+export interface Order {
+  id: string;
+  ownerId: string;
+  status: "paid" | "cancelled";
+}
+
+export function cancelOrder(actor: Actor, order: Order): void {
+  const isAdmin = actor.roles.includes("admin");
+${guards}
+  if (order.status !== "paid") throw new Error("not paid");
+  order.status = "cancelled";
+}
+`;
+  const project = (guards: string) =>
+    tempSpecDir({
+      "tsconfig.json": TSCONFIG,
+      "src/order.behavior.yaml": SPEC,
+      "src/guards.ts": GUARDS,
+      "src/cancel.ts": cancel(guards),
+    });
+
+  it("accepts a path per actor: requireRole for admins, requireOwner otherwise", async () => {
+    const cwd = await project(
+      '  if (isAdmin) requireRole(actor, "admin");\n  else requireOwner(actor, order);',
+    );
+    const r = await tsverify(["check", "--format", "json"], { cwd });
+    expect(r.code).toBe(0);
+    expect(parse(r.stdout).findings).toEqual([]);
+  });
+
+  it("names the admin alternative when the admin path skips requireRole", async () => {
+    const cwd = await project("  void requireRole;\n  if (!isAdmin) requireOwner(actor, order);");
+    const r = await tsverify(["check", "--format", "json"], { cwd });
+    expect(r.code).toBe(1);
+    expect(parse(r.stdout).findings).toEqual([
+      expect.objectContaining({
+        id: "guard-not-dominating:Order cancel:cancel:path:{}",
+        message:
+          "cancel: cancelOrder reaches the write on a path that passes no guard; it must pass owner to act as customer, or role(admin) to act as admin.",
+        hint: "Call requireOwner (as customer) or requireRole (as admin) on every path from cancelOrder to the write, before any early return.",
+        // The requireOwner call that only some paths reach.
+        codeAt: expect.objectContaining({ file: "src/cancel.ts", line: 12, column: 17 }),
+      }),
+    ]);
   });
 });

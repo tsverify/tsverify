@@ -55,7 +55,7 @@ enforced: true
 | Key | Required | Notes |
 |---|---|---|
 | `trust` | yes | `untrusted` \| `authenticated` \| `signed-webhook` \| `internal` |
-| `requires` | no | guard or list of guards (see Guards); default `[]` |
+| `requires` | no | guard or list of guards (see Guards) this actor must pass on every transition it performs; default `[]` |
 
 ## `transitions.<name>`
 
@@ -63,13 +63,38 @@ enforced: true
 |---|---|---|---|
 | `from` | yes | | state, list of states, or `"*"` |
 | `to` | yes | | state |
-| `by` | yes | | actor or list of actors |
-| `requires` | no | `[]` | guard or list of guards |
+| `by` | yes | | actor or list of actors; a list means **any one** of them (see below) |
+| `requires` | no | `[]` | guard or list of guards every caller must pass, whichever actor it acts as |
 | `effects` | no | `[]` | list; each item is `name` (→ `exactly-once`) or `{ name: multiplicity }` with multiplicity `exactly-once` \| `at-least-once` \| `idempotent` |
 | `atomic` | no | `false` | state check + write are one indivisible step |
 | `idempotent` | no | `false` | the event may be delivered more than once |
 | `after` | no | | duration like `30m`, `2h`, `7d` (informational) |
 | `impl` | no | | `path/to/file.ts#symbol` |
+
+### Who may perform a transition: `by` and `requires`
+
+Each actor in `by` is an alternative. A call is authorized when it passes the transition's own `requires`
+**and** all the `requires` of at least one listed actor. The transition's `requires` applies to everyone; an
+actor's `requires` applies only to callers acting as that actor.
+
+```yaml
+actors:
+  customer: { trust: authenticated, requires: owner }
+  admin: { trust: authenticated, requires: role(admin) }
+
+transitions:
+  cancel:
+    from: paid
+    to: cancelled
+    by: [customer, admin]      # the order's owner, or an admin
+    requires: [verified]       # either way, the caller is verified
+    impl: src/orders/cancel.ts#cancelOrder
+```
+
+Code like `if (isAdmin(actor)) requireRole(actor, "admin"); else requireOwner(actor, order);` (plus a
+`verified` guard on every path) conforms: each path to the write passes `verified` and one actor's guards.
+Code that calls only `requireOwner` on some path and no guard on another does not
+(`guard-not-dominating`, naming what each actor is missing).
 
 ## Guards
 

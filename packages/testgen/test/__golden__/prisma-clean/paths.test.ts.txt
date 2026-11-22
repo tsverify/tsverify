@@ -17,9 +17,18 @@ const email = instrument.effects(s, { client: "email", calls: ["send"] });
 const stripe = instrument.effects(s, { client: "stripe", calls: ["refunds.create"] });
 
 // (2) The modules that construct the clients (bindings.clients), relative to this file.
-vi.mock("../../../src/db.ts", () => ({ prisma: prisma.client }));
-vi.mock("../../../src/notify/email.ts", () => ({ email: email.client }));
-vi.mock("../../../src/payments/stripe.ts", () => ({ stripe: stripe.client }));
+vi.mock("../../../src/db.ts", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  prisma: prisma.client,
+}));
+vi.mock("../../../src/notify/email.ts", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  email: email.client,
+}));
+vi.mock("../../../src/payments/stripe.ts", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  stripe: stripe.client,
+}));
 
 // (3) The impls, imported dynamically after (1).
 const { shipOrder } = await import("../../../src/admin/orders.ts");

@@ -44,12 +44,22 @@ export function fromStates(ctx: Context, linked: Linked): string[] {
   return from === "*" ? [...ctx.spec.entity.states] : [...from];
 }
 
-function pathBody(ctx: Context, linked: Linked, from: string, impl: string): string[] {
+/**
+ * Shared with the guard tests: seed `from`, call once (with `args`, default the permitted
+ * actor's), then the stored state is `to` and exactly the declared effects fired.
+ */
+export function pathBody(
+  ctx: Context,
+  linked: Linked,
+  from: string,
+  impl: string,
+  args = linked.args,
+): string[] {
   const t = linked.spec;
   const field = ctx.spec.entity.stateField;
   const lines = [
     `seed(${JSON.stringify(from)});`,
-    `await ${call(impl, linked.args)};`,
+    `await ${call(impl, args)};`,
     `expect(stored(), "stored ${field}").toBe(${JSON.stringify(t.to)});`,
   ];
   const declared: string[] = [];

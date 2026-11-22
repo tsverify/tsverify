@@ -252,8 +252,15 @@ const db = instrument.store(s, {
 const stripe = instrument.effects(s, { client: "stripe", calls: ["refunds.create"] });
 
 // (2) Mock the modules that construct the clients (Bindings.clients), relative to this file.
-vi.mock("../../src/db", () => ({ db: db.client }));
-vi.mock("../../src/payments/stripe", () => ({ stripe: stripe.client }));
+//     Only the bound export is replaced; the module's other exports (guards, helpers) stay real.
+vi.mock("../../src/db", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  db: db.client,
+}));
+vi.mock("../../src/payments/stripe", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  stripe: stripe.client,
+}));
 
 // (3) The impl, imported DYNAMICALLY after (1). A static import breaks the mock factories.
 const { refundOrder } = await import("../../src/orders/refund");

@@ -1,0 +1,39 @@
+# A guard (requireOwner) and a client bound as a bare function (sendMail) share src/services.ts.
+behavior: Parcel delivery
+
+entity:
+  name: Parcel
+  state: status
+  states: [packed, shipped]
+  initial: packed
+  terminal: [shipped]
+
+actors:
+  customer: { trust: authenticated, requires: owner }
+  courier: { trust: authenticated }
+
+transitions:
+  ship:
+    from: packed
+    to: shipped
+    by: customer
+    atomic: true
+    effects:
+      - email.shipped: exactly-once
+    impl: src/ship.ts#shipParcel
+
+bindings:
+  persistence: assign
+  clients:
+    db: { module: src/db.ts, export: db }
+    email: { module: src/services.ts, export: sendMail }
+  guards:
+    owner: src/services.ts#requireOwner
+  effects:
+    email.shipped: email
+
+fixtures:
+  entity: { id: p1, ownerId: u1 }
+  actors:
+    customer: { id: u1 }
+    courier: { id: u2 }

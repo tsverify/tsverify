@@ -34,6 +34,17 @@ describe("atomicity", () => {
     ]);
   });
 
+  it("tells memory persistence to keep the check and the write synchronous", () => {
+    const { spec, code } = VARIANT_CASES["b3-refund-race"]();
+    for (const t of code.transitions) if (t.sites) t.sites.persistence = "memory";
+    expect(compare(spec, code).map((f) => [f.id, f.hint])).toEqual([
+      [
+        "non-atomic:Order lifecycle:refund",
+        "Make the check and the write synchronous: no `await`/`yield` between reading the state and writing it.",
+      ],
+    ]);
+  });
+
   it("accepts atomic code for a spec that does not require it (B6)", () => {
     const { spec, code } = VARIANT_CASES["b6-spec-race"]();
     expect(compare(spec, code)).toEqual([]);

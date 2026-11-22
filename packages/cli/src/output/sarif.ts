@@ -95,6 +95,8 @@ export interface SarifProperties {
   property?: string;
   /** The finding's spec says `enforced: true`. */
   enforced?: true;
+  /** `--strict` raised this `unanalyzable` warning to an error. */
+  strict?: true;
   /** Ids of the findings this one is a consequence of (their `partialFingerprints`). */
   causedBy?: string[];
   /** The counterexample, one `traceToText` line per step. */
@@ -103,7 +105,9 @@ export interface SarifProperties {
 
 export function toSarif(report: Report, cwd: string): SarifLog {
   const results = report.specs.flatMap((spec) =>
-    spec.findings.map((f) => toResult(f, spec.file, spec.enforced === true)),
+    spec.findings.map((f) =>
+      toResult(f, spec.file, spec.enforced === true, report.strict !== undefined),
+    ),
   );
   return {
     $schema: "https://json.schemastore.org/sarif-2.1.0.json",
@@ -140,7 +144,7 @@ export function formatSarif(report: Report, cwd: string): string {
  * else the spec; the other one is a related location. A finding with neither points at its spec
  * file, since code scanning needs a location for every result.
  */
-function toResult(f: Finding, specFile: string, enforced: boolean): SarifResult {
+function toResult(f: Finding, specFile: string, enforced: boolean, strict: boolean): SarifResult {
   const primary = f.codeAt ?? f.specAt ?? { file: specFile, line: 1, column: 1 };
   const related =
     f.codeAt && f.specAt
@@ -151,6 +155,8 @@ function toResult(f: Finding, specFile: string, enforced: boolean): SarifResult 
   if (f.transition !== undefined) properties.transition = f.transition;
   if (f.property !== undefined) properties.property = f.property;
   if (enforced) properties.enforced = true;
+  // Only `--strict` makes an `unanalyzable` finding an error.
+  if (strict && f.category === "unanalyzable" && f.severity === "error") properties.strict = true;
   if (f.causedBy !== undefined && f.causedBy.length > 0) properties.causedBy = [...f.causedBy];
   if (f.trace) {
     const { model, property, kind } = f.trace;

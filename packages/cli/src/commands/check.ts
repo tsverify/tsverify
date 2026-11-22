@@ -5,7 +5,7 @@ import { type LoadedSpec, loadSpecs, resolveSpecFiles, selectEnforced } from "..
 import type { Io } from "../io";
 import { formatReport, parseFormat } from "../output/format";
 import { resolveProjectDir } from "../project-root";
-import { allFindings, dedupeFindings, type Report, type SpecReport } from "../report";
+import { allFindings, applyStrict, dedupeFindings, type Report, type SpecReport } from "../report";
 
 export interface CheckCommandOptions {
   /** Raw from cac; validated by `parseFormat`. */
@@ -18,14 +18,17 @@ export interface CheckCommandOptions {
   project?: unknown;
   /** Keep only specs with `enforced: true` (and invalid ones, which may be enforced). */
   enforcedOnly?: unknown;
+  /** Report `unanalyzable` warnings as errors (`applyStrict`). */
+  strict?: unknown;
 }
 
 /**
  * `tsverify check [paths…]`, per spec: validate it, model-check it, then (unless `--spec-only`)
  * extract the code model from its project, compare it with the spec and model-check it
  * (`checkCode`). Invalid specs are reported and skipped. `--enforced-only` keeps only
- * `enforced: true` specs (and invalid ones); none left is an empty run (exit 0). Exit 0, 1 on
- * violations, 2 on invalid input (which takes precedence).
+ * `enforced: true` specs (and invalid ones); none left is an empty run (exit 0). `--strict`
+ * reports `unanalyzable` warnings as errors. Exit 0, 1 on violations, 2 on invalid input (which
+ * takes precedence).
  */
 export async function checkCommand(
   io: Io,
@@ -34,6 +37,7 @@ export async function checkCommand(
 ): Promise<ExitCode> {
   const format = parseFormat(options.format ?? "pretty");
   const { report } = await runCheck(io.cwd, paths, options);
+  if (options.strict === true) applyStrict(report);
   io.stdout(formatReport(report, format, io));
   return exitCodeFor(allFindings(report));
 }
