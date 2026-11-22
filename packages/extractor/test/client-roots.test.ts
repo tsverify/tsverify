@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractFixture, libBindings, orderSpec, transitionOf } from "./helpers";
+import { extractFixture, libBindings, orderSpec, transition, transitionOf } from "./helpers";
 
 function effectSites(name: string, result: ReturnType<typeof extractFixture>) {
   return transitionOf(result, name).sites?.effects.map((e) => [e.effect, e.gate, e.path]);
@@ -43,5 +43,118 @@ describe("effects through a bare exported function", () => {
     s.bindings.effects = {};
     const result = extractFixture("effect-function", s);
     expect(effectSites("shipViaAlias", result)).toEqual([["email", "email", ""]]);
+  });
+});
+
+describe("injected clients (by declared type)", () => {
+  describe("prisma: a service class with constructor injection", () => {
+    const bindings = libBindings();
+    bindings.persistence = "prisma";
+    bindings.clients = {
+      db: { module: "../_prisma/db.ts", export: "prisma" },
+      stripe: { module: "../_lib/clients.ts", export: "stripe" },
+    };
+    bindings.effects = { "stripe.refund": "stripe.refunds.create" };
+    const impl = (m: string) => `src/order-service.ts#OrderService.${m}`;
+    const result = extractFixture(
+      "injected-prisma",
+      orderSpec(
+        [
+          { name: "ship", impl: impl("ship"), to: "shipped" },
+          { name: "refund", impl: impl("refund"), to: "refunded" },
+          { name: "cancel", impl: impl("cancel"), to: "cancelled", from: ["draft"] },
+        ],
+        bindings,
+      ),
+    );
+    const t = (name: string) => transitionOf(result, name);
+
+    it("finds every write through `this.prisma` / `this.db`", () => {
+      expect(result.model?.transitions.map((x) => x.name)).toEqual(["cancel", "refund", "ship"]);
+    });
+
+    it("a parameter property: conditional update, atomic, from-state from `where`", () => {
+      expect(t("ship")).toMatchObject({ atomic: true, from: ["paid"], to: "shipped" });
+      expect(t("ship").sites?.atomic?.gate).toBe("db.order.update");
+    });
+
+    it("read and commit through the field, effect through an injected SDK", () => {
+      const r = t("refund");
+      expect(r).toMatchObject({ atomic: false, from: ["paid"] });
+      expect(r.sites?.read?.gate).toBe("db.order.findUnique");
+      expect(r.sites?.commit?.gate).toBe("db.order.update");
+      expect(effectSites("refund", result)).toEqual([
+        ["stripe.refund", "stripe.refunds.create", "refunds.create"],
+      ]);
+    });
+
+    it("a field assigned in the constructor opens the transaction scope", () => {
+      const r = t("cancel");
+      expect(r).toMatchObject({ atomic: true, from: ["draft"] });
+      expect(r.sites?.read?.gate).toBe("db.order.findUniqueOrThrow");
+    });
+  });
+
+  describe("assign: `deps` parameter and destructured context", () => {
+    const result = extractFixture(
+      "injected-assign",
+      orderSpec([
+        { name: "ship", impl: "src/deps.ts#shipWithDeps", to: "shipped" },
+        { name: "refund", impl: "src/deps.ts#refundWithContext", to: "refunded" },
+      ]),
+    );
+
+    it("`deps.db.transaction` scopes the read and commit; `deps.email.send` is an effect", () => {
+      const r = transitionOf(result, "ship");
+      expect(r).toMatchObject({ atomic: true, from: ["paid"] });
+      expect(r.sites?.read?.gate).toBe("db.orders.get");
+      expect(r.sites?.storage).toEqual({ client: "db", collection: "orders", key: "id" });
+      expect(effectSites("ship", result)).toEqual([["email.receipt", "email.send", "send"]]);
+    });
+
+    it("a destructured binding typed as the client's interface; a look-alike type is not a client", () => {
+      const r = transitionOf(result, "refund");
+      expect(r).toMatchObject({ atomic: false, from: ["paid"] });
+      expect(r.sites?.read?.gate).toBe("db.orders.get");
+      expect(r.sites?.commit?.gate).toBe("db.orders.save");
+      expect(effectSites("refund", result)).toEqual([["audit.log", "audit.log", "log"]]);
+    });
+  });
+
+  describe("memory: an entity class with an injected event bus", () => {
+    const bindings = libBindings();
+    bindings.persistence = "memory";
+    bindings.clients = { bus: { module: "src/bus.ts", export: "bus" } };
+    bindings.guards = {};
+    bindings.effects = { "job.started": "bus.publish" };
+    const spec = orderSpec([], bindings);
+    spec.entity = {
+      name: "Worker",
+      stateField: "status",
+      states: ["done", "failed", "queued", "running"],
+      initial: "queued",
+      terminal: ["done", "failed"],
+    };
+    spec.transitions = [
+      transition({
+        name: "start",
+        impl: "src/worker.ts#Worker.start",
+        from: ["queued"],
+        to: "running",
+        effects: [{ name: "job.started", multiplicity: "at-least-once" }],
+      }),
+    ];
+    const result = extractFixture("injected-memory", spec);
+
+    it("`this.bus.publish` is the bound effect; `this.tracer.publish` (another type) is not", () => {
+      expect(effectSites("start", result)).toEqual([["job.started", "bus.publish", "publish"]]);
+      expect(transitionOf(result, "start")).toMatchObject({ atomic: true, from: ["queued"] });
+    });
+
+    it("matches no client when two bound clients share the receiver's type", () => {
+      const both = structuredClone(spec);
+      both.bindings.clients.audit = { module: "src/bus.ts", export: "auditBus" };
+      expect(effectSites("start", extractFixture("injected-memory", both))).toEqual([]);
+    });
   });
 });
