@@ -1,0 +1,655 @@
+# Writing behavior specs
+
+This guide is for coding agents and the people who work with them. With it and `tsv --help`, you can write a
+`*.behavior.yaml` spec for new or existing TypeScript code and have `tsv check` verify it. Every key is listed in
+the [format reference](behavior-format.md). CI setups are in [workflows](workflows.md).
+
+There is no `tsv infer`. You write the spec, and `tsv` checks it against the code. For existing code, write the
+spec for what the code **should** do, then let `tsv check` tell you where the code does something else.
+
+**Contents:** 1 [When and at which scope](#1-when-to-write-a-spec-and-at-which-scope) ·
+2 [Anatomy](#2-anatomy-of-a-spec) · 3 [Commands and exit codes](#3-commands-and-exit-codes) ·
+4 [Spec first (new code)](#4-spec-first-new-code) · 5 [As-is specs (existing code)](#5-as-is-specs-for-existing-code) ·
+6 [Reading findings](#6-reading-findings) · 7 [Code shapes tsv understands](#7-code-shapes-tsv-understands) ·
+8 [Fixtures for `tsv test`](#8-fixtures-for-tsv-test) · 9 [Editor support](#9-editor-support-json-schema) ·
+10 [`enforced` and CI](#10-enforced-and-ci) · 11 [Common mistakes](#11-common-mistakes) ·
+12 [Checklist](#12-checklist-before-you-open-the-pr)
+
+---
+
+## 1. When to write a spec, and at which scope
+
+Write a spec when an entity has a **state field** (`status`, `state`, `phase`…) that more than one function
+changes, and at least one of these is true:
+
+| Signal in the code | What `tsv` checks for you |
+|---|---|
+| Money, emails, or external API calls happen on a state change | each effect fires on the right transitions, and at most once if it is `exactly-once` |
+| Read the state, check it, then write it, on a path concurrent requests can take | the check and the write are `atomic` |
+| Webhooks, queue consumers, retries | redelivery is harmless (`idempotent`) |
+| Different callers (customer, admin, webhook, cron) | each caller's guards run before the write |
+| A transition that must never happen (refund after ship) | `rules` hold in every reachable state |
+
+Skip it for stateless functions, CRUD without a lifecycle, and fields that only one function ever writes.
+
+**Scope: entity first.** v1 has a single scope, `kind: entity`: one entity type, one state field, one file.
+The function, flow, system and policy scopes are planned. If an entity has two independent state fields
+(`status` and `fulfillment`), write two specs.
+
+**Where:** put the spec next to the entity's type, named `<entity>.behavior.yaml` (`src/orders/order.behavior.yaml`).
+It must sit inside the TypeScript project that contains the code. The project root is the nearest directory at or
+above the spec that has a `tsconfig.json`, and every path in the spec is relative to it.
+
+---
+
+## 2. Anatomy of a spec
+
+A complete spec, for the invoice code in [§5.3](#53-worked-example):
+
+```yaml
+# tsv:example
+behavior: Invoice lifecycle
+summary: A customer finalizes a draft; the payment webhook marks it paid; an admin can void it.
+
+entity:
+  name: Invoice # the TypeScript type (or Prisma model) name
+  state: status # the field that holds the state
+  states: [draft, open, paid, void]
+  initial: draft
+  terminal: [paid, void]
+
+actors:
+  customer: { trust: untrusted }
+  admin: { trust: authenticated, requires: role(admin) }
+  provider: { trust: signed-webhook }
+
+transitions:
+  finalize:
+    from: draft
+    to: open
+    by: customer
+    requires: [owner]
+    atomic: true
+    impl: src/invoices/actions.ts#finalizeInvoice
+
+  pay:
+    from: open
+    to: paid
+    by: provider
+    idempotent: true
+    atomic: true
+    effects:
+      - email.receipt: exactly-once
+    impl: src/invoices/actions.ts#onInvoicePaid
+
+  void:
+    from: [draft, open]
+    to: void
+    by: admin
+    atomic: true
+    effects: [payments.cancel]
+    impl: src/invoices/actions.ts#voidInvoice
+
+rules:
+  - name: A paid invoice is never voided
+    never: status == void and count(effect email.receipt) > 0
+
+bindings:
+  persistence: assign
+  clients:
+    db: { module: src/db.ts, export: db }
+    email: { module: src/email.ts, export: email }
+    payments: { module: src/payments.ts, export: payments }
+  guards:
+    owner: src/auth.ts#requireOwner
+    role(admin): src/auth.ts#requireRole("admin")
+  effects:
+    email.receipt: email.send
+    payments.cancel: payments.cancelIntent
+
+fixtures:
+  entity: { id: inv_1, ownerId: u1, email: u1@example.com }
+  actors:
+    customer: { id: u1, roles: [] }
+    admin: { id: a1, roles: [admin] }
+  args:
+    pay: [{ invoiceId: $id }]
+```
+
+| Section | Answers | Comes from |
+|---|---|---|
+| `entity` | What has a lifecycle? | The type and its literal-union (or enum) state field |
+| `actors` | Who can trigger changes, and how far do we trust them? | Route handlers, webhook handlers, jobs |
+| `transitions` | Which state changes are allowed: from where, to where, by whom, with which guards and effects? | Every function that writes the state field |
+| `rules` | What must always, never, or eventually be true? | Business invariants, written as rule expressions |
+| `concurrency` | How many concurrent invocations to explore (default 2 per transition) | Raise it only for a specific race |
+| `bindings` | Which code objects are the database, the effect clients, and the guards? | Imports used by the impls |
+| `fixtures` | Which values `tsv test` uses to call the real code | Test data |
+
+Trust levels, and what `tsv` does with each:
+
+| `trust` | Use for | Built-in check |
+|---|---|---|
+| `untrusted` | End users, public endpoints | every transition it performs needs a guard (`untrusted-guarded`) |
+| `authenticated` | Staff or service users whose identity is verified; authorization still needs a guard | none; put role guards in the actor's `requires` |
+| `signed-webhook` | Verified third-party callbacks (Stripe, GitHub) | every transition it performs must be `idempotent: true` (`webhook-idempotent`) |
+| `internal` | Cron jobs, queue workers, your own services | none |
+
+Rule expressions see only `status` and effect counts. They cover one entity instance, and effect counts cover
+that instance's whole lifetime:
+
+```yaml
+rules:
+  - name: Refund at most once
+    always: count(effect stripe.refund) <= 1
+  - name: Unpaid orders do not linger
+    eventually: status != pending_payment
+  - name: Shipped orders are never refunded
+    never: status == shipped and count(effect stripe.refund) > 0
+```
+
+The grammar is `status == S`, `status != S`, `status in [S, …]`, `count(effect E) <op> N`, `true`, `false`,
+`and`, `or`, `not`, `implies` and parentheses ([format reference](behavior-format.md#rules)).
+
+---
+
+## 3. Commands and exit codes
+
+| Command | Does | Use it |
+|---|---|---|
+| `tsv validate [paths…]` | Parse and validate specs only | After every spec edit (fast) |
+| `tsv check --spec-only [paths…]` | Plus model-check the spec (design bugs, with counterexamples) | Before writing code |
+| `tsv check [paths…]` | Plus extract the code's behavior and compare | After writing code, and in CI |
+| `tsv test [paths…]` | Generate and run vitest tests from spec + code (paths, forbidden transitions, guards, replays of counterexamples) | To confirm findings in the real code |
+| `tsv diff --base <ref> [paths…]` | Behavior diff against a git ref (Markdown + Mermaid) | In PRs |
+| `tsv render <spec> --mermaid\|--matrix\|--summary` | Diagram, permission matrix, plain-English summary | To review a spec |
+| `tsv schema` | Print the JSON Schema of `*.behavior.yaml` | Editor setup ([§9](#9-editor-support-json-schema)) |
+
+Paths default to the current directory, which is searched for `**/*.behavior.yaml`. Add `--format json` when a
+program reads the output: each finding has a stable `id`, plus `category`, `severity`, `message`, `hint`,
+`specAt` and `codeAt`. Run `tsv` from the repository root so that locations are short and SARIF paths resolve.
+
+| Exit | Meaning | What to do |
+|---|---|---|
+| `0` | No error-severity findings (warnings and info never fail a run) | Done. Still read the warnings |
+| `1` | Violations: behavior bugs or conformance mismatches | Fix them ([§6](#6-reading-findings)) |
+| `2` | Invalid input: bad spec, broken `impl`/client/guard link, bad CLI usage. Takes precedence over 1 | Fix the spec or the command |
+| `3` | Internal error in `tsv` | Report it. Don't work around it by editing the spec |
+
+---
+
+## 4. Spec first (new code)
+
+1. **Write the spec** next to where the entity's type will live: entity, actors, transitions with `from`, `to`,
+   `by`, `requires`, `effects`, and `atomic: true` wherever the transition checks state before writing (almost
+   always). Add `rules` for the invariants you care about. Bindings and `impl` can wait.
+2. **`tsv validate`**, then **`tsv check --spec-only`**, until both exit 0. A `spec-property` finding here is a
+   design bug, and it comes with a trace. Fix the design, not the rule.
+3. **Implement**, in the shapes of [§7](#7-code-shapes-tsv-understands): one exported function per transition,
+   the state as a literal union, clients as imported module-level objects.
+4. **Bind it:** add `impl` to every transition, plus `bindings.clients`, `bindings.guards` and `bindings.effects`.
+5. **`tsv check`** until it exits 0. Fix the code, not the spec ([§6](#6-reading-findings)).
+6. **Add `fixtures`** and run **`tsv test`** ([§8](#8-fixtures-for-tsv-test)).
+7. Commit the spec and code together. In the PR, explain the behavior, and let reviewers see `tsv diff`.
+
+---
+
+## 5. As-is specs for existing code
+
+> **The rule:** write the spec for what the code **should** do. The findings are your bug list. Never weaken a
+> spec (widen `from`, drop a guard, an effect, `atomic` or a rule, relax `exactly-once`) just so `tsv check`
+> passes. If you are unsure what the intent is, keep the strict version and leave a note for a human. A finding is
+> cheaper than a silent bug.
+
+### 5.1 Step by step
+
+| # | Step | How |
+|---|---|---|
+| 1 | **Find the entity and its state field** | Look for a `type XStatus = "a" \| "b" …` union, an `enum`, or a Prisma `enum` used by a model field. `entity.name` = the type name (`assign`, `memory`) or the Prisma model name (`prisma`). `entity.state` = the exact property name |
+| 2 | **List the states from the type** | Copy every member of the union into `states`, in lifecycle order. `initial` = the value new records are created with (look at `create` calls or object literals). `terminal` = states nothing leaves |
+| 3 | **Find every write and its function** | Write a skeleton spec (entity with **every** state of the type, one actor, `transitions: {}`, `bindings.persistence` and `bindings.clients`) and run `tsv check`. Every write it recognizes is reported as `undeclared-transition: <function> writes <from> → <to>`, with the `impl` to use. Cross-check with grep ([§5.2](#52-find-writes-with-grep)), because writes in shapes `tsv` doesn't recognize are not listed |
+| 4 | **One transition per entry point** | Name it after the business event (`refund`, not `refundOrder`). `impl` = the exported function that callers invoke (route handler, job, webhook handler, service method: `file.ts#Class.method`). Helpers it calls (up to 8 levels deep) are followed |
+| 5 | **Read the from-states off the guards** | The checks before the write: `if (x.status !== "paid") throw` → `from: paid`. The inventory from step 3 shows what the code currently allows. Write what it *should* allow. A write with no check at all gets the intended `from`, and `tsv check` will report `from-state-unconstrained` |
+| 6 | **Identify actors and trust** | Who calls each entry point: a logged-in end user (`untrusted`), staff (`authenticated` + a role guard in the actor's `requires`), a verified webhook (`signed-webhook`), a job or worker (`internal`). One actor per kind of caller |
+| 7 | **Guards** | Functions that throw unless the caller is allowed, called before the write: `requireOwner(actor, order)`, `requireRole(actor, "admin")`. Guards for one actor go in its `requires`; guards for one transition go in the transition's `requires`. A guard that *should* run but doesn't still goes in the spec |
+| 8 | **Effects and their multiplicity** | Calls on external clients on the transition's path: payments, email, queues, HTTP APIs. Name each effect by its meaning (`email.receipt`, `email.shipped`) and map names to calls in `bindings.effects`; two names may map to the same call. Multiplicity: `exactly-once` (default; money, emails) means at most once per entity, over its whole life; `at-least-once` means repeats are fine; `idempotent` means the receiver deduplicates |
+| 9 | **`atomic`** | `atomic: true` when the read, the state check and the write must not interleave with another request. That is almost every transition that checks the state. Code that achieves it: a transaction callback, a conditional update (`updateMany({ where: { id, status: "paid" } })`), or, in memory, no `await` between the check and the write ([§7](#7-code-shapes-tsv-understands)). Set it when the code *should* be atomic, even if it isn't |
+| 10 | **`idempotent`** | `idempotent: true` for transitions that can be delivered more than once (webhooks, queues with retries). The code must make redelivery harmless, usually through the from-state check |
+| 11 | **Rules** | The invariants a reviewer would state in words: "refund at most once", "a shipped order is never refunded", "unpaid orders do not linger" |
+| 12 | **Bind** | `bindings.persistence` (`assign`, `prisma` or `memory`), `bindings.clients` (database and every effect client: `{ module, export }`), `bindings.guards` (`name: path#function` or `name(arg): path#function("arg")`), `bindings.effects` (effect name → `client.member.path`) |
+| 13 | **Run `tsv validate`, then `tsv check`** | Exit 2: fix the spec or the links first. Exit 1: triage each finding with [§6](#6-reading-findings). For each finding, either fix the code, or confirm with a human that the intent is different and change the spec, saying why in the PR |
+| 14 | **Add fixtures and run `tsv test`** | Replays turn counterexamples into failing tests against the real code ([§8](#8-fixtures-for-tsv-test)) |
+
+The skeleton for step 3:
+
+```yaml
+# tsv:example
+behavior: Invoice lifecycle
+entity:
+  name: Invoice
+  state: status
+  states: [draft, open, paid, void]
+  initial: draft
+  terminal: [paid, void]
+actors:
+  system: { trust: internal }
+transitions: {}
+bindings:
+  persistence: assign
+  clients:
+    db: { module: src/db.ts, export: db }
+```
+
+It reports something like the following. The `spec-property` findings (stuck and unreachable states) go away once
+you add transitions:
+
+```text
+✗ undeclared-transition  src/invoices/actions.ts:12:5
+  finalizeInvoice writes draft → open, which no spec transition declares.
+  hint: Declare this transition in the spec with impl: src/invoices/actions.ts#finalizeInvoice, or remove the write.
+✗ undeclared-transition  src/invoices/actions.ts:36:3
+  voidInvoice writes {draft, open} → void, which no spec transition declares.
+```
+
+### 5.2 Find writes with grep
+
+| Persistence | Command (replace `status`) | What to look at |
+|---|---|---|
+| `assign`, `memory` | `grep -rnE '\.status\s*=[^=]' src` | assignments |
+| `assign` | `grep -rnE 'status:\s*["A-Z]' src` | spreads passed to a save call: `save({ ...x, status: "paid" })` |
+| `prisma` | `grep -rnE '\.(update\|updateMany\|updateManyAndReturn\|upsert)\(' src` | calls whose `data` (or `update` for `upsert`) sets `status` |
+| any | `grep -rnE 'status' src \| grep -v test` | anything the two above missed (raw SQL, helpers taking the status as a parameter) |
+
+A write that grep finds but `tsv check` doesn't list is in a shape `tsv` doesn't understand. Either restructure
+it ([§7.5](#75-restructuring-unanalyzable-code)) or note it in the PR as unchecked.
+
+### 5.3 Worked example
+
+Existing code (`src/invoices/actions.ts`). `db`, `email` and `payments` are imported from their own modules, and
+the guards from `src/auth.ts`:
+
+```ts
+export async function finalizeInvoice(actor: Actor, id: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    const invoice = await tx.invoices.get(id);
+    requireOwner(actor, invoice);
+    if (invoice.status !== "draft") throw new Error("not a draft");
+    invoice.status = "open";
+    await tx.invoices.save(invoice);
+  });
+}
+
+export async function onInvoicePaid(event: { invoiceId: string }): Promise<void> {
+  const paid = await db.transaction(async (tx) => {
+    const invoice = await tx.invoices.get(event.invoiceId);
+    if (invoice.status !== "open") return undefined;
+    invoice.status = "paid";
+    await tx.invoices.save(invoice);
+    return invoice;
+  });
+  if (paid === undefined) return;
+  await email.send({ to: paid.email, template: "receipt" });
+}
+
+export async function voidInvoice(actor: Actor, id: string): Promise<void> {
+  requireRole(actor, "admin");
+  const invoice = await db.invoices.get(id);
+  if (invoice.status === "paid" || invoice.status === "void") throw new Error("too late");
+  await payments.cancelIntent(invoice.id);
+  invoice.status = "void";
+  await db.invoices.save(invoice);
+}
+```
+
+Reading it with the steps above: the entity is `Invoice.status` (`draft | open | paid | void`). There are three
+writes, one per exported function. The from-states are `draft`, `open`, and `draft | open` (what remains after
+the `paid`/`void` check). The callers are a customer (owner check), the payment provider's webhook (it can
+redeliver, so `idempotent`), and an admin (role check). The effects are the receipt email and the payment-intent
+cancellation. Each should happen once, and every transition should be atomic. `voidInvoice` *should* be atomic
+too, so the spec says so. The result is the spec in [§2](#2-anatomy-of-a-spec). `tsv check` reports:
+
+```text
+✗ non-atomic  src/invoices/invoice.behavior.yaml:36:3 · src/invoices/actions.ts:33:25
+  void: voidInvoice reads the entity (db.invoices.get) and writes void outside one atomic scope; the spec says atomic.
+  ↳ consequence: ✗ implementation-property … Exactly-once effect `payments.cancel` fires 2 times for one Invoice.
+  ↳ consequence: ✗ implementation-property … Rule "A paid invoice is never voided" … is violated
+      step 2  void#1 read → proceed  status=open
+      step 3  pay#1 atomic → proceed  status=paid  email.receipt=1
+      step 4  void#1 write  status=void  ✗ rule:A paid invoice is never voided
+```
+
+That is a real bug: an admin can void an invoice that was paid a moment earlier. `tsv test` replays that trace
+against the real code and reports `replay-confirmed`. The fix belongs in the code, not the spec. Do the read,
+check and write in one transaction, and cancel the intent after the commit:
+
+```ts
+export async function voidInvoice(actor: Actor, id: string): Promise<void> {
+  requireRole(actor, "admin");
+  const voided = await db.transaction(async (tx) => {
+    const invoice = await tx.invoices.get(id);
+    if (invoice.status === "paid" || invoice.status === "void") throw new Error("too late");
+    invoice.status = "void";
+    await tx.invoices.save(invoice);
+    return invoice;
+  });
+  await payments.cancelIntent(voided.id);
+}
+```
+
+`tsv check` and `tsv test` then exit 0.
+
+---
+
+## 6. Reading findings
+
+```text
+Invoice lifecycle
+  ✗ non-atomic  <spec file:line> · <code file:line>     ← category, where in the spec, where in the code
+    void: voidInvoice reads … outside one atomic scope   ← message
+    hint: Wrap the read and write in one transaction …   ← suggested fix
+    ↳ consequence: ✗ implementation-property …           ← caused by the finding above it
+      trace: step 0 … step 4 … ✗ <property>              ← counterexample, one step per action
+```
+
+`✗` is an error, `⚠` a warning, `ℹ` info. **Fix root causes first.** A `↳ consequence` goes away with its cause
+(`causedBy` in JSON). A trace step `t#2 read → proceed` means the second concurrent invocation of `t` read the state
+and passed its check. `write` is its write, and `atomic` is a read and write in one step. `(duplicate delivery)` marks
+a redelivered `idempotent` event.
+
+### 6.1 Every finding category
+
+| Category | Severity (exit) | Means | Do this |
+|---|---|---|---|
+| `invalid-spec` | error (2), or warning | The spec doesn't parse or validate: unknown key, unknown state or actor, rule syntax, unbound guard. Warnings: a terminal state with an outgoing transition, an unused guard binding | Fix the YAML at the location. Most messages carry a "did you mean" |
+| `broken-link` | error (2) | `impl`, a client or a guard binding doesn't resolve: missing file, file not in the tsconfig, missing export, not a function with a body, no `tsconfig.json` | Fix the path (project-root relative) or the symbol (`file.ts#name`, `file.ts#Class.method`) |
+| `spec-property` | error (1), or warning | The **spec** breaks a property, as a design bug. See [§6.2](#62-built-in-properties) | Fix the design (`atomic`, `from`, `idempotent`, a missing transition). Don't delete the rule |
+| `implementation-property` | error (1) | The **code's** model breaks a property, with a trace. Usually a `↳ consequence` of a conformance finding | Fix the root cause. If it stands alone, the code reaches a bad state the spec forbids. Fix the code |
+| `undeclared-transition` | error (1) | The code writes a state change that no transition declares, or a linked function writes a different `to` | A legit transition: declare it with that `impl`. A bug (B1 "reopen"): remove the write. Test or seed code: keep it out of the tsconfig `include` |
+| `missing-transition` | error (1) | A transition has `impl`, but nothing reached from it writes `state = to` | Wrong `impl`, the write is in a shape `tsv` misses (check the `unanalyzable` warnings), or the code really doesn't do it |
+| `from-state-unconstrained` | error (1) | The code writes `to` from **any** state: no check narrows the state before the write, or the field is typed `string` | Add the check (`if (x.status !== "paid") throw`) in the same atomic scope, or put the state in the update's `where`. If a check exists, it's in a shape `tsv` can't read ([§7.1](#71-all-persistences)) |
+| `from-state-mismatch` | error (1), or warning | Error: the code allows extra from-states. Warning: the code is stricter than the spec | Error: tighten the code's check. Warning: confirm which is intended. Narrow the spec only if the stricter code is the intent |
+| `guard-not-dominating` | error (1) | A required guard (transition `requires` and every actor in `by`) is never called, or is skipped on some path (an early return, a flag) before the write | Call the guard on every path before the write. Don't remove it from the spec |
+| `undeclared-effect` | error (1) | The code calls a bound client on the transition's path that the transition doesn't declare | An intended effect: declare it with the right multiplicity. Not intended (B5: a refund on expiry): remove the call |
+| `missing-effect` | error (1) | A declared effect is never called when the transition happens | Call it, or fix `bindings.effects` / `bindings.clients` so `tsv` can see the call ([§7.1](#71-all-persistences)) |
+| `non-atomic` | error (1) | `atomic: true`, but the code's read and write are not in one atomic scope (no transaction, a read through the root client, a non-Serializable Prisma transaction) | Use a transaction / conditional update / no `await` between check and write ([§7](#7-code-shapes-tsv-understands)). Never drop `atomic` to pass |
+| `generated-test-failed` | error (1) | A test from `tsv test` failed: a path test (allowed transition), forbidden test (disallowed from-state), or guard test (wrong actor). Also a replay that could not run | Read the assertion. It's the real code misbehaving, or bad `fixtures`, or a client module that exports more than the client ([§8](#8-fixtures-for-tsv-test)) |
+| `replay-confirmed` | error (1) | The real code reproduced a counterexample: the bug is confirmed | Fix the code. The test in `.tsv/generated/` fails until you do |
+| `replay-disagrees` | warning (0) | The real code did not reproduce a counterexample (it threw, or took another path) | Check that the "Observed" line is a real rejection, not a setup error. If the code is right, the extracted model over-approximates. Mention it in the PR |
+| `unanalyzable` | warning or info (0) | `tsv` couldn't tell: from-state of a `string` field, a write of a non-literal value, a read it can't see, a transition without `impl` (info), an unsupported persistence, the state limit | Restructure the code ([§7.5](#75-restructuring-unanalyzable-code)) or add `impl`. Unanalyzable code is unchecked code. Don't leave new ones unexplained |
+| `not-generated` | info (0) | `tsv test` generated no test for a transition or actor: no `fixtures`, no `impl`, `memory` persistence, unknown invocation shape, an actor without a fixture | Add fixtures, or accept it (e.g. `memory` has no test support yet) |
+
+### 6.2 Built-in properties
+
+`spec-property` and `implementation-property` findings name a property (the `property` field, and the last trace step):
+
+| Property | Fires when | Typical fix |
+|---|---|---|
+| `untrusted-guarded` | An `untrusted` actor performs a transition with no guard | Add `requires` (e.g. `owner`) |
+| `webhook-idempotent` | A `signed-webhook` actor performs a non-`idempotent` transition | `idempotent: true`, and make redelivery safe |
+| `effect-multiplicity` | An `exactly-once` effect can fire twice for one entity | `atomic: true` on the emitting transition, or narrower `from` so a repeat is rejected |
+| `no-stuck-states` | A non-terminal state has no way out | Add the missing transition, or mark the state `terminal` |
+| `reachable` (warning) | A declared state is never reached from `initial` | Add the transition into it, or remove the state |
+| `rule:<name>` | A rule is violated (`always`/`never`: some reachable state; `eventually`: some end state) | Fix the design or the code, as the trace shows |
+
+The checker explores one entity with `concurrency.default` (2) invocations per transition, so a counterexample is
+always short. A non-atomic transition is two steps (`read`, then `write`), and the gap between them is where races
+show.
+
+### 6.3 Fix the code or the spec?
+
+| Situation | Change |
+|---|---|
+| The code does something the business doesn't want | **Code** |
+| The spec was wrong about the intent (a human confirmed it) | **Spec**, and say why in the PR. `tsv diff` shows the change |
+| The intent changed (a new feature) | **Spec first**, then code |
+| `tsv` can't read a correct code shape | **Code shape** ([§7.5](#75-restructuring-unanalyzable-code)), or explain the warning in the PR |
+| A `tsv` bug (exit 3, or a finding that is provably wrong) | Neither. Report it |
+
+---
+
+## 7. Code shapes tsv understands
+
+`tsv` reads source code with the TypeScript type checker. It never runs your code and never connects to a
+database. It is conservative: when unsure, it reports `unanalyzable` or "unconstrained" rather than guessing.
+
+### 7.1 All persistences
+
+| Concern | Understood | Not understood → what to do |
+|---|---|---|
+| **Entity type** | A type named `entity.name`, also behind `Readonly<T>`, `Pick<T, …>`, `Omit<T, …>`, `Partial<T>`, unions and type parameters. Fallback: any type whose state field's union equals `states` exactly, read through a bound client | A differently named type with a different union → not matched. Use the type's name |
+| **State type** | String-literal union (`"a" \| "b"`), string `enum`, Prisma enums (generated const object + union) | `string` / `any` → from-state unknown. Type the field as a union |
+| **`impl`** | `file.ts#fn` (function declaration, `const fn = async () => …`, `const fn = withAuth(async (ctx) => …)`), `file.ts#Class.method`, `file.ts#obj.method` | Functions built at runtime, or picked from a map → export a named function |
+| **Call graph** | Helpers in project files, followed up to 8 levels below the impl | Calls through `node_modules`, dynamic dispatch, callbacks stored and called later |
+| **From-state checks** (narrowing) | `if (x.status !== "a") throw`, early `return`, `switch (x.status)`, `x.status === "a" \|\| x.status === "b"`, assertion functions (`asserts x is Paid`), type predicates (`x is Paid`, incl. inferred `return s === "a"`), ternaries, checks inside the transaction callback | `ALLOWED.includes(x.status)`, `set.has(x.status)`, `const s = x.status; if (s …)`, `const { status } = x`, `const ok = x.status === "a"; if (!ok)` on a mutable field, `: boolean` helpers → compare `x.status` directly, or use a type predicate |
+| **Written value** | A string literal, or a constant with a literal type (`JobStatus.Done`) | A variable or parameter (`x.status = next`) → `unanalyzable`, and the write is not checked. Write the literal at each call site |
+| **Guards** | A call to the bound function, with literal arguments equal to the binding's (`requireRole(actor, "admin")` = `role(admin)`), on every path before the write. A project function that calls the guard on every path counts as that guard | Middleware registered elsewhere (route-level `app.use(auth)`), decorators → call the guard (or a wrapper) inside the impl's reach |
+| **Clients** (database, effects) | Calls on an exported object, imported directly: `stripe.refunds.create(…)`, plus the transaction alias `tx` | Clients injected as parameters or constructor fields (`this.prisma`), destructured (`const { orders } = db`), element access, a bare exported function (`export async function sendMail`) → import a module-level object (`export const mailer = { send }`) |
+| **Effects** | A bound-client call that can run on a path that performs the write and completes normally (before the write, or after the commit) | A call only on a path that throws or returns before the write is not attributed. That is correct |
+
+### 7.2 `assign`: repository objects (the default)
+
+```ts
+await db.transaction(async (tx) => {           // atomic scope: <client>.transaction(callback)
+  const order = await tx.orders.get(orderId);  // read: a client call that initializes the reference
+  if (order.status !== "paid") throw …;        // check
+  order.status = "refunded";                   // write (or: tx.orders.save({ ...order, status: "refunded" }))
+  await tx.orders.save(order);                 // commit: the next client call taking the reference
+});
+await stripe.refunds.create({ charge });       // effect, after the commit
+```
+
+| | Rule |
+|---|---|
+| Detected | When no Prisma or Drizzle import is found. Set `persistence: assign` to be explicit |
+| Read | A call on a bound client (or on `tx`) whose result initializes the entity reference, also through a helper (`const o = await loadOrder(tx, id)`) |
+| Write | `ref.<state> = "literal"`, or `{ ...ref, <state>: "literal" }` passed directly to a call |
+| Atomic | Read, write and commit inside one `<client>.transaction(async (tx) => …)` callback, all through `tx`. The method must be called `transaction`, with the callback as its first argument. A `db.…` call inside the callback bypasses the transaction |
+| Not a write | `this.status = …` in a constructor, and new object literals (`{ id, status: "draft" }`) |
+| `tsv test` | Supported (in-memory fake store) |
+
+### 7.3 `prisma`
+
+```ts
+const { count } = await prisma.order.updateMany({          // conditional update = atomic,
+  where: { id: orderId, status: "paid" },                   // from-state = the where set
+  data: { status: "refunded" },
+});
+if (count === 0) throw new ConcurrentUpdateError();
+await stripe.refunds.create({ charge: order.chargeId });
+```
+
+| Shape | From-state | Atomic |
+|---|---|---|
+| `update`/`updateMany`/`updateManyAndReturn` with the state in `where` (`status: "paid"`, `{ in: […] }`, `{ not: … }`, `{ notIn: … }`, enum members) | The `where` set | yes |
+| The same, with a condition `tsv` can't read (inside `AND`/`OR`/`NOT`) | `*` | yes |
+| Read (`findUnique…`, `findFirst…`), check, then `update({ where: { id } })` | Narrowed type at the write | **no** |
+| The same inside `prisma.$transaction(async (tx) => …, { isolationLevel: "Serializable" })`, all through `tx` | Narrowed | yes |
+| The same inside `$transaction` at the default level, `RepeatableRead` or lower, or the array form `$transaction([…])` | Narrowed | **no** (the message names the reason) |
+| Blind update: no state in `where`, and no read | every state (`from-state-unconstrained`) | yes (the bug is the missing check) |
+
+The entity is matched by model delegate, ignoring case: `prisma.order` is `entity.name: Order`. Bind the client
+in `bindings.clients` (persistence is auto-detected from a `@prisma/client` or `PrismaClient` import). **Not modelled:** nested writes
+(`data: { order: { update: … } }`), `upsert`'s `create` branch, raw SQL (`$queryRaw … FOR UPDATE`), `$extends`
+and middleware, a client-wide default isolation level, and a read through a helper when the update's `where`
+doesn't use `X.id`. No database or `prisma generate` is needed. `tsv test` is supported (in-memory Prisma fake).
+Example: [`examples/orders-prisma`](../examples/orders-prisma/src/orders/order.behavior.yaml).
+
+### 7.4 `memory`: in-process objects
+
+```ts
+markWaiting(workerId: string): void {
+  const w = this.workers.get(workerId);   // entity key: the get()/[key] argument
+  if (w?.status !== "running") throw …;   // check (re-check)
+  w.status = "waiting";                    // write: atomic, because no await since the check
+}
+```
+
+| | Rule |
+|---|---|
+| Detected | Never. Set `persistence: memory`. No `clients` are needed for state |
+| Write | `ref.<state> = "literal"`, including `this.status = …` outside constructors |
+| Atomic | No `await`, `yield`, `for await` step or deferred callback (`.then(cb)`, `setTimeout(cb)`) on any path between the last re-check of the state field (or the impl's entry) and the write, across helpers |
+| Not understood | Re-entrancy without `await` (a synchronous callback that re-enters). Implicit state machines (`holder: string \| undefined`) can't be specified: add an explicit literal-union state field |
+| `tsv test` | Not supported yet (`not-generated`). `tsv check` works |
+
+Example: [`packages/runtime/src/scheduler.behavior.yaml`](../packages/runtime/src/scheduler.behavior.yaml).
+`drizzle` is reserved: it is auto-detected from a `drizzle-orm` import, and then nothing is extracted (an
+`unanalyzable` warning). Until the adapter lands, check Drizzle code with `--spec-only`.
+
+### 7.5 Restructuring unanalyzable code
+
+Prefer a small, behavior-preserving refactor that makes the code checkable over leaving it unchecked.
+
+| Warning or symptom | Restructure to |
+|---|---|
+| "assigned a value that is not a single literal" (`setStatus(order, next)`) | One function per transition, each writing a literal (`order.status = "paid"`) |
+| "the from-state of this write is unknown: … is typed string" | `status: OrderStatus` with `type OrderStatus = "draft" \| …` |
+| `from-state-unconstrained`, although a check exists | Compare the field directly in an `if`/`switch`, or use a type predicate. No `.includes`, no copy to a local |
+| "no read of `x` through a bound client was found" | Read the entity through the bound client (or `tx`) in the impl or a helper it calls. Don't pass the entity in from outside |
+| `missing-effect`, although the call exists | Call it on an imported module-level object that is bound in `bindings.clients`. Map the effect to that call path in `bindings.effects` |
+| `guard-not-dominating`, although a middleware checks it | Call the guard (or a wrapper that calls it) inside the impl, before the write |
+| `undeclared-transition` from test or seed files | Exclude them from the `tsconfig.json` that the spec's project uses (`"include": ["src"]`), or point `tsv check --project <dir>` at a directory whose tsconfig excludes them |
+| Clients injected via constructors (`this.db`) | Export the client from a module and import it where it is used. For DI frameworks, a thin exported function per transition that the class delegates to |
+
+---
+
+## 8. Fixtures for `tsv test`
+
+`tsv test` generates vitest tests into `<project>/.tsv/generated/` (add `.tsv/` to `.gitignore`) and runs them
+with a bundled vitest. It replaces each `bindings.clients` module with an in-memory fake (a store for
+`assign`/`prisma` clients, call recorders for effect clients), seeds one entity, and calls each `impl`:
+
+| Test file | One test per | Passes when |
+|---|---|---|
+| `paths.test.ts` | transition × allowed `from` state | The stored state becomes `to`, each `exactly-once` effect is called once, and no other effect is called |
+| `forbidden.test.ts` | transition × state outside `from` | The state is unchanged and no declared effect fired (throwing is fine) |
+| `guards.test.ts` | transition × actor with a fixture that is not in `by` | The state is unchanged and no declared effect fired |
+| `replay-<n>.test.ts` | finding with a counterexample | The real code, forced through the same interleaving, does not violate the property |
+
+```yaml
+fixtures:
+  entity: { id: o1, ownerId: c1, email: c1@example.com, chargeId: ch_1 } # every field the code reads, except the state field
+  actors:
+    customer: { id: c1, roles: [] } # the value passed where the impl takes an actor
+    admin: { id: a1, roles: [admin] }
+  args:
+    payment_succeeded: [{ id: evt_1, orderId: $id, chargeId: ch_1 }] # only when the defaults don't fit
+```
+
+- `entity` must include the storage key (`id`), and every field the code dereferences.
+- Give a fixture to **every** actor, including ones that should be rejected: they drive the guard tests.
+- Without `args`, `tsv` builds the arguments from the impl's parameters: the entity id and the actor go where the
+  code reads them (`(ctx: { actor }, orderId)`). Use `args` when the impl needs more (an event payload). Inside
+  `args`, `$id` is the seeded entity's key and `$actor` is the acting actor's fixture.
+- **Client modules must export only the client** (types are fine). The whole module is replaced by the fake, so a
+  guard or helper exported from `db.ts` vanishes in generated tests (`No "requireOwner" export is defined on the
+  mock`). Move guards to their own module.
+- `memory` persistence generates no tests yet.
+
+---
+
+## 9. Editor support: JSON Schema
+
+The JSON Schema of the format gives completion, hover docs and inline errors in any editor that runs
+`yaml-language-server` (VS Code with the Red Hat YAML extension, Neovim, JetBrains, Zed). Get the schema with
+`tsv schema > behavior.schema.json`. In this repository it is checked in as
+[`packages/spec/behavior.schema.json`](../packages/spec/behavior.schema.json) and exported as
+`@tsv/spec/behavior.schema.json` (the published package will ship it too; the name is not final).
+
+**Per file:** a modeline comment. The path is relative to the YAML file, or a URL. `tsv` ignores comments:
+
+```yaml
+# tsv:example
+# yaml-language-server: $schema=../../behavior.schema.json
+behavior: Light
+entity:
+  name: Light
+  state: state
+  states: [off, on]
+  initial: off
+actors:
+  user: { trust: internal }
+transitions:
+  turn_on: { from: off, to: on, by: user }
+  turn_off: { from: on, to: off, by: user }
+```
+
+**Per workspace (VS Code):** in `.vscode/settings.json`. The path is relative to the workspace root:
+
+```json
+{
+  "yaml.schemas": {
+    "./behavior.schema.json": "**/*.behavior.yaml"
+  }
+}
+```
+
+The schema checks structure only. Cross-references (unknown states, actors, unbound guards) and rule syntax are
+checked by `tsv validate`.
+
+---
+
+## 10. `enforced` and CI
+
+- `enforced: true` at the top level marks a spec the team wants CI to **block** on. `tsv` itself doesn't act on
+  it: exit codes are identical. It shows up in `--format json` / SARIF, and `--enforced-only` (on `check`, `test`
+  and `diff`) keeps only enforced specs, plus invalid ones.
+- Adopting `tsv` on existing code: start **advisory** (`tsv check || [ $? -eq 1 ]`), fix or triage the findings,
+  then mark the clean specs `enforced: true` and block on `tsv check --enforced-only`.
+- Turning `enforced` off shows in `tsv diff`, because a spec counts as enforced when either side has it.
+- Setups, SARIF upload and the sticky PR comment: [workflows.md](workflows.md), and the example workflow
+  [`examples/ci/github/tsv.yml`](../examples/ci/github/tsv.yml).
+
+```yaml
+# tsv:example
+behavior: Door
+enforced: true
+entity:
+  name: Door
+  state: state
+  states: [closed, open]
+  initial: closed
+actors:
+  resident: { trust: authenticated }
+transitions:
+  open: { from: closed, to: open, by: resident, atomic: true }
+  close: { from: open, to: closed, by: resident, atomic: true }
+```
+
+---
+
+## 11. Common mistakes
+
+| Mistake | Symptom | Fix |
+|---|---|---|
+| Weakening the spec to pass (dropping `atomic`, widening `from`, deleting a guard or rule) | Green check, bug shipped. `tsv diff` shows it to reviewers | Keep the spec strict and fix the code |
+| Paths relative to the spec file | `broken-link` | Paths are relative to the project root (the `tsconfig.json` directory) |
+| `entity.state` is not the exact property name | `missing-transition` everywhere, or no writes found | Use the property name exactly (`status`) |
+| `entity.name` is not the type name (assign, memory) or Prisma model | Writes not matched, unless the union equals `states` exactly | Use the type or model name |
+| `states` is missing a member of the union that the code writes | `tsv check` exits 3: `internal error: … refers to unknown state "x"` (a known bug) | List every member of the union |
+| Deny-list checks (`if (s === "paid" \|\| s === "void") throw`) | `from-state-mismatch` once a new state is added | Check what is allowed (`if (s !== "draft" && s !== "open") throw`) |
+| A non-terminal state with no exit (e.g. `archived`) | `no-stuck-states` | Mark it `terminal`, or add the transition |
+| One transition with `by: [admin, system]` where the actors have different guards | `guard-not-dominating` for the `system` path | Guards from every actor in `by` are all required. Split into two transitions with separate entry points |
+| Effect bound to a bare function export | `missing-effect`, although the call is there | Bind an exported object and call a member on it |
+| Guards exported from the database client's module | `tsv test`: `No "…" export is defined on the mock` | One module per client, exporting only the client |
+| `exactly-once` on a notification sent by several transitions under one name | `effect-multiplicity` | Name effects by meaning (`email.paid`, `email.shipped`), or use `at-least-once` |
+| A webhook transition without `idempotent: true` | `webhook-idempotent` | Set it, and make redelivery safe (a from-state check) |
+| Leaving `unanalyzable` warnings unexplained | The code is unchecked, and CI stays green | Restructure ([§7.5](#75-restructuring-unanalyzable-code)) or explain each one in the PR |
+| Writing the state when creating an entity (`order.status = "draft"` on a new object) | `undeclared-transition` | Create entities with an object literal or ORM `create` |
+| Test files in the analyzed tsconfig | `undeclared-transition` from tests | `"include": ["src"]` in the project's tsconfig |
+
+---
+
+## 12. Checklist before you open the PR
+
+- [ ] The spec sits next to the entity's type, inside the right TypeScript project.
+- [ ] `states` lists every member of the state type. `initial` and `terminal` are right.
+- [ ] Every write of the state field is a transition with an `impl`, or has been removed.
+- [ ] Every transition that checks the state is `atomic: true`. Every webhook or queue transition is `idempotent: true`.
+- [ ] Every `untrusted` actor's transitions have a guard. Every guard is bound.
+- [ ] Every external call on a transition's path is a declared effect, with the right multiplicity.
+- [ ] The rules state the invariants a reviewer would say out loud.
+- [ ] `tsv validate` and `tsv check` exit 0, or every remaining finding is listed in the PR with a reason.
+- [ ] No spec change was made only to silence a finding. Every spec change is explained in the PR (see `tsv diff`).
+- [ ] `fixtures` are present, and `tsv test` exits 0 (or its `not-generated` items are understood).
+- [ ] New `unanalyzable` warnings are fixed or explained.
