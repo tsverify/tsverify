@@ -277,12 +277,15 @@ describe("watchPaths", () => {
         [dir],
         () => {
           calls += 1;
+          // Wait well past the debounce window so a late event would show up as a second call.
           setTimeout(() => {
             w.close();
             resolve();
-          }, 100);
+          }, 600);
         },
-        { debounceMs: 30 },
+        // Generous: on a loaded CI runner, file events of back-to-back writes can arrive tens of
+        // milliseconds apart; a burst is anything inside this window.
+        { debounceMs: 250 },
       );
     });
     await writeFile(join(dir, "a.ts"), "1");
