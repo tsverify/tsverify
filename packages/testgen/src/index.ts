@@ -25,7 +25,7 @@ export type {
  * - `replay-<n>.test.ts` + `replay-<n>.json`: each finding with a counterexample, replayed
  *   against the real code; the verdict is recorded in `task.meta.tsvReplay`
  *
- * Whatever cannot be generated (no fixtures, no invocation shape, non-`assign` persistence, a
+ * Whatever cannot be generated (no fixtures, no invocation shape, a persistence without fakes, a
  * counterexample with nothing drivable left to replay, …) is explained by an `info` finding in
  * `skipped`. Throws only for programmer errors (models with the wrong origin).
  */

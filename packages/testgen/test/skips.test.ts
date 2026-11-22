@@ -36,17 +36,17 @@ describe("skipped", () => {
     ]);
   });
 
-  it("a transition with non-assign persistence", () => {
+  it("a transition with a persistence that has no fakes", () => {
     const model = code();
     for (const t of model.transitions)
-      if (t.name === "ship" && t.sites) t.sites.persistence = "prisma";
+      if (t.name === "ship" && t.sites) t.sites.persistence = "drizzle";
     const result = run(orderModel(), model);
     expect(result.skipped).toContainEqual(
       expect.objectContaining({
         id: "not-generated:Order lifecycle:testgen:ship",
         transition: "ship",
         message:
-          "tsv test generated no tests for `ship`: `prisma` persistence has no fakes yet (only `assign`)",
+          "tsv test generated no tests for `ship`: `drizzle` persistence has no fakes yet (only `assign` and `prisma`)",
       }),
     );
     expect(result.tests.some((t) => t.transition === "ship")).toBe(false);
