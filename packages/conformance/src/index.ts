@@ -46,7 +46,7 @@ export function compare(spec: BehaviorModel, code: BehaviorModel): Finding[] {
       findings.push(checkNoImpl(spec, t));
       continue;
     }
-    const result = checkLinked(spec, t, linked.get(t.name) ?? []);
+    const result = checkLinked(spec, t, linked.get(t.name) ?? [], code.implAt?.[t.name]);
     findings.push(...result.findings);
     for (const p of result.pairings) {
       for (const rule of PAIRING_RULES) findings.push(...rule(p));

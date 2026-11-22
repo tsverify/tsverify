@@ -54,6 +54,11 @@
         "line": 52,
         "column": 3
       },
+      "codeAt": {
+        "file": "src/orders/refund.ts",
+        "line": 11,
+        "column": 1
+      },
       "hint": "Set status to 'refunded' in refundOrder (or a function it calls), or fix impl."
     }
   ],

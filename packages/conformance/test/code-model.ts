@@ -429,6 +429,9 @@ export function extraRefundWrite(to: string): Write {
   return { ...cleanWrite("refund"), name: `refund->${to}`, to, write: [19, 5], effects: [] };
 }
 
+/** Where `refundOrder` (refund's impl) is declared, as the extractor reports it in `implAt`. */
+export const REFUND_IMPL_AT: SourceLocation = { file: "src/orders/refund.ts", line: 11, column: 1 };
+
 /** `expire` with `from: [draft, pending_payment]` (on line 38), which the code does not match. */
 export function strictExpire(t: Transition): Transition {
   return {
@@ -455,7 +458,10 @@ export const MUTATION_CASES = {
         ],
       })),
     ),
-  "missing-transition": () => codeCase(cleanWrites().filter((w) => w.name !== "refund")),
+  "missing-transition": () => {
+    const { spec, code } = codeCase(cleanWrites().filter((w) => w.name !== "refund"));
+    return { spec, code: { ...code, implAt: { refund: REFUND_IMPL_AT } } };
+  },
   "wrong-state": () =>
     codeCase(
       patchWrite(cleanWrites(), "ship", (w) => ({ ...w, name: "ship->refunded", to: "refunded" })),
