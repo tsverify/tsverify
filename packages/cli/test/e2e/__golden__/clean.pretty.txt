@@ -1,0 +1,4 @@
+src/orders/order.behavior.yaml  project: .
+✓ no findings
+
+✓ 1 spec, 0 errors, 0 warnings (6 spec states, 6 code states)

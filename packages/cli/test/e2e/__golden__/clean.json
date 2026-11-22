@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "findings": [],
+  "specs": [
+    {
+      "file": "src/orders/order.behavior.yaml",
+      "behavior": "Order lifecycle",
+      "stats": {
+        "states": 6,
+        "edges": 5,
+        "complete": true,
+        "boundLimitedDeadlocks": 0
+      },
+      "project": ".",
+      "codeStats": {
+        "states": 6,
+        "edges": 5,
+        "complete": true,
+        "boundLimitedDeadlocks": 0
+      },
+      "extract": {
+        "files": 13,
+        "writes": 5,
+        "probes": 5
+      }
+    }
+  ],
+  "summary": {
+    "errors": 0,
+    "warnings": 0
+  }
+}

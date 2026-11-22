@@ -1,7 +1,8 @@
+import type { CheckStats } from "@tsv/checker";
 import { type Formatter, formatFindings, plainFormatter } from "@tsv/render";
 import pc from "picocolors";
 import type { Io } from "../io";
-import { allFindings, countSeverity, type Report } from "../report";
+import { allFindings, countSeverity, type Report, type SpecReport } from "../report";
 
 const colorFormatter: Formatter = pc.createColors(true);
 
@@ -20,20 +21,32 @@ export function terminalFormatter(io: Io): Formatter {
   return colorsEnabled(io) ? colorFormatter : plainFormatter;
 }
 
-/** Notes, the findings (via `@tsv/render`), then one summary line. */
+/**
+ * The findings (via `@tsv/render`), then one summary line. `check` reports (specs with a
+ * `project`) get one section per spec, headed by the spec file and its project root.
+ */
 export function formatPretty(report: Report, io: Io): string {
   const f = terminalFormatter(io);
-  const findings = allFindings(report);
+  const options = { formatter: f, cwd: io.cwd };
   let out = "";
-  for (const note of report.notes ?? []) out += `${f.dim(note)}\n`;
-  if (findings.length > 0) {
-    if (out !== "") out += "\n";
-    out += formatFindings(findings, { formatter: f, cwd: io.cwd });
+  if (report.specs.some((s) => s.project !== undefined)) {
+    for (const spec of report.specs) {
+      out += `${f.bold(spec.file)}  ${f.dim(projectLabel(spec, report))}\n`;
+      out += `${formatFindings(spec.findings, options)}\n`;
+    }
+  } else {
+    const findings = allFindings(report);
+    if (findings.length > 0) out += formatFindings(findings, options);
   }
   return `${out}${summaryLine(report, f)}\n`;
 }
 
-/** e.g. `✓ 1 spec, 0 errors, 0 warnings (6 states explored)`. */
+function projectLabel(spec: SpecReport, report: Report): string {
+  if (report.specOnly) return "spec only";
+  return spec.project ? `project: ${spec.project}` : "no project";
+}
+
+/** e.g. `✓ 1 spec, 0 errors, 0 warnings (6 spec states, 6 code states)`. */
 function summaryLine(report: Report, f: Formatter): string {
   const findings = allFindings(report);
   const errors = countSeverity(findings, "error");
@@ -43,12 +56,26 @@ function summaryLine(report: Report, f: Formatter): string {
     plural(errors, "error"),
     plural(warnings, "warning"),
   ].join(", ");
-  const checked = report.specs.flatMap((s) => (s.stats ? [s.stats] : []));
-  if (checked.length > 0) {
-    const states = checked.reduce((sum, s) => sum + s.states, 0);
-    text += ` (${plural(states, "state")} explored)`;
-  }
+  const counts = [
+    stateCount(
+      report.specs.map((s) => s.stats),
+      "spec",
+    ),
+    stateCount(
+      report.specs.map((s) => s.codeStats),
+      "code",
+    ),
+  ].filter((c) => c !== undefined);
+  if (counts.length > 0) text += ` (${counts.join(", ")})`;
   return errors === 0 ? f.green(`✓ ${text}`) : f.red(`✗ ${text}`);
+}
+
+/** e.g. `6 code states`, summed over the models checked; undefined when none was. */
+function stateCount(stats: (CheckStats | undefined)[], kind: string): string | undefined {
+  const checked = stats.filter((s) => s !== undefined);
+  if (checked.length === 0) return undefined;
+  const states = checked.reduce((sum, s) => sum + s.states, 0);
+  return `${states} ${kind} state${states === 1 ? "" : "s"}`;
 }
 
 function plural(n: number, noun: string): string {
