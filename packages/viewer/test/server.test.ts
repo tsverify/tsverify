@@ -119,19 +119,40 @@ describe("startViewer", () => {
     expect(JSON.parse(res.body)).toEqual({ ...data("/demo"), version: 1 });
   });
 
-  it("answers localhost:port too", async () => {
+  it("answers loopback names on any port (port-forwarding tunnels)", async () => {
     const viewer = await start();
-    const res = await get(viewer, "/api/data", { host: `localhost:${viewer.port}` });
-    expect(res.status).toBe(200);
+    for (const host of [
+      `localhost:${viewer.port}`,
+      "localhost:9000",
+      "127.0.0.1:1",
+      "[::1]:9000",
+    ]) {
+      const res = await get(viewer, "/api/data", { host });
+      expect(res.status, host).toBe(200);
+    }
   });
 
   it("rejects any other Host header with 403 (DNS rebinding)", async () => {
     const viewer = await start();
-    for (const host of [`evil.example:${viewer.port}`, "127.0.0.1:1", `127.0.0.2:${viewer.port}`]) {
+    for (const host of [
+      `evil.example:${viewer.port}`,
+      "evil.example",
+      `localhost.evil.example:${viewer.port}`,
+      `t3-sessions:${viewer.port}`,
+    ]) {
       const res = await get(viewer, "/api/data", { host });
-      expect(res.status).toBe(403);
+      expect(res.status, host).toBe(403);
       expect(res.body).not.toContain("/demo");
     }
+  });
+
+  it("answers --allow-host names on any port", async () => {
+    const viewer = await start({ allowHosts: ["T3-Sessions"] });
+    expect((await get(viewer, "/api/data", { host: `t3-sessions:${viewer.port}` })).status).toBe(
+      200,
+    );
+    expect((await get(viewer, "/api/data", { host: "t3-sessions:8443" })).status).toBe(200);
+    expect((await get(viewer, "/api/data", { host: "other-box:8443" })).status).toBe(403);
   });
 
   it("serves the page, the app bundle and Mermaid from the package, with a strict CSP", async () => {
@@ -277,13 +298,18 @@ describe("watchPaths", () => {
 });
 
 describe("host guard", () => {
-  it("allows the bound host and localhost, with the port", () => {
-    const allowed = allowedHosts("127.0.0.1", 4000);
-    expect(isAllowedHost("127.0.0.1:4000", allowed)).toBe(true);
-    expect(isAllowedHost("LOCALHOST:4000", allowed)).toBe(true);
-    expect(isAllowedHost("localhost", allowed)).toBe(false);
+  it("allows loopback on any port, the bound host:port, and extra names", () => {
+    const allowed = allowedHosts("0.0.0.0", 4000, ["Build-Box"]);
+    expect(isAllowedHost("0.0.0.0:4000", allowed)).toBe(true);
+    expect(isAllowedHost("0.0.0.0:4001", allowed)).toBe(false);
+    expect(isAllowedHost("LOCALHOST:9000", allowed)).toBe(true);
+    expect(isAllowedHost("localhost", allowed)).toBe(true);
+    expect(isAllowedHost("[::1]:4000", allowed)).toBe(true);
+    expect(isAllowedHost("build-box:8080", allowed)).toBe(true);
+    expect(isAllowedHost("build-box.evil.example:4000", allowed)).toBe(false);
+    expect(isAllowedHost("evil.example:4000", allowed)).toBe(false);
+    expect(isAllowedHost("localhost:4000@evil", allowed)).toBe(false);
     expect(isAllowedHost(undefined, allowed)).toBe(false);
-    expect(isAllowedHost("[::1]:4000", allowedHosts("::1", 4000))).toBe(true);
   });
 
   it("knows loopback addresses", () => {

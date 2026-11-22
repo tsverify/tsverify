@@ -1,8 +1,9 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { ViewData } from "../view-data";
+import { exposedHosts, type ViewerUrls, viewerUrls } from "./addresses";
 import { appBundle, MERMAID_PREFIX, mermaidAsset, pageHtml } from "./assets";
-import { allowedHosts, isAllowedHost, urlHost } from "./host-guard";
+import { allowedHosts, type HostRules, isAllowedHost, urlHost } from "./host-guard";
 import { type Watcher, watchPaths } from "./watch";
 
 export const DEFAULT_HOST = "127.0.0.1";
@@ -19,6 +20,8 @@ export interface ViewerOptions {
   port?: number;
   /** Default `127.0.0.1`. */
   host?: string;
+  /** Extra `Host` names to answer on any port (see `host-guard.ts`), e.g. this machine's name. */
+  allowHosts?: readonly string[];
   /** Quiet period before a rebuild (default 150 ms). */
   debounceMs?: number;
   /** Poll instead of `fs.watch`. */
@@ -35,8 +38,10 @@ export interface ReloadEvent {
 }
 
 export interface Viewer {
-  /** `http://<host>:<port>/` */
+  /** The URL to open: `urls.local`, else the first network URL. */
   url: string;
+  /** Local and network URLs to print, like Next/Vite (`addresses.ts`). */
+  urls: ViewerUrls;
   host: string;
   port: number;
   /** The data currently served. */
@@ -64,7 +69,8 @@ const HEARTBEAT_MS = 25_000;
  * - `GET /api/data` the current `ViewData` as JSON
  * - `GET /api/events` server-sent events: `reload` after watched files change and the data is rebuilt
  *
- * Requests whose `Host` is not `host:port` or `localhost:port` get 403 (DNS rebinding); anything
+ * Requests whose `Host` is not loopback, `host:port` or an `allowHosts` name get 403 (DNS
+ * rebinding, `host-guard.ts`); anything
  * but GET/HEAD gets 405. Rejects when the first `load()` throws or the port is taken.
  */
 export async function startViewer(options: ViewerOptions): Promise<Viewer> {
@@ -74,7 +80,7 @@ export async function startViewer(options: ViewerOptions): Promise<Viewer> {
   appBundle().catch(() => {});
 
   const streams = new Set<ServerResponse>();
-  let allowed = new Set<string>();
+  let allowed: HostRules = { exact: new Set(), names: new Set() };
   let closed = false;
 
   const server = createServer((req, res) => {
@@ -193,12 +199,14 @@ export async function startViewer(options: ViewerOptions): Promise<Viewer> {
     for (const s of streams) s.write(": ping\n\n");
   }, HEARTBEAT_MS);
   heartbeat.unref();
-  allowed = allowedHosts(host, port);
+  allowed = allowedHosts(host, port, options.allowHosts, exposedHosts(host, port));
+  const urls = viewerUrls(host, port);
   rewatch();
 
   let closing: Promise<void> | undefined;
   return {
-    url: `http://${urlHost(host)}:${port}/`,
+    url: urls.local ?? urls.network[0] ?? `http://${urlHost(host)}:${port}/`,
+    urls,
     host,
     port,
     data: () => data,

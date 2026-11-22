@@ -126,6 +126,10 @@ function program(io: Io): CAC {
     .option("--host <address>", "Address to listen on (keep it on loopback)", {
       default: "127.0.0.1",
     })
+    .option(
+      "--allow-host <name>",
+      "Also answer requests addressed to this host name (repeatable), e.g. this machine's name with --host 0.0.0.0",
+    )
     .option("--open", "Open the viewer in the default browser")
     .option("--max-states <n>", "Stop exploring a model after this many states", {
       default: DEFAULT_MAX_STATES,
