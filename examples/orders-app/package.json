@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "devDependencies": {
+    "@tsv/cli": "workspace:*",
     "@tsv/ir": "workspace:*",
     "@tsv/spec": "workspace:*"
   }

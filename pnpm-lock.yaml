@@ -26,6 +26,9 @@ importers:
 
   examples/orders-app:
     devDependencies:
+      '@tsv/cli':
+        specifier: workspace:*
+        version: link:../../packages/cli
       '@tsv/ir':
         specifier: workspace:*
         version: link:../../packages/ir
