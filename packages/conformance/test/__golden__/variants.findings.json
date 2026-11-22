@@ -1,0 +1,103 @@
+{
+  "b1-reopen": [
+    {
+      "id": "undeclared-transition:Order lifecycle:reopenOrder",
+      "category": "undeclared-transition",
+      "severity": "error",
+      "message": "reopenOrder writes paid → pending_payment, which no spec transition declares.",
+      "behavior": "Order lifecycle",
+      "transition": "reopenOrder",
+      "codeAt": {
+        "file": "src/admin/orders.ts",
+        "line": 25,
+        "column": 5
+      },
+      "hint": "Declare this transition in the spec with impl: src/admin/orders.ts#reopenOrder, or remove the write."
+    }
+  ],
+  "b2-guard-bypass": [
+    {
+      "id": "guard-not-dominating:Order lifecycle:refund:role(admin)",
+      "category": "guard-not-dominating",
+      "severity": "error",
+      "message": "refund: role(admin) (requireRole) is called on some paths but not all before the write (required by actor admin).",
+      "behavior": "Order lifecycle",
+      "transition": "refund",
+      "specAt": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 52,
+        "column": 3
+      },
+      "codeAt": {
+        "file": "src/orders/refund.ts",
+        "line": 21,
+        "column": 3
+      },
+      "hint": "Call requireRole on every path from refundOrder to the write, before any early return."
+    }
+  ],
+  "b3-refund-race": [
+    {
+      "id": "non-atomic:Order lifecycle:refund",
+      "category": "non-atomic",
+      "severity": "error",
+      "message": "refund: refundOrder reads the entity (db.orders.get) and writes refunded outside one atomic scope; the spec says atomic.",
+      "behavior": "Order lifecycle",
+      "transition": "refund",
+      "specAt": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 52,
+        "column": 3
+      },
+      "codeAt": {
+        "file": "src/orders/refund.ts",
+        "line": 10,
+        "column": 23
+      },
+      "hint": "Wrap the read and write in one transaction or use a conditional update."
+    }
+  ],
+  "b4-webhook-dup": [
+    {
+      "id": "from-state-unconstrained:Order lifecycle:payment_succeeded",
+      "category": "from-state-unconstrained",
+      "severity": "error",
+      "message": "payment_succeeded: onPaymentSucceeded writes paid from any state (no status check before the write); the spec allows only pending_payment.",
+      "behavior": "Order lifecycle",
+      "transition": "payment_succeeded",
+      "specAt": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 27,
+        "column": 3
+      },
+      "codeAt": {
+        "file": "src/payments/webhook.ts",
+        "line": 18,
+        "column": 5
+      },
+      "hint": "Check that status is 'pending_payment' before the write, inside the same atomic scope."
+    }
+  ],
+  "b5-undeclared-effect": [
+    {
+      "id": "undeclared-effect:Order lifecycle:expire:stripe.refund",
+      "category": "undeclared-effect",
+      "severity": "error",
+      "message": "expire: expireOrder calls stripe.refund (stripe.refunds.create), which the spec does not declare for expire.",
+      "behavior": "Order lifecycle",
+      "transition": "expire",
+      "specAt": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 37,
+        "column": 3
+      },
+      "codeAt": {
+        "file": "src/jobs/expire-orders.ts",
+        "line": 21,
+        "column": 11
+      },
+      "hint": "Declare stripe.refund under expire.effects, or remove the call."
+    }
+  ],
+  "b6-spec-race": []
+}

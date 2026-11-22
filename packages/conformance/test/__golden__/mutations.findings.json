@@ -1,0 +1,230 @@
+{
+  "missing-effect": [
+    {
+      "id": "missing-effect:Order lifecycle:payment_succeeded:email.receipt",
+      "category": "missing-effect",
+      "severity": "error",
+      "message": "payment_succeeded: onPaymentSucceeded never calls email.receipt (email.send) when it writes paid.",
+      "behavior": "Order lifecycle",
+      "transition": "payment_succeeded",
+      "specAt": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 27,
+        "column": 3
+      },
+      "codeAt": {
+        "file": "src/payments/webhook.ts",
+        "line": 22,
+        "column": 5
+      },
+      "hint": "Call email.send after the write in onPaymentSucceeded, or remove email.receipt from payment_succeeded.effects."
+    }
+  ],
+  "unmapped-effect": [
+    {
+      "id": "undeclared-effect:Order lifecycle:refund:stripe.charges.create",
+      "category": "undeclared-effect",
+      "severity": "error",
+      "message": "refund: refundOrder calls stripe.charges.create, a gate no spec effect maps to (not in bindings.effects).",
+      "behavior": "Order lifecycle",
+      "transition": "refund",
+      "specAt": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 52,
+        "column": 3
+      },
+      "codeAt": {
+        "file": "src/orders/refund.ts",
+        "line": 20,
+        "column": 3
+      },
+      "hint": "Declare the effect on refund and map it to stripe.charges.create in bindings.effects, or remove the call."
+    }
+  ],
+  "missing-transition": [
+    {
+      "id": "missing-transition:Order lifecycle:refund",
+      "category": "missing-transition",
+      "severity": "error",
+      "message": "refund: src/orders/refund.ts#refundOrder never writes status = refunded.",
+      "behavior": "Order lifecycle",
+      "transition": "refund",
+      "specAt": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 52,
+        "column": 3
+      },
+      "hint": "Set status to 'refunded' in refundOrder (or a function it calls), or fix impl."
+    }
+  ],
+  "wrong-state": [
+    {
+      "id": "missing-transition:Order lifecycle:ship",
+      "category": "missing-transition",
+      "severity": "error",
+      "message": "ship: src/admin/orders.ts#shipOrder never writes status = shipped.",
+      "behavior": "Order lifecycle",
+      "transition": "ship",
+      "specAt": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 45,
+        "column": 3
+      },
+      "hint": "Set status to 'shipped' in shipOrder (or a function it calls), or fix impl."
+    },
+    {
+      "id": "undeclared-transition:Order lifecycle:ship:ship->refunded",
+      "category": "undeclared-transition",
+      "severity": "error",
+      "message": "ship: shipOrder also writes paid → refunded, but ship only goes to shipped.",
+      "behavior": "Order lifecycle",
+      "transition": "ship",
+      "specAt": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 45,
+        "column": 3
+      },
+      "codeAt": {
+        "file": "src/admin/orders.ts",
+        "line": 13,
+        "column": 5
+      },
+      "hint": "Remove the write to refunded, or declare it as its own transition in the spec."
+    }
+  ],
+  "extra-linked-write": [
+    {
+      "id": "undeclared-transition:Order lifecycle:refund:refund->cancelled",
+      "category": "undeclared-transition",
+      "severity": "error",
+      "message": "refund: refundOrder also writes paid → cancelled, but refund only goes to refunded.",
+      "behavior": "Order lifecycle",
+      "transition": "refund",
+      "specAt": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 52,
+        "column": 3
+      },
+      "codeAt": {
+        "file": "src/orders/refund.ts",
+        "line": 19,
+        "column": 5
+      },
+      "hint": "Remove the write to cancelled, or declare it as its own transition in the spec."
+    }
+  ],
+  "undeclared-state": [
+    {
+      "id": "undeclared-transition:Order lifecycle:refund:refund->archived",
+      "category": "undeclared-transition",
+      "severity": "error",
+      "message": "refund: refundOrder also writes paid → archived, but refund only goes to refunded ('archived' is not a state of Order).",
+      "behavior": "Order lifecycle",
+      "transition": "refund",
+      "specAt": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 52,
+        "column": 3
+      },
+      "codeAt": {
+        "file": "src/orders/refund.ts",
+        "line": 19,
+        "column": 5
+      },
+      "hint": "Remove the write to archived, or declare it as its own transition in the spec."
+    }
+  ],
+  "never-guarded": [
+    {
+      "id": "guard-not-dominating:Order lifecycle:checkout:owner",
+      "category": "guard-not-dominating",
+      "severity": "error",
+      "message": "checkout: owner (requireOwner) is never called before the write (required by checkout.requires).",
+      "behavior": "Order lifecycle",
+      "transition": "checkout",
+      "specAt": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 19,
+        "column": 3
+      },
+      "codeAt": {
+        "file": "src/orders/checkout.ts",
+        "line": 13,
+        "column": 5
+      },
+      "hint": "Call requireOwner on every path from checkout to the write, before any early return."
+    }
+  ],
+  "extra-from": [
+    {
+      "id": "from-state-mismatch:Order lifecycle:checkout:cancelled",
+      "category": "from-state-mismatch",
+      "severity": "error",
+      "message": "checkout: checkout also writes pending_payment from cancelled, which the spec does not allow (from: draft).",
+      "behavior": "Order lifecycle",
+      "transition": "checkout",
+      "specAt": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 19,
+        "column": 3
+      },
+      "codeAt": {
+        "file": "src/orders/checkout.ts",
+        "line": 13,
+        "column": 5
+      },
+      "hint": "Tighten the check before the write to status is 'draft', or add cancelled to checkout.from."
+    }
+  ],
+  "strict-from": [
+    {
+      "id": "from-state-mismatch:Order lifecycle:expire:draft",
+      "category": "from-state-mismatch",
+      "severity": "warning",
+      "message": "expire: expireOrder only writes cancelled from pending_payment; the spec also allows draft.",
+      "behavior": "Order lifecycle",
+      "transition": "expire",
+      "specAt": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 37,
+        "column": 3
+      },
+      "codeAt": {
+        "file": "src/jobs/expire-orders.ts",
+        "line": 13,
+        "column": 5
+      },
+      "hint": "Remove draft from expire.from, or let the code accept it."
+    }
+  ],
+  "no-impl": [
+    {
+      "id": "unanalyzable:Order lifecycle:checkout",
+      "category": "unanalyzable",
+      "severity": "info",
+      "message": "checkout: not linked to code (no impl), so it is not checked against the code.",
+      "behavior": "Order lifecycle",
+      "transition": "checkout",
+      "specAt": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 19,
+        "column": 3
+      },
+      "hint": "Add impl: path/to/file.ts#function to checkout to check it against the code."
+    },
+    {
+      "id": "undeclared-transition:Order lifecycle:checkout",
+      "category": "undeclared-transition",
+      "severity": "error",
+      "message": "checkout writes draft → pending_payment, which no spec transition declares.",
+      "behavior": "Order lifecycle",
+      "transition": "checkout",
+      "codeAt": {
+        "file": "src/orders/checkout.ts",
+        "line": 13,
+        "column": 5
+      },
+      "hint": "Declare this transition in the spec with impl: src/orders/checkout.ts#checkout, or remove the write."
+    }
+  ]
+}
