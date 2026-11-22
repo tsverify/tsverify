@@ -36,6 +36,4 @@ Order lifecycle
       step 3  payment_succeeded#2 atomic → proceed (duplicate delivery)  status=paid  email.receipt=2
       step 4  ship#1 atomic → proceed  status=shipped  ✗ rule:Shipped orders are never refunded
 
-5 errors · 0 warnings · 0 info
-
 ✗ 1 spec, 5 errors, 0 warnings (6 spec states, 39 code states)

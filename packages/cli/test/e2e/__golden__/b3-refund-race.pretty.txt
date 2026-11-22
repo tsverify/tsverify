@@ -26,6 +26,4 @@ Order lifecycle
       step 5  refund#1 write  status=refunded  stripe.refund=1
       step 6  refund#2 write  status=refunded  stripe.refund=2  ✗ rule:Refund issued at most once per order
 
-3 errors · 0 warnings · 0 info
-
 ✗ 1 spec, 3 errors, 0 warnings (6 spec states, 15 code states)
