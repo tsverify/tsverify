@@ -23,7 +23,6 @@ function loadMermaid(): Promise<MermaidApi> {
         startOnLoad: false,
         securityLevel: "strict",
         theme: dark ? "dark" : "default",
-        fontFamily: "inherit",
       });
       return mod.default;
     },

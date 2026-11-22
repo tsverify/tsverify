@@ -2,7 +2,7 @@
 import type { BehaviorModel, Finding, Trace, WorkerPhase } from "@tsv/ir";
 import { toMermaid } from "@tsv/render";
 import { type ComponentChild, h } from "preact";
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { type EffectCounter, type Frame, type LaneCell, playthrough } from "../frames";
 import { Playback, SPEEDS, type Speed } from "../playback";
 import { Diagram } from "./diagram";
@@ -36,6 +36,9 @@ export function PlaybackView({ finding, model, start }: PlaybackViewProps): Comp
     return p;
   });
   const [, setRevision] = useState(0);
+  const section = useRef<HTMLElement>(null);
+  // Opening a trace moves focus here, so the keys work at once.
+  useEffect(() => section.current?.focus(), []);
   const act = (fn: (p: Playback) => void) => {
     fn(playback);
     setRevision((n) => n + 1);
@@ -77,7 +80,9 @@ export function PlaybackView({ finding, model, start }: PlaybackViewProps): Comp
   return h(
     "section",
     {
+      ref: section,
       class: "playback",
+      tabIndex: -1,
       "aria-label": `Counterexample playback: ${trace.property}`,
       onKeyDown,
     },
