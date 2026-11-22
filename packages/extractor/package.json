@@ -10,6 +10,10 @@
       "default": "./src/index.ts"
     }
   },
+  "scripts": {
+    "test:ts5.9": "TSVERIFY_TEST_TYPESCRIPT=typescript59 vitest run --config test/versions.config.ts",
+    "test:ts6": "TSVERIFY_TEST_TYPESCRIPT=@typescript/typescript6 vitest run --config test/versions.config.ts"
+  },
   "dependencies": {
     "@tsverify/ir": "workspace:*"
   },
