@@ -4,6 +4,7 @@
  * dependencies; `test/ir-compat.test.ts` proves the `ir` types are assignable.
  */
 import type { EffectsConfig } from "./instrument/effects";
+import type { PrismaFakeConfig } from "./instrument/prisma";
 import type { StoreConfig } from "./instrument/store";
 import type { ReplayMapping } from "./plan";
 
@@ -129,6 +130,34 @@ export function storeConfigFromCode(
   };
   if (transactions[0] !== undefined) config.transaction = transactions[0];
   return config;
+}
+
+/**
+ * `instrument.prisma` config for one Prisma client, from every code transition's sites: models
+ * and keys from `storage`, sync read paths from `read`, sync write paths from `commit`. A model a
+ * read or write names without a `storage` site gets key `id`. `$transaction` needs no config (the
+ * fake decides per call, from its `isolationLevel`).
+ */
+export function prismaConfigFromCode(code: CodeModelInput, client: string): PrismaFakeConfig {
+  const sites = allSites(code);
+  const models: Record<string, { key: string }> = {};
+  for (const s of sites) {
+    if (s.storage?.client === client) models[s.storage.collection] = { key: s.storage.key };
+  }
+  const paths = (pick: (s: CodeSitesInput) => CallSiteInput | undefined) =>
+    sortedUnique(
+      sites.flatMap((s) => {
+        const site = pick(s);
+        return site?.client === client ? [site.path] : [];
+      }),
+    );
+  const read = paths((s) => s.read);
+  const write = paths((s) => s.commit);
+  for (const path of [...read, ...write]) {
+    const model = path.split(".")[0] ?? "";
+    models[model] ??= { key: "id" };
+  }
+  return { client, models, read, write };
 }
 
 /** `instrument.effects` config for one effect client: every effect call path on it. */
