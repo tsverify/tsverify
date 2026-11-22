@@ -1,0 +1,81 @@
+# Dogfooding (doc 6 §6): the lifecycle of one replay worker in src/scheduler.ts.
+# Project root is packages/runtime (its tsconfig.json), so impl paths are relative to it.
+#
+# Not expressible in v1 (rules are about one entity): "at most one worker is running at a time"
+# and "a worker only runs when a step resumes it". The scheduler enforces both by construction:
+# the only ways into `running` are start/pass/wake, called from `resume()` by a step or drain.
+behavior: Replay scheduler worker
+summary: A spawned worker runs until it parks at a gate, waits for a lock or settles; the schedule resumes it.
+
+entity:
+  name: Worker
+  state: status
+  states: [spawned, running, parked, waiting, ready, done, failed]
+  initial: spawned
+  terminal: [done, failed]
+
+actors:
+  scheduler: { trust: internal } # a step or drain resuming the worker
+  worker: { trust: internal } # the worker's own code (instrumented calls, settlement, locks)
+
+transitions:
+  start:
+    from: spawned
+    to: running
+    by: scheduler
+    atomic: true
+    impl: src/scheduler.ts#Scheduler.start
+
+  park:
+    from: running
+    to: parked
+    by: worker
+    atomic: true
+    impl: src/scheduler.ts#Scheduler.park
+
+  pass:
+    from: parked
+    to: running
+    by: scheduler
+    atomic: true
+    impl: src/scheduler.ts#Scheduler.pass
+
+  wait:
+    from: running
+    to: waiting
+    by: worker
+    atomic: true
+    impl: src/scheduler.ts#Scheduler.markWaiting
+
+  grant:
+    from: waiting
+    to: ready
+    by: worker # the lock holder releasing it, inside its own step
+    atomic: true
+    impl: src/scheduler.ts#Scheduler.markReady
+
+  wake:
+    from: ready
+    to: running
+    by: scheduler
+    atomic: true
+    impl: src/scheduler.ts#Scheduler.wake
+
+  complete:
+    from: running
+    to: done
+    by: worker
+    atomic: true
+    impl: src/scheduler.ts#Scheduler.complete
+
+  fail:
+    from: running
+    to: failed
+    by: worker
+    atomic: true
+    impl: src/scheduler.ts#Scheduler.fail
+
+rules:
+  # The model has no deadlocks; in code a wait-for cycle is reported as a `deadlock` divergence.
+  - name: Every worker can still settle
+    eventually: status in [done, failed]

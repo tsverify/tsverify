@@ -92,6 +92,12 @@ importers:
         specifier: workspace:*
         version: link:../ir
 
+  packages/runtime:
+    devDependencies:
+      '@tsv/ir':
+        specifier: workspace:*
+        version: link:../ir
+
   packages/spec:
     dependencies:
       '@tsv/ir':
