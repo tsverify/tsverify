@@ -19,7 +19,8 @@ export type FindingCategory =
   | "undeclared-effect"
   | "missing-effect"
   | "non-atomic"
-  // replay
+  // generated tests (tsv test)
+  | "generated-test-failed"
   | "replay-confirmed"
   | "replay-disagrees"
   // analysis limits
