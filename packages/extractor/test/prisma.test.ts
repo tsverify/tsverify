@@ -54,6 +54,7 @@ const transitions: TransitionSpec[] = [
   at("payBlind", "paid", ["pending_payment"]),
   at("shipUpsert", "shipped"),
   at("refundHelperRead", "refunded"),
+  at("refundIncludes", "refunded"),
 ];
 
 describe("prisma adapter", () => {
@@ -130,6 +131,12 @@ describe("prisma adapter", () => {
   });
 
   describe("read, then update", () => {
+    it("a membership guard on the read narrows the update's from-state", () => {
+      const r = t("refundIncludes");
+      expect(r).toMatchObject({ atomic: false, from: ["paid", "shipped"] });
+      expect(r.sites?.fromState).toEqual({ values: ["paid", "shipped"], unconstrained: false });
+    });
+
     it("findUnique → check → update outside a transaction: not atomic, narrowed from-state", () => {
       const r = t("refundRace");
       expect(r.atomic).toBe(false);

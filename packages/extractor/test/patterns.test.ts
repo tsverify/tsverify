@@ -567,6 +567,53 @@ describe("string-typed status", () => {
     expect(t.sites?.fromState).toEqual({ values: ["open"], unconstrained: false });
     expect(t.sites?.storage).toEqual({ client: "store", collection: "tickets", key: "id" });
   });
+
+  it("a membership guard gives the listed states without a declared domain", () => {
+    const t = transitionOf(result, "reopenTicket");
+    expect(t.from).toEqual(["resolved", "closed"]);
+    expect(t.sites?.fromState).toEqual({ values: ["closed", "resolved"], unconstrained: false });
+  });
+});
+
+describe("membership guards (`.includes` / `.has`)", () => {
+  const names = [
+    "inlineThrow",
+    "setHasReturn",
+    "asConstWidened",
+    "asConstCastArg",
+    "insideTrueBranch",
+    "withEquality",
+    "elseBranch",
+    "mutableList",
+    "otherEntity",
+    "noExit",
+  ];
+  const to: Record<string, string> = { insideTrueBranch: "shipped", elseBranch: "cancelled" };
+  const result = extractFixture(
+    "membership-guards",
+    orderSpec(names.map((n) => ({ name: n, impl: `src/orders.ts#${n}`, to: to[n] ?? "refunded" }))),
+  );
+  const ALL = ["draft", "pending_payment", "paid", "shipped", "refunded", "cancelled"];
+
+  it.each([
+    ["inlineThrow", ["paid", "shipped"]],
+    ["setHasReturn", ["paid", "shipped"]],
+    ["asConstWidened", ["paid", "shipped"]],
+    ["asConstCastArg", ["paid", "shipped"]],
+    ["insideTrueBranch", ["paid"]],
+    ["withEquality", ["paid", "shipped"]],
+    ["elseBranch", ["draft", "pending_payment", "paid"]],
+  ])("%s: the listed states", (name, from) => {
+    const t = transitionOf(result, name);
+    expect(t.from).toEqual(from);
+    expect(t.sites?.fromState).toEqual({ values: [...from].sort(), unconstrained: false });
+  });
+
+  it.each(["mutableList", "otherEntity", "noExit"])("%s: not a guard, unconstrained", (name) => {
+    const t = transitionOf(result, name);
+    expect(t.from).toEqual(ALL);
+    expect(t.sites?.fromState.unconstrained).toBe(true);
+  });
 });
 
 describe("spread-to-save write", () => {

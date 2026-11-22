@@ -32,6 +32,7 @@ import {
   type NarrowRequest,
   singleLiteralOf,
   typeNames,
+  withMembershipGuards,
 } from "./type-facts";
 import { findCandidateWrites, rebindWrites, type WriteNode } from "./writes";
 
@@ -188,7 +189,12 @@ export function extractAll(
   const types: WriteTypes[] = writes.map((w, i) => {
     const r = requestOf[i];
     if (r === undefined) return { narrowed: unprobedTypes(w, ctx.checker), probed: false };
-    return { narrowed: ctx.facts.narrowedLiteralsAt(handles[r] as NarrowHandle), probed: true };
+    const narrowed = ctx.facts.narrowedLiteralsAt(handles[r] as NarrowHandle);
+    // X1 L9: `.includes` / `.has` guards, which TS does not narrow through.
+    return {
+      narrowed: withMembershipGuards(narrowed, w.expr, w.ref, w.field, ctx.checker),
+      probed: true,
+    };
   });
   const env: Env = { ctx, writes, types, callees: new Callees(ctx) };
   const results = specs.map((spec) => extractSpec(spec, env));

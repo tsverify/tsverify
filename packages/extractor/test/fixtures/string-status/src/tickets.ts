@@ -33,3 +33,11 @@ export async function resolveTicket(id: string): Promise<void> {
   ticket.status = "resolved";
   await store.tickets.save(ticket);
 }
+
+/** A membership guard on a `string` field gives the listed states. */
+export async function reopenTicket(id: string): Promise<void> {
+  const ticket = await store.tickets.get(id);
+  if (!["resolved", "closed"].includes(ticket.status)) return;
+  ticket.status = "open";
+  await store.tickets.save(ticket);
+}
