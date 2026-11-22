@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { checkCode } from "../src/code-conformance";
+import { loadSpecs } from "../src/inputs";
 import type { JsonReport } from "../src/output/json";
 import { CANONICAL_SPEC, REPO_ROOT, tsv } from "./run";
 import { tempSpecDir } from "./temp-specs";
@@ -238,5 +240,21 @@ describe("check: code conformance", () => {
       ["Light copy", ".", { files: 1, writes: 1, probes: 1 }],
       ["Light", ".", { files: 1, writes: 1, probes: 1 }],
     ]);
+  });
+
+  it("returns the models it compared, relative to the project root (for tsv test)", async () => {
+    const cwd = await tempSpecDir(lightProject("app/"));
+    const specs = await loadSpecs(["app/src/light.behavior.yaml"], cwd);
+    const [outcome] = await checkCode(specs, { cwd });
+    expect(outcome?.root).toBe(join(cwd, "app"));
+    expect(outcome?.spec?.transitions.find((t) => t.name === "switch_on")?.at?.file).toBe(
+      "src/light.behavior.yaml",
+    );
+    expect(outcome?.code?.origin).toBe("code");
+    expect(outcome?.code?.transitions.find((t) => t.name === "switch_on")?.sites?.write.file).toBe(
+      "src/light.ts",
+    );
+    // Findings stay relative to the cwd.
+    expect(outcome?.findings.map((f) => f.specAt?.file)).toContain("app/src/light.behavior.yaml");
   });
 });

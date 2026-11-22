@@ -2,6 +2,7 @@ import type { CheckStats } from "@tsv/checker";
 import type { ExtractStats } from "@tsv/extractor";
 import type { Finding } from "@tsv/ir";
 import { allFindings, countSeverity, type Report } from "../report";
+import type { TestCounts } from "../test-findings";
 
 /**
  * The `--format json` document. Its shape is a contract for CI and agents: bump `version` on any
@@ -30,6 +31,8 @@ export interface JsonSpec {
   codeStats?: JsonStats;
   /** Present when the spec's project was extracted (the same for every spec of a project). */
   extract?: JsonExtractStats;
+  /** `test` only: the generated directory (relative to the cwd) and the test counts. */
+  generated?: { dir: string; tests: TestCounts };
 }
 
 /** `CheckStats` without `durationMs`, which would make the document non-deterministic. */
@@ -43,12 +46,13 @@ export function toJsonReport(report: Report): JsonReport {
   return {
     version: 1,
     findings,
-    specs: report.specs.map(({ file, behavior, stats, project, codeStats, extract }) => {
+    specs: report.specs.map(({ file, behavior, stats, project, codeStats, extract, generated }) => {
       const spec: JsonSpec = { file, behavior: behavior ?? null };
       if (stats) spec.stats = withoutDuration(stats);
       if (project !== undefined) spec.project = project;
       if (codeStats) spec.codeStats = withoutDuration(codeStats);
       if (extract) spec.extract = withoutDuration(extract);
+      if (generated) spec.generated = generated;
       return spec;
     }),
     summary: {

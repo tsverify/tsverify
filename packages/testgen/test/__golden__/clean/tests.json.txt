@@ -1,0 +1,485 @@
+[
+  {
+    "file": "paths.test.ts",
+    "name": "checkout: draft → pending_payment (as customer)",
+    "kind": "path",
+    "transition": "checkout",
+    "from": "draft",
+    "actor": "customer",
+    "codeAt": {
+      "file": "src/orders/checkout.ts",
+      "line": 13,
+      "column": 5,
+      "endLine": 13,
+      "endColumn": 37
+    }
+  },
+  {
+    "file": "paths.test.ts",
+    "name": "expire: pending_payment → cancelled (no actor argument)",
+    "kind": "path",
+    "transition": "expire",
+    "from": "pending_payment",
+    "codeAt": {
+      "file": "src/jobs/expire-orders.ts",
+      "line": 13,
+      "column": 5,
+      "endLine": 13,
+      "endColumn": 31
+    }
+  },
+  {
+    "file": "paths.test.ts",
+    "name": "payment_succeeded: pending_payment → paid (no actor argument)",
+    "kind": "path",
+    "transition": "payment_succeeded",
+    "from": "pending_payment",
+    "codeAt": {
+      "file": "src/payments/webhook.ts",
+      "line": 22,
+      "column": 5,
+      "endLine": 22,
+      "endColumn": 26
+    }
+  },
+  {
+    "file": "paths.test.ts",
+    "name": "refund: paid → refunded (as admin)",
+    "kind": "path",
+    "transition": "refund",
+    "from": "paid",
+    "actor": "admin",
+    "codeAt": {
+      "file": "src/orders/refund.ts",
+      "line": 17,
+      "column": 5,
+      "endLine": 17,
+      "endColumn": 30
+    }
+  },
+  {
+    "file": "paths.test.ts",
+    "name": "ship: paid → shipped (as admin)",
+    "kind": "path",
+    "transition": "ship",
+    "from": "paid",
+    "actor": "admin",
+    "codeAt": {
+      "file": "src/admin/orders.ts",
+      "line": 13,
+      "column": 5,
+      "endLine": 13,
+      "endColumn": 29
+    }
+  },
+  {
+    "file": "forbidden.test.ts",
+    "name": "checkout from pending_payment is rejected (as customer)",
+    "kind": "forbidden",
+    "transition": "checkout",
+    "from": "pending_payment",
+    "actor": "customer",
+    "codeAt": {
+      "file": "src/orders/checkout.ts",
+      "line": 13,
+      "column": 5,
+      "endLine": 13,
+      "endColumn": 37
+    }
+  },
+  {
+    "file": "forbidden.test.ts",
+    "name": "checkout from paid is rejected (as customer)",
+    "kind": "forbidden",
+    "transition": "checkout",
+    "from": "paid",
+    "actor": "customer",
+    "codeAt": {
+      "file": "src/orders/checkout.ts",
+      "line": 13,
+      "column": 5,
+      "endLine": 13,
+      "endColumn": 37
+    }
+  },
+  {
+    "file": "forbidden.test.ts",
+    "name": "checkout from shipped is rejected (as customer)",
+    "kind": "forbidden",
+    "transition": "checkout",
+    "from": "shipped",
+    "actor": "customer",
+    "codeAt": {
+      "file": "src/orders/checkout.ts",
+      "line": 13,
+      "column": 5,
+      "endLine": 13,
+      "endColumn": 37
+    }
+  },
+  {
+    "file": "forbidden.test.ts",
+    "name": "checkout from refunded is rejected (as customer)",
+    "kind": "forbidden",
+    "transition": "checkout",
+    "from": "refunded",
+    "actor": "customer",
+    "codeAt": {
+      "file": "src/orders/checkout.ts",
+      "line": 13,
+      "column": 5,
+      "endLine": 13,
+      "endColumn": 37
+    }
+  },
+  {
+    "file": "forbidden.test.ts",
+    "name": "checkout from cancelled is rejected (as customer)",
+    "kind": "forbidden",
+    "transition": "checkout",
+    "from": "cancelled",
+    "actor": "customer",
+    "codeAt": {
+      "file": "src/orders/checkout.ts",
+      "line": 13,
+      "column": 5,
+      "endLine": 13,
+      "endColumn": 37
+    }
+  },
+  {
+    "file": "forbidden.test.ts",
+    "name": "expire from draft is rejected (no actor argument)",
+    "kind": "forbidden",
+    "transition": "expire",
+    "from": "draft",
+    "codeAt": {
+      "file": "src/jobs/expire-orders.ts",
+      "line": 13,
+      "column": 5,
+      "endLine": 13,
+      "endColumn": 31
+    }
+  },
+  {
+    "file": "forbidden.test.ts",
+    "name": "expire from paid is rejected (no actor argument)",
+    "kind": "forbidden",
+    "transition": "expire",
+    "from": "paid",
+    "codeAt": {
+      "file": "src/jobs/expire-orders.ts",
+      "line": 13,
+      "column": 5,
+      "endLine": 13,
+      "endColumn": 31
+    }
+  },
+  {
+    "file": "forbidden.test.ts",
+    "name": "expire from shipped is rejected (no actor argument)",
+    "kind": "forbidden",
+    "transition": "expire",
+    "from": "shipped",
+    "codeAt": {
+      "file": "src/jobs/expire-orders.ts",
+      "line": 13,
+      "column": 5,
+      "endLine": 13,
+      "endColumn": 31
+    }
+  },
+  {
+    "file": "forbidden.test.ts",
+    "name": "expire from refunded is rejected (no actor argument)",
+    "kind": "forbidden",
+    "transition": "expire",
+    "from": "refunded",
+    "codeAt": {
+      "file": "src/jobs/expire-orders.ts",
+      "line": 13,
+      "column": 5,
+      "endLine": 13,
+      "endColumn": 31
+    }
+  },
+  {
+    "file": "forbidden.test.ts",
+    "name": "expire from cancelled is rejected (no actor argument)",
+    "kind": "forbidden",
+    "transition": "expire",
+    "from": "cancelled",
+    "codeAt": {
+      "file": "src/jobs/expire-orders.ts",
+      "line": 13,
+      "column": 5,
+      "endLine": 13,
+      "endColumn": 31
+    }
+  },
+  {
+    "file": "forbidden.test.ts",
+    "name": "payment_succeeded from draft is rejected (no actor argument)",
+    "kind": "forbidden",
+    "transition": "payment_succeeded",
+    "from": "draft",
+    "codeAt": {
+      "file": "src/payments/webhook.ts",
+      "line": 22,
+      "column": 5,
+      "endLine": 22,
+      "endColumn": 26
+    }
+  },
+  {
+    "file": "forbidden.test.ts",
+    "name": "payment_succeeded from paid is rejected (no actor argument)",
+    "kind": "forbidden",
+    "transition": "payment_succeeded",
+    "from": "paid",
+    "codeAt": {
+      "file": "src/payments/webhook.ts",
+      "line": 22,
+      "column": 5,
+      "endLine": 22,
+      "endColumn": 26
+    }
+  },
+  {
+    "file": "forbidden.test.ts",
+    "name": "payment_succeeded from shipped is rejected (no actor argument)",
+    "kind": "forbidden",
+    "transition": "payment_succeeded",
+    "from": "shipped",
+    "codeAt": {
+      "file": "src/payments/webhook.ts",
+      "line": 22,
+      "column": 5,
+      "endLine": 22,
+      "endColumn": 26
+    }
+  },
+  {
+    "file": "forbidden.test.ts",
+    "name": "payment_succeeded from refunded is rejected (no actor argument)",
+    "kind": "forbidden",
+    "transition": "payment_succeeded",
+    "from": "refunded",
+    "codeAt": {
+      "file": "src/payments/webhook.ts",
+      "line": 22,
+      "column": 5,
+      "endLine": 22,
+      "endColumn": 26
+    }
+  },
+  {
+    "file": "forbidden.test.ts",
+    "name": "payment_succeeded from cancelled is rejected (no actor argument)",
+    "kind": "forbidden",
+    "transition": "payment_succeeded",
+    "from": "cancelled",
+    "codeAt": {
+      "file": "src/payments/webhook.ts",
+      "line": 22,
+      "column": 5,
+      "endLine": 22,
+      "endColumn": 26
+    }
+  },
+  {
+    "file": "forbidden.test.ts",
+    "name": "refund from draft is rejected (as admin)",
+    "kind": "forbidden",
+    "transition": "refund",
+    "from": "draft",
+    "actor": "admin",
+    "codeAt": {
+      "file": "src/orders/refund.ts",
+      "line": 17,
+      "column": 5,
+      "endLine": 17,
+      "endColumn": 30
+    }
+  },
+  {
+    "file": "forbidden.test.ts",
+    "name": "refund from pending_payment is rejected (as admin)",
+    "kind": "forbidden",
+    "transition": "refund",
+    "from": "pending_payment",
+    "actor": "admin",
+    "codeAt": {
+      "file": "src/orders/refund.ts",
+      "line": 17,
+      "column": 5,
+      "endLine": 17,
+      "endColumn": 30
+    }
+  },
+  {
+    "file": "forbidden.test.ts",
+    "name": "refund from shipped is rejected (as admin)",
+    "kind": "forbidden",
+    "transition": "refund",
+    "from": "shipped",
+    "actor": "admin",
+    "codeAt": {
+      "file": "src/orders/refund.ts",
+      "line": 17,
+      "column": 5,
+      "endLine": 17,
+      "endColumn": 30
+    }
+  },
+  {
+    "file": "forbidden.test.ts",
+    "name": "refund from refunded is rejected (as admin)",
+    "kind": "forbidden",
+    "transition": "refund",
+    "from": "refunded",
+    "actor": "admin",
+    "codeAt": {
+      "file": "src/orders/refund.ts",
+      "line": 17,
+      "column": 5,
+      "endLine": 17,
+      "endColumn": 30
+    }
+  },
+  {
+    "file": "forbidden.test.ts",
+    "name": "refund from cancelled is rejected (as admin)",
+    "kind": "forbidden",
+    "transition": "refund",
+    "from": "cancelled",
+    "actor": "admin",
+    "codeAt": {
+      "file": "src/orders/refund.ts",
+      "line": 17,
+      "column": 5,
+      "endLine": 17,
+      "endColumn": 30
+    }
+  },
+  {
+    "file": "forbidden.test.ts",
+    "name": "ship from draft is rejected (as admin)",
+    "kind": "forbidden",
+    "transition": "ship",
+    "from": "draft",
+    "actor": "admin",
+    "codeAt": {
+      "file": "src/admin/orders.ts",
+      "line": 13,
+      "column": 5,
+      "endLine": 13,
+      "endColumn": 29
+    }
+  },
+  {
+    "file": "forbidden.test.ts",
+    "name": "ship from pending_payment is rejected (as admin)",
+    "kind": "forbidden",
+    "transition": "ship",
+    "from": "pending_payment",
+    "actor": "admin",
+    "codeAt": {
+      "file": "src/admin/orders.ts",
+      "line": 13,
+      "column": 5,
+      "endLine": 13,
+      "endColumn": 29
+    }
+  },
+  {
+    "file": "forbidden.test.ts",
+    "name": "ship from shipped is rejected (as admin)",
+    "kind": "forbidden",
+    "transition": "ship",
+    "from": "shipped",
+    "actor": "admin",
+    "codeAt": {
+      "file": "src/admin/orders.ts",
+      "line": 13,
+      "column": 5,
+      "endLine": 13,
+      "endColumn": 29
+    }
+  },
+  {
+    "file": "forbidden.test.ts",
+    "name": "ship from refunded is rejected (as admin)",
+    "kind": "forbidden",
+    "transition": "ship",
+    "from": "refunded",
+    "actor": "admin",
+    "codeAt": {
+      "file": "src/admin/orders.ts",
+      "line": 13,
+      "column": 5,
+      "endLine": 13,
+      "endColumn": 29
+    }
+  },
+  {
+    "file": "forbidden.test.ts",
+    "name": "ship from cancelled is rejected (as admin)",
+    "kind": "forbidden",
+    "transition": "ship",
+    "from": "cancelled",
+    "actor": "admin",
+    "codeAt": {
+      "file": "src/admin/orders.ts",
+      "line": 13,
+      "column": 5,
+      "endLine": 13,
+      "endColumn": 29
+    }
+  },
+  {
+    "file": "guards.test.ts",
+    "name": "checkout as admin (not in by: customer) is rejected from draft",
+    "kind": "guard",
+    "transition": "checkout",
+    "from": "draft",
+    "actor": "admin",
+    "codeAt": {
+      "file": "src/orders/checkout.ts",
+      "line": 13,
+      "column": 5,
+      "endLine": 13,
+      "endColumn": 37
+    }
+  },
+  {
+    "file": "guards.test.ts",
+    "name": "refund as customer (not in by: admin) is rejected from paid",
+    "kind": "guard",
+    "transition": "refund",
+    "from": "paid",
+    "actor": "customer",
+    "codeAt": {
+      "file": "src/orders/refund.ts",
+      "line": 17,
+      "column": 5,
+      "endLine": 17,
+      "endColumn": 30
+    }
+  },
+  {
+    "file": "guards.test.ts",
+    "name": "ship as customer (not in by: admin) is rejected from paid",
+    "kind": "guard",
+    "transition": "ship",
+    "from": "paid",
+    "actor": "customer",
+    "codeAt": {
+      "file": "src/admin/orders.ts",
+      "line": 13,
+      "column": 5,
+      "endLine": 13,
+      "endColumn": 29
+    }
+  }
+]

@@ -70,7 +70,7 @@ function parseMaxStates(value: unknown): number | undefined {
 }
 
 /** `--project <dir>` → an absolute directory. Resolved against the cwd; it must exist. */
-async function parseProject(value: unknown, cwd: string): Promise<string | undefined> {
+export async function parseProject(value: unknown, cwd: string): Promise<string | undefined> {
   if (value === undefined) return undefined;
   if ((typeof value !== "string" && typeof value !== "number") || value === "") {
     throw new UsageError(`--project takes one directory (got ${String(value)})`);

@@ -5,6 +5,7 @@ import { camelCaseBooleanFlags } from "./argv";
 import { type CheckCommandOptions, checkCommand } from "./commands/check";
 import { type RenderCommandOptions, renderCommand } from "./commands/render";
 import { schemaCommand } from "./commands/schema";
+import { type TestCommandOptions, testCommand } from "./commands/test";
 import { type ValidateCommandOptions, validateCommand } from "./commands/validate";
 import { ExitCode, UsageError } from "./exit-codes";
 import { helpText } from "./help";
@@ -84,6 +85,18 @@ function program(io: Io): CAC {
       "TypeScript project root for all specs (default: per spec, the nearest tsconfig.json dir)",
     )
     .action((paths: string[], options: CheckCommandOptions) => checkCommand(io, paths, options));
+
+  cli
+    .command(
+      "test [...paths]",
+      "Generate vitest tests from the specs and the code (paths, forbidden states, guards, counterexample replays) into <project>/.tsv/generated/ and run them",
+    )
+    .option("--format <format>", FORMAT_HELP, { default: "pretty" })
+    .option(
+      "--project <dir>",
+      "TypeScript project root for all specs (default: per spec, the nearest tsconfig.json dir)",
+    )
+    .action((paths: string[], options: TestCommandOptions) => testCommand(io, paths, options));
 
   cli
     .command("render <spec>", "Render one spec (default: --mermaid)")

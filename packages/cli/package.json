@@ -18,9 +18,12 @@
     "@tsv/extractor": "workspace:*",
     "@tsv/ir": "workspace:*",
     "@tsv/render": "workspace:*",
+    "@tsv/runtime": "workspace:*",
     "@tsv/spec": "workspace:*",
+    "@tsv/testgen": "workspace:*",
     "cac": "7.1.1",
     "picocolors": "1.1.1",
-    "tsx": "4.23.15"
+    "tsx": "4.23.15",
+    "vitest": "5.1.1"
   }
 }
