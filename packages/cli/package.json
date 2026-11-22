@@ -21,6 +21,7 @@
     "@tsv/runtime": "workspace:*",
     "@tsv/spec": "workspace:*",
     "@tsv/testgen": "workspace:*",
+    "@tsv/viewer": "workspace:*",
     "cac": "7.1.1",
     "picocolors": "1.1.1",
     "tsx": "4.23.15",

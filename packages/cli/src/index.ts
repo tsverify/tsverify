@@ -8,4 +8,17 @@ process.exitCode = await main(process.argv.slice(2), {
   cwd: process.cwd(),
   isTTY: process.stdout.isTTY === true,
   env: process.env,
+  onInterrupt: (listener) => {
+    const handler = () => {
+      off();
+      listener();
+    };
+    const off = () => {
+      process.off("SIGINT", handler);
+      process.off("SIGTERM", handler);
+    };
+    process.on("SIGINT", handler);
+    process.on("SIGTERM", handler);
+    return off;
+  },
 });
