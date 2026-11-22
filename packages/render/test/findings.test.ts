@@ -1,6 +1,6 @@
 import { type Formatter, formatFindings, plainFormatter } from "@tsv/render";
 import { describe, expect, it } from "vitest";
-import { SAMPLE_CWD, sampleFindings } from "./sample-findings";
+import { causedFindings, SAMPLE_CWD, sampleFindings } from "./sample-findings";
 
 /** Wraps each styled span in `<name>…</name>`, so goldens show exactly what gets colored. */
 const taggingFormatter: Formatter = {
@@ -75,5 +75,54 @@ describe("formatFindings", () => {
 
   it("is the identity with plainFormatter", () => {
     for (const fn of Object.values(plainFormatter)) expect(fn("x")).toBe("x");
+  });
+});
+
+describe("formatFindings with groupCauses", () => {
+  it("prints consequences under their cause, traces kept", async () => {
+    const out = formatFindings(causedFindings(), { cwd: SAMPLE_CWD, groupCauses: true });
+    await expect(out).toMatchFileSnapshot("__golden__/findings-grouped.txt");
+    const headlines = out.split("\n").filter((l) => /^ +(✗|⚠|ℹ|↳)/.test(l));
+    expect(headlines.map((l) => l.split("  src/")[0])).toEqual([
+      "  ✗ non-atomic",
+      "    ↳ consequence: ✗ implementation-property",
+      "      ↳ consequence: ✗ replay-confirmed",
+      "    ↳ consequence: ✗ implementation-property",
+      "  ⚠ implementation-property",
+    ]);
+    // Consequences still count.
+    expect(out.trimEnd().split("\n").at(-1)).toBe("4 errors · 1 warning · 0 info");
+  });
+
+  it("styles the consequence marker", async () => {
+    const out = formatFindings(causedFindings(), {
+      cwd: SAMPLE_CWD,
+      groupCauses: true,
+      formatter: taggingFormatter,
+    });
+    expect(out).toContain(
+      "    <dim>↳ consequence:</dim> <red>✗ implementation-property</red>  <dim>src/orders/order.behavior.yaml:52:3 · src/orders/refund.ts:13:24</dim>",
+    );
+    await expect(out).toMatchFileSnapshot("__golden__/findings-grouped-tagged.txt");
+  });
+
+  it("is off by default: the same findings render flat", () => {
+    const flat = formatFindings(causedFindings(), { cwd: SAMPLE_CWD });
+    expect(flat).not.toContain("↳");
+    expect(formatFindings(sampleFindings(), { cwd: SAMPLE_CWD, groupCauses: true })).toBe(
+      formatFindings(sampleFindings(), { cwd: SAMPLE_CWD }),
+    );
+  });
+
+  it("prints every finding once when causes form a cycle", () => {
+    const [a, b] = causedFindings();
+    if (!a || !b) throw new Error("sample too short");
+    const cyclic = [
+      { ...a, causedBy: [b.id] },
+      { ...b, causedBy: [a.id] },
+    ];
+    const out = formatFindings(cyclic, { groupCauses: true, countLine: false });
+    expect(out.split("\n").filter((l) => /^ +(↳ consequence: )?✗/.test(l))).toHaveLength(2);
+    expect(out.split("↳").length - 1).toBe(1);
   });
 });

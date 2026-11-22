@@ -1,0 +1,33 @@
+Order lifecycle
+  ✗ non-atomic  src/orders/order.behavior.yaml:52:3 · src/orders/refund.ts:10:23
+    refund: refundOrder reads the entity and writes refunded outside one atomic scope.
+    hint: Wrap the read and write in one transaction or use a conditional update.
+    ↳ consequence: ✗ implementation-property  src/orders/order.behavior.yaml:52:3 · src/orders/refund.ts:13:24
+      Exactly-once effect `stripe.refund` fires 2 times for one Order.
+      hint: make `refund`'s state check and write atomic in the code
+      trace:
+        step 0  status=draft
+        step 1  checkout#1 read → proceed  status=draft
+        step 2  checkout#1 write  status=pending_payment
+        step 3  payment_succeeded#1 atomic → proceed  status=paid  email.receipt=1
+        step 4  refund#1 read → proceed  status=paid
+        step 5  refund#2 read → proceed  status=paid
+        step 6  refund#1 write  status=refunded  stripe.refund=1
+        step 7  refund#2 write  status=refunded  stripe.refund=2  ✗ effect-multiplicity
+      ↳ consequence: ✗ replay-confirmed  src/orders/order.behavior.yaml:52:3
+        Replay confirmed in the real code: stripe.refund fires twice.
+    ↳ consequence: ✗ implementation-property  src/orders/order.behavior.yaml:62:5
+      Rule "Refund issued at most once per order" is violated.
+      trace:
+        step 0  status=draft
+        step 1  checkout#1 read → proceed  status=draft
+        step 2  checkout#1 write  status=pending_payment
+        step 3  payment_succeeded#1 atomic → proceed  status=paid  email.receipt=1
+        step 4  refund#1 read → proceed  status=paid
+        step 5  refund#2 read → proceed  status=paid
+        step 6  refund#1 write  status=refunded  stripe.refund=1
+        step 7  refund#2 write  status=refunded  stripe.refund=2  ✗ effect-multiplicity
+  ⚠ implementation-property  src/orders/order.behavior.yaml:27:3
+    Its cause is not in the list, so it renders as a top-level finding.
+
+4 errors · 1 warning · 0 info
