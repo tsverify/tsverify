@@ -1,0 +1,507 @@
+/* tsv view. Colours are tokens; dark mode follows prefers-color-scheme. Text/background pairs
+   meet WCAG AA (4.5:1) in both themes. */
+:root {
+  --bg: #ffffff;
+  --surface: #f6f8fa;
+  --border: #d0d7de;
+  --text: #1f2328;
+  --muted: #57606a;
+  --accent: #0550ae;
+  --accent-bg: #ddf4ff;
+  --error: #b3261e;
+  --warning: #8a4b00;
+  --info: #0550ae;
+  --ok: #1a7f37;
+  --current: #fff1c2;
+  --current-text: #1f2328;
+  --focus: #0969da;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #3d444d;
+    --text: #e6edf3;
+    --muted: #9da7b3;
+    --accent: #79c0ff;
+    --accent-bg: #10243e;
+    --error: #ff8a80;
+    --warning: #e3b341;
+    --info: #79c0ff;
+    --ok: #56d364;
+    --current: #4a3b00;
+    --current-text: #fff8dc;
+    --focus: #79c0ff;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font:
+    15px / 1.5 system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+}
+
+code,
+pre,
+.location {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.loading {
+  padding: 2rem;
+}
+
+.layout {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 16px 48px;
+}
+
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.top h1 {
+  font-size: 1.25rem;
+  margin: 0;
+}
+
+.cwd {
+  overflow-wrap: anywhere;
+}
+
+.connection {
+  margin-left: auto;
+  font-size: 0.875rem;
+}
+
+.connection.live {
+  color: var(--ok);
+}
+
+.connection.offline {
+  color: var(--warning);
+}
+
+.badge,
+.status-pill {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 0.6em;
+  font-size: 0.8rem;
+}
+
+.banner.error {
+  border: 1px solid var(--error);
+  color: var(--error);
+  padding: 8px 12px;
+  border-radius: 6px;
+}
+
+button,
+select {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.specs ul {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0;
+  margin: 12px 0;
+}
+
+.specs button {
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+}
+
+.specs button.current {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+}
+
+button.primary {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+}
+
+button[aria-pressed="true"] {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+button.link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+}
+
+.spec-header h2 {
+  margin: 16px 0 0;
+}
+
+.spec-header p {
+  margin: 0 0 12px;
+}
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin: 12px 0;
+  background: var(--bg);
+  min-width: 0;
+}
+
+.card h3 {
+  margin: 0 0 8px;
+  font-size: 1.05rem;
+}
+
+.card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.toggle {
+  display: flex;
+  gap: 4px;
+}
+
+.two-col {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+  gap: 12px;
+}
+
+.two-col .card {
+  margin: 0;
+}
+
+.diagram {
+  margin: 0;
+  overflow-x: auto;
+}
+
+.diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.diagram-source {
+  background: var(--surface);
+  padding: 8px;
+  border-radius: 6px;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+table {
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+th,
+td {
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+thead th {
+  background: var(--surface);
+}
+
+.matrix .denied {
+  color: var(--muted);
+}
+
+.matrix .unguarded,
+.warn {
+  color: var(--warning);
+}
+
+.legend {
+  font-size: 0.8rem;
+}
+
+.findings,
+.consequences {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.consequences {
+  margin-left: 1.25rem;
+  border-left: 2px solid var(--border);
+  padding-left: 0.75rem;
+}
+
+.finding {
+  padding: 8px 0;
+}
+
+.finding + .finding {
+  border-top: 1px solid var(--border);
+}
+
+.finding-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: baseline;
+}
+
+.finding p {
+  margin: 2px 0;
+}
+
+.severity.error,
+.violation {
+  color: var(--error);
+  font-weight: 600;
+}
+
+.severity.warning {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+.severity.info {
+  color: var(--info);
+  font-weight: 600;
+}
+
+.property,
+.location {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.ok {
+  color: var(--ok);
+}
+
+.play-trace {
+  margin-top: 4px;
+}
+
+.playback h3 {
+  margin-bottom: 0;
+}
+
+.keys {
+  margin: 0 0 8px;
+  font-size: 0.8rem;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.status-pill.playing {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.status-pill.ended {
+  color: var(--error);
+  border-color: var(--error);
+}
+
+.slider input {
+  width: 100%;
+  margin: 12px 0 4px;
+  accent-color: var(--accent);
+}
+
+.now {
+  margin: 4px 0;
+}
+
+.violation-detail {
+  color: var(--error);
+  margin: 4px 0 8px;
+}
+
+.playback-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(200px, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+@media (max-width: 760px) {
+  .playback-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.counters h4,
+.swimlanes h4 {
+  margin: 8px 0 4px;
+}
+
+.counters ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.counter {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 6px;
+}
+
+.counter .count {
+  font-weight: 700;
+  margin-left: auto;
+}
+
+.counter.over {
+  border-color: var(--error);
+}
+
+.counter.violated {
+  border-width: 2px;
+}
+
+.delta {
+  color: var(--ok);
+  font-size: 0.8rem;
+}
+
+.lane {
+  min-width: 5.5rem;
+}
+
+.lane span {
+  display: block;
+}
+
+.lane.idle .phase {
+  color: var(--muted);
+}
+
+.lane.checked .phase {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+.lane.done .phase {
+  color: var(--ok);
+}
+
+.lane.rejected .phase {
+  color: var(--error);
+}
+
+.lane .act {
+  font-weight: 700;
+}
+
+.lane .observed {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+td.current,
+th.current,
+.steps li.current {
+  background: var(--current);
+  color: var(--current-text);
+}
+
+.lane.current .phase,
+.lane.current .observed {
+  color: var(--current-text);
+}
+
+.steps {
+  margin: 12px 0 0;
+  padding-left: 2.5rem;
+}
+
+.steps button {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+}
+
+.steps li {
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+/* render's highlight classDef sets a light amber fill: keep its label dark in both themes. */
+.diagram .highlight .nodeLabel,
+.diagram .highlight text,
+.diagram .highlight span {
+  /* biome-ignore lint/complexity/noImportantStyles: overrides Mermaid's inline label style */
+  color: #1f2328 !important;
+  /* biome-ignore lint/complexity/noImportantStyles: overrides Mermaid's inline label style */
+  fill: #1f2328 !important;
+}

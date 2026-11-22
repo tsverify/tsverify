@@ -1,0 +1,250 @@
+<div class="layout">
+  <header class="top">
+    <h1>tsv view</h1>
+    <span class="muted cwd">/work/b3</span>
+    <span class="connection live" role="status">● live · build 1</span>
+  </header>
+  <main>
+    <article class="spec" aria-labelledby="spec-title">
+      <header class="spec-header">
+        <h2 id="spec-title">Order lifecycle</h2>
+        <p class="muted">
+          <code>src/orders/order.behavior.yaml</code>
+           · project .
+        </p>
+      </header>
+      <section class="card" aria-labelledby="findings-title">
+        <h3 id="findings-title">Findings (3)</h3>
+        <ul class="findings">
+          <li class="finding error">
+            <div class="finding-head">
+              <span class="severity error">✗ non-atomic</span>
+              <span class="location">
+                src/orders/order.behavior.yaml:52:3 · src/orders/refund.ts:10:23
+              </span>
+            </div>
+            <p class="message">
+              refund: refundOrder reads the entity (db.orders.get) and writes refunded outside one atomic scope; the spec says atomic.
+            </p>
+            <p class="hint">
+              <span class="muted">hint: </span>
+              Wrap the read and write in one transaction or use a conditional update.
+            </p>
+            <ul class="consequences">
+              <li class="finding error">
+                <div class="finding-head">
+                  <span class="muted">↳ consequence: </span>
+                  <span class="severity error">✗ implementation-property</span>
+                  <span class="property">effect-multiplicity</span>
+                  <span class="location">
+                    src/orders/order.behavior.yaml:52:3 · src/orders/refund.ts:13:24
+                  </span>
+                </div>
+                <p class="message">
+                  Exactly-once effect `stripe.refund` fires 2 times for one Order.
+                </p>
+                <p class="hint">
+                  <span class="muted">hint: </span>
+                  make `refund`'s state check and write atomic in the code (one transaction or a conditional update)
+                </p>
+                <button type="button" class="play-trace" aria-pressed="false">▶ Play counterexample (7 steps)</button>
+              </li>
+              <li class="finding error">
+                <div class="finding-head">
+                  <span class="muted">↳ consequence: </span>
+                  <span class="severity error">✗ implementation-property</span>
+                  <span class="property">
+                    rule:Refund issued at most once per order
+                  </span>
+                  <span class="location">src/orders/order.behavior.yaml:62:5</span>
+                </div>
+                <p class="message">
+                  Rule &quot;Refund issued at most once per order&quot; (always: count(effect stripe.refund) &lt;= 1) is violated: a reachable state breaks it.
+                </p>
+                <p class="hint">
+                  <span class="muted">hint: </span>
+                  make `refund`'s state check and write atomic in the code (one transaction or a conditional update)
+                </p>
+                <button type="button" class="play-trace" aria-pressed="false">▶ Play counterexample (7 steps)</button>
+              </li>
+            </ul>
+          </li>
+        </ul>
+      </section>
+      <section class="card" aria-labelledby="diagram-title">
+        <div class="card-head">
+          <h3 id="diagram-title">State diagram</h3>
+          <div class="toggle" role="group" aria-label="Model">
+            <button type="button" aria-pressed="true">Spec model</button>
+            <button type="button" aria-pressed="false">Code model</button>
+          </div>
+        </div>
+        <figure class="diagram" aria-label="State diagram of Order lifecycle (spec model)">
+          <pre class="diagram-source">stateDiagram-v2
+            draft
+            pending_payment
+            paid
+            shipped
+            refunded
+            cancelled
+            [*] --> draft
+            draft --> pending_payment: checkout · customer (owner)
+            pending_payment --> cancelled: expire · system · after 30m
+            pending_payment --> paid: payment_succeeded · stripe · ⟳ idempotent · email.receipt ×1
+            paid --> refunded: refund · admin · stripe.refund ×1
+            paid --> shipped: ship · admin
+            shipped --> [*]
+            refunded --> [*]
+            cancelled --> [*]
+          </pre>
+        </figure>
+      </section>
+      <div class="two-col">
+        <section class="card" aria-labelledby="summary-title">
+          <h3 id="summary-title">Summary</h3>
+          <div class="summary">
+            <p>
+              <strong>Order lifecycle</strong>
+              . A customer checks out and pays; an admin ships or refunds; unpaid orders expire. An order has 6 states: draft, pending_payment, paid, shipped, refunded and cancelled. It starts as draft and ends as shipped, refunded or cancelled.
+            </p>
+            <p>
+              <strong>Transitions</strong>
+            </p>
+            <ul>
+              <li>
+                <strong>checkout</strong>
+                : a customer (untrusted, requires owner) can move a draft order to pending_payment. This is atomic.
+              </li>
+              <li>
+                <strong>expire</strong>
+                : the system can move a pending_payment order to cancelled after 30m. This is atomic.
+              </li>
+              <li>
+                <strong>payment_succeeded</strong>
+                : a stripe webhook can move a pending_payment order to paid. This issues email.receipt exactly once, is atomic and tolerates duplicate delivery (idempotent).
+              </li>
+              <li>
+                <strong>refund</strong>
+                : an admin (requires role(admin)) can move a paid order to refunded. This issues stripe.refund exactly once and is atomic.
+              </li>
+              <li>
+                <strong>ship</strong>
+                : an admin (requires role(admin)) can move a paid order to shipped. This is atomic.
+              </li>
+            </ul>
+            <p>
+              <strong>Rules</strong>
+            </p>
+            <ul>
+              <li>
+                <strong>Refund issued at most once per order.</strong>
+                 Always: stripe.refund has happened at most once. 
+                <code>count(effect stripe.refund) &lt;= 1</code>
+              </li>
+              <li>
+                <strong>Unpaid orders don't linger.</strong>
+                 Eventually: the order is not pending_payment. 
+                <code>status != pending_payment</code>
+              </li>
+              <li>
+                <strong>Shipped orders are never refunded.</strong>
+                 Never: the order is shipped and stripe.refund has happened. 
+                <code>
+                  status == shipped and count(effect stripe.refund) > 0
+                </code>
+              </li>
+            </ul>
+          </div>
+        </section>
+        <section class="card" aria-labelledby="matrix-title">
+          <h3 id="matrix-title">Permission matrix</h3>
+          <div class="table-scroll">
+            <table class="matrix">
+              <caption class="visually-hidden">Which actor can perform which transition</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Actor</th>
+                  <th scope="col">checkout</th>
+                  <th scope="col">expire</th>
+                  <th scope="col">payment_succeeded</th>
+                  <th scope="col">refund</th>
+                  <th scope="col">ship</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row">admin</th>
+                  <td class="denied">
+                    <span aria-label="not allowed">—</span>
+                  </td>
+                  <td class="denied">
+                    <span aria-label="not allowed">—</span>
+                  </td>
+                  <td class="denied">
+                    <span aria-label="not allowed">—</span>
+                  </td>
+                  <td class="allowed">✓ role(admin)</td>
+                  <td class="allowed">✓ role(admin)</td>
+                </tr>
+                <tr>
+                  <th scope="row">
+                    customer
+                    <span class="warn"> ⚠ untrusted</span>
+                  </th>
+                  <td class="allowed">✓ owner</td>
+                  <td class="denied">
+                    <span aria-label="not allowed">—</span>
+                  </td>
+                  <td class="denied">
+                    <span aria-label="not allowed">—</span>
+                  </td>
+                  <td class="denied">
+                    <span aria-label="not allowed">—</span>
+                  </td>
+                  <td class="denied">
+                    <span aria-label="not allowed">—</span>
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">stripe</th>
+                  <td class="denied">
+                    <span aria-label="not allowed">—</span>
+                  </td>
+                  <td class="denied">
+                    <span aria-label="not allowed">—</span>
+                  </td>
+                  <td class="allowed">✓</td>
+                  <td class="denied">
+                    <span aria-label="not allowed">—</span>
+                  </td>
+                  <td class="denied">
+                    <span aria-label="not allowed">—</span>
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">system</th>
+                  <td class="denied">
+                    <span aria-label="not allowed">—</span>
+                  </td>
+                  <td class="allowed">✓</td>
+                  <td class="denied">
+                    <span aria-label="not allowed">—</span>
+                  </td>
+                  <td class="denied">
+                    <span aria-label="not allowed">—</span>
+                  </td>
+                  <td class="denied">
+                    <span aria-label="not allowed">—</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <p class="muted legend">
+              ✓ allowed, with the guards that must pass · — not allowed · ⚠ untrusted: its requests cannot be trusted
+            </p>
+          </div>
+        </section>
+      </div>
+    </article>
+  </main>
+</div>
