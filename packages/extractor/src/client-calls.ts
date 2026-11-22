@@ -2,11 +2,24 @@
  * Classifies call expressions as calls on a bound client (`bindings.clients`): `stripe.refunds.create(…)`
  * → client `stripe`, path `refunds.create`, gate `stripe.refunds.create`.
  *
- * The callee must be a property chain whose root identifier resolves (through imports and
- * re-exports) to the client's exported symbol, or to a parameter the persistence adapter says
- * aliases a client: `db.transaction(async (tx) => tx.orders.get(id))` → `tx.orders.get` is a call on
- * client `db` inside that scope. Not recognized: clients passed as parameters, stored in fields,
- * destructured (`const { orders } = db`), or reached through element access.
+ * The callee is a property chain `root.a.b…` (or a bare `root(…)`) whose root is the client when:
+ * - **by symbol**: the root identifier resolves (through imports, aliased imports and re-exports)
+ *   to the client's exported symbol, or a prefix `ns.x` does (a namespace import);
+ * - **scope alias**: the root is a parameter the persistence adapter says aliases a client:
+ *   `db.transaction(async (tx) => tx.orders.get(id))` → `tx.orders.get` is a call on `db` inside
+ *   that scope;
+ * - **by type** (injected clients): the root identifier, or a prefix `this.x` / `deps.x`, is a
+ *   parameter, class field (including a constructor parameter property), property signature,
+ *   destructured binding or variable whose declared type is the bound export's type (`typeof db`,
+ *   or the class or interface the export is typed as): `constructor(private prisma: PrismaClient)`
+ *   → `this.prisma.order.update(…)`; `(deps: { db: typeof db }) => deps.db.orders.get(id)`. Types
+ *   compare by identity, so an object of another type never matches; a type shared by several
+ *   clients, or one that is not an object or function type (`any`, primitives, `{}`), matches
+ *   none.
+ *
+ * A bare call on a client that is an exported function (`sendMail(…)`, bound as
+ * `email: { export: sendMail }`) has path `""` and gate `email`. Not recognized: element access
+ * (`db["orders"]`), a destructured member (`const { orders } = db`), and a call's result as root.
  */
 import type { AtomicScope } from "@tsverify/ir";
 import { ts } from "ts-morph";
@@ -32,14 +45,48 @@ export interface ClientCall {
   scope?: ScopeRef;
 }
 
+export interface ChainRoot {
+  client: string;
+  /** Set when the root is a scope alias (`tx`). */
+  scope?: ScopeRef;
+  /** The property names below the client, e.g. `["orders", "get"]`. */
+  segments: string[];
+}
+
 function stripParens(n: ts.Expression): ts.Expression {
   let cur = n;
   while (ts.isParenthesizedExpression(cur)) cur = cur.expression;
   return cur;
 }
 
+function stripExpr(n: ts.Expression): ts.Expression {
+  let cur = n;
+  while (
+    ts.isParenthesizedExpression(cur) ||
+    ts.isAsExpression(cur) ||
+    ts.isSatisfiesExpression(cur) ||
+    ts.isNonNullExpression(cur)
+  ) {
+    cur = cur.expression;
+  }
+  return cur;
+}
+
+/** Declarations whose declared type identifies an injected client. */
+function isTypedHolder(decl: ts.Declaration): boolean {
+  return (
+    ts.isParameter(decl) ||
+    ts.isPropertyDeclaration(decl) ||
+    ts.isPropertySignature(decl) ||
+    ts.isBindingElement(decl) ||
+    ts.isVariableDeclaration(decl)
+  );
+}
+
 export class ClientCalls {
   private readonly memo = new Map<ts.CallExpression, ClientCall | null>();
+  /** Client export type → the client names of that type (built on first use). */
+  private clientTypes: Map<ts.Type, string[]> | undefined;
 
   constructor(
     private readonly checker: ts.TypeChecker,
@@ -86,25 +133,50 @@ export class ClientCalls {
   }
 
   private compute(call: ts.CallExpression): ClientCall | undefined {
-    const segments: string[] = [];
-    let e: ts.Expression = stripParens(call.expression);
-    while (ts.isPropertyAccessExpression(e) && ts.isIdentifier(e.name)) {
-      segments.unshift(e.name.text);
-      e = stripParens(e.expression);
-    }
-    if (segments.length === 0 || !ts.isIdentifier(e)) return undefined;
-    const root = this.rootOf(e);
-    if (!root) return undefined;
-    const path = segments.join(".");
-    return { call, client: root.client, path, gate: `${root.client}.${path}`, scope: root.scope };
+    const root = this.chainRoot(call.expression);
+    // A scope alias is a stand-in for the client object; calling it is not a client call.
+    if (!root || (root.scope && root.segments.length === 0)) return undefined;
+    const path = root.segments.join(".");
+    const gate = path === "" ? root.client : `${root.client}.${path}`;
+    return { call, client: root.client, path, gate, ...(root.scope ? { scope: root.scope } : {}) };
   }
 
-  /** The client an identifier is (a bound client's symbol, or a scope alias such as `tx`). */
+  /** The client a property chain (`db.orders.get`, `this.prisma.order`) is rooted at. */
+  chainRoot(expr: ts.Expression): ChainRoot | undefined {
+    const accesses: ts.PropertyAccessExpression[] = [];
+    let e = stripExpr(expr);
+    while (ts.isPropertyAccessExpression(e) && ts.isIdentifier(e.name)) {
+      accesses.unshift(e);
+      e = stripExpr(e.expression);
+    }
+    const names = accesses.map((a) => a.name.text);
+    if (ts.isIdentifier(e)) {
+      const root = this.rootOf(e);
+      if (root) return { ...root, segments: names };
+    } else if (e.kind !== ts.SyntaxKind.ThisKeyword) {
+      return undefined;
+    }
+    for (let i = 0; i < accesses.length; i++) {
+      const sym = symbolOf(accesses[i] as ts.PropertyAccessExpression, this.checker);
+      const client = sym && (this.clients.get(sym) ?? this.byType(sym));
+      if (client !== undefined) return { client, segments: names.slice(i + 1) };
+    }
+    return undefined;
+  }
+
+  /** The client an identifier is: a bound client's symbol, a scope alias (`tx`), or by type. */
   rootOf(id: ts.Identifier): { client: string; scope?: ScopeRef } | undefined {
     const sym = symbolOf(id, this.checker);
     if (!sym) return undefined;
     const direct = this.clients.get(sym);
     if (direct !== undefined) return { client: direct };
+    const alias = this.scopeAlias(sym);
+    if (alias) return alias;
+    const typed = this.byType(sym);
+    return typed === undefined ? undefined : { client: typed };
+  }
+
+  private scopeAlias(sym: ts.Symbol): { client: string; scope: ScopeRef } | undefined {
     const decl = sym.valueDeclaration;
     if (!decl || !ts.isParameter(decl) || !ts.isIdentifier(decl.name)) return undefined;
     const fn = decl.parent;
@@ -113,5 +185,38 @@ export class ClientCalls {
     if (!scope) return undefined;
     const outer = this.classify(scope.call);
     return outer && { client: outer.client, scope };
+  }
+
+  /** The one client whose export type is `sym`'s declared type (an injected client). */
+  private byType(sym: ts.Symbol): string | undefined {
+    const decl = sym.valueDeclaration;
+    if (!decl || !isTypedHolder(decl)) return undefined;
+    const type = this.checker.getNonNullableType(this.checker.getTypeOfSymbol(sym));
+    const names = this.typeIndex().get(type);
+    return names?.length === 1 ? names[0] : undefined;
+  }
+
+  private typeIndex(): Map<ts.Type, string[]> {
+    if (this.clientTypes) return this.clientTypes;
+    const index = new Map<ts.Type, string[]>();
+    for (const [sym, name] of this.clients) {
+      const type = this.checker.getTypeOfSymbol(sym);
+      if (!this.identifiesClient(type)) continue;
+      const names = index.get(type) ?? [];
+      if (!names.includes(name)) names.push(name);
+      index.set(type, names);
+    }
+    this.clientTypes = index;
+    return index;
+  }
+
+  /** An object or function type with members: `any`, primitives and `{}` identify nothing. */
+  private identifiesClient(type: ts.Type): boolean {
+    if (!(type.flags & (ts.TypeFlags.Object | ts.TypeFlags.Intersection))) return false;
+    return (
+      this.checker.getPropertiesOfType(type).length > 0 ||
+      type.getCallSignatures().length > 0 ||
+      type.getConstructSignatures().length > 0
+    );
   }
 }
