@@ -20,8 +20,17 @@ function code(name: string): string {
   return `\`${name}\``;
 }
 
-function atomicHint(names: readonly string[]): string {
+/**
+ * How to remove a check-then-act gap. For a spec model the fix is in the spec (`atomic: true`);
+ * for a code model the spec already says what it wants and the fix is in the code.
+ */
+function atomicHint(ctx: CheckContext, names: readonly string[]): string {
   const list = names.map(code);
+  if (ctx.model.origin === "code") {
+    return list.length === 1
+      ? `make ${list[0]}'s state check and write atomic in the code (one transaction or a conditional update)`
+      : `make the state checks and writes of ${list.join(", ")} atomic in the code (one transaction or a conditional update)`;
+  }
   return list.length === 1
     ? `mark ${list[0]} atomic: true, or make its state write conditional`
     : `mark ${list.join(", ")} atomic: true, or make their state writes conditional`;
@@ -46,27 +55,32 @@ export function staleWriters(trace: Trace): string[] {
 function effectHint(ctx: CheckContext, effect: EffectCode, trace: Trace): string {
   const emitters = ctx.model.transitions.filter((t) => effect.emitters.includes(t.name));
   const nonAtomic = emitters.filter((t) => !t.atomic).map((t) => t.name);
-  if (nonAtomic.length > 0) return atomicHint(nonAtomic);
+  if (nonAtomic.length > 0) return atomicHint(ctx, nonAtomic);
   // The emitters are atomic, so something else re-enabled them: a stale write, if there is one.
   const stale = staleWriters(trace);
-  if (stale.length > 0) return atomicHint(stale);
+  if (stale.length > 0) return atomicHint(ctx, stale);
   const names = emitters.map((t) => code(t.name)).join(", ");
   return `narrow the \`from\` states of ${names} so a repeated invocation is rejected, or deduplicate ${code(effect.name)}`;
 }
 
-/** The spec location of an effect: its declaration on the first emitter, else that transition. */
+/**
+ * The spec location of an effect: its declaration on the first emitter, else that transition.
+ * In a code model a transition's `at` is the write in the code, so only a declaration counts.
+ */
 function effectAt(ctx: CheckContext, effect: EffectCode): SourceLocation | undefined {
   const t = ctx.model.transitions.find((t) => t.name === effect.emitters[0]);
-  return t?.effects.find((e) => e.name === effect.name)?.at ?? t?.at;
+  const declared = t?.effects.find((e) => e.name === effect.name)?.at;
+  return ctx.model.origin === "code" ? declared : (declared ?? t?.at);
 }
 
+/** In a code model: the effect's call site, else the first emitter's write. */
 function effectCodeAt(ctx: CheckContext, effect: EffectCode): SourceLocation | undefined {
   for (const t of ctx.model.transitions) {
     if (!effect.emitters.includes(t.name)) continue;
     const site = t.sites?.effects?.find((e) => e.effect === effect.name);
     if (site) return site.at;
   }
-  return undefined;
+  return ctx.model.transitions.find((t) => t.name === effect.emitters[0])?.at;
 }
 
 /** `always` / `never` rules and the `effect-multiplicity` built-in, checked on every state. */
@@ -126,7 +140,7 @@ export function invariants(ctx: CheckContext): PropertyChecker {
             message: `Rule "${rule.name}" (${rule.kind}: ${rule.source}) is violated: ${what}.`,
             ...(rule.at && { specAt: rule.at }),
             trace: t,
-            ...(stale.length > 0 && { hint: atomicHint(stale) }),
+            ...(stale.length > 0 && { hint: atomicHint(ctx, stale) }),
           }),
         );
       }

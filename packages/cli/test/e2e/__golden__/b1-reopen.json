@@ -25,13 +25,6 @@
       "severity": "error",
       "message": "Exactly-once effect `email.receipt` fires 2 times for one Order.",
       "transition": "payment_succeeded",
-      "specAt": {
-        "file": "src/payments/webhook.ts",
-        "line": 22,
-        "column": 5,
-        "endLine": 22,
-        "endColumn": 26
-      },
       "codeAt": {
         "file": "src/payments/webhook.ts",
         "line": 28,
@@ -438,7 +431,14 @@
           }
         ]
       },
-      "hint": "narrow the `from` states of `payment_succeeded` so a repeated invocation is rejected, or deduplicate `email.receipt`"
+      "hint": "narrow the `from` states of `payment_succeeded` so a repeated invocation is rejected, or deduplicate `email.receipt`",
+      "specAt": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 27,
+        "column": 3,
+        "endLine": 35,
+        "endColumn": 53
+      }
     }
   ],
   "specs": [

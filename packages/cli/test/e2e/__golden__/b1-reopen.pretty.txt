@@ -3,7 +3,7 @@ Order lifecycle
   ✗ undeclared-transition  src/admin/orders.ts:25:5
     reopenOrder writes paid → pending_payment, which no spec transition declares.
     hint: Declare this transition in the spec with impl: src/admin/orders.ts#reopenOrder, or remove the write.
-  ✗ implementation-property  src/payments/webhook.ts:22:5 · src/payments/webhook.ts:28:9
+  ✗ implementation-property  src/orders/order.behavior.yaml:27:3 · src/payments/webhook.ts:28:9
     Exactly-once effect `email.receipt` fires 2 times for one Order.
     hint: narrow the `from` states of `payment_succeeded` so a repeated invocation is rejected, or deduplicate `email.receipt`
     trace:

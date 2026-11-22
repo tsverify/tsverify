@@ -529,7 +529,7 @@
           }
         ]
       },
-      "hint": "mark `refund` atomic: true, or make its state write conditional"
+      "hint": "make `refund`'s state check and write atomic in the code (one transaction or a conditional update)"
     },
     {
       "id": "implementation-property:Order lifecycle:effect-multiplicity:stripe.refund",
@@ -539,13 +539,6 @@
       "severity": "error",
       "message": "Exactly-once effect `stripe.refund` fires 2 times for one Order.",
       "transition": "refund",
-      "specAt": {
-        "file": "src/orders/refund.ts",
-        "line": 14,
-        "column": 3,
-        "endLine": 14,
-        "endColumn": 28
-      },
       "codeAt": {
         "file": "src/orders/refund.ts",
         "line": 13,
@@ -1044,7 +1037,14 @@
           }
         ]
       },
-      "hint": "mark `refund` atomic: true, or make its state write conditional"
+      "hint": "make `refund`'s state check and write atomic in the code (one transaction or a conditional update)",
+      "specAt": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 52,
+        "column": 3,
+        "endLine": 59,
+        "endColumn": 43
+      }
     }
   ],
   "specs": [

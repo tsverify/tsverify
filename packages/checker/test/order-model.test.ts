@@ -212,6 +212,25 @@ describe("code-origin duplicate webhook (B4 analogue)", () => {
   });
 });
 
+describe("code-origin findings", () => {
+  it("point at the code and give code-directed hints", () => {
+    const m = orderModel();
+    m.origin = "code";
+    const refund = transition(m, "refund");
+    refund.atomic = false;
+    const write = { file: "src/orders/refund.ts", line: 15, column: 3 };
+    refund.at = write;
+    const f = check(m).findings.find(
+      (f) => f.id === "implementation-property:Order lifecycle:effect-multiplicity:stripe.refund",
+    );
+    expect(f?.specAt).toBeUndefined();
+    expect(f?.codeAt).toEqual(write);
+    expect(f?.hint).toBe(
+      "make `refund`'s state check and write atomic in the code (one transaction or a conditional update)",
+    );
+  });
+});
+
 describe("no-stuck-states", () => {
   it("reports a reachable non-terminal state with no way out", () => {
     const m = orderModel();

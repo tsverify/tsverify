@@ -77,13 +77,23 @@ export async function checkCode(
       if (result.model) {
         findings.push(...compare(spec, result.model));
         const checked = check(result.model, { maxStates });
-        findings.push(...checked.findings);
+        findings.push(...checked.findings.map((f) => withSpecAt(f, spec)));
         outcome.codeStats = checked.stats;
       }
       outcome.findings = rebaseLocations(findings, root, cwd);
     });
   }
   return outcomes;
+}
+
+/**
+ * Code-model checker findings carry code locations only (the checker never sees the spec). The
+ * CLI holds both models, so it points `specAt` at the spec transition the finding is about.
+ */
+function withSpecAt(finding: Finding, spec: BehaviorModel): Finding {
+  if (finding.specAt !== undefined || finding.transition === undefined) return finding;
+  const at = spec.transitions.find((t) => t.name === finding.transition)?.at;
+  return at === undefined ? finding : { ...finding, specAt: at };
 }
 
 function noProject(file: string, model: BehaviorModel): Finding {
