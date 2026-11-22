@@ -7,7 +7,7 @@ import { allocateWorkerClasses, type WorkerClasses } from "./symmetry";
  *
  * A state is a fixed-width vector of small unsigned integers (a `Uint16Array` row):
  *
- *   [ status | per transition: idle, checked(observed)… | per effect: count ]
+ *   [ status | per transition: idle[, checked] | per effect: count ]
  *
  * Field 0 is the status index. Worker fields hold class counts (see `symmetry.ts`); effect fields
  * hold counts saturated at `cap` (see `effectCap`). Every field is bounded by the model's
@@ -110,7 +110,7 @@ export function buildLayout(model: BehaviorModel): Layout {
     const enabledFrom = new Uint8Array(states.length);
     if (t.from === "*") enabledFrom.fill(1);
     else for (const s of t.from) enabledFrom[lookupState(stateIndex, s, `${t.name}.from`)] = 1;
-    const { classes, next } = allocateWorkerClasses(states.length, t.atomic, enabledFrom, offset);
+    const { classes, next } = allocateWorkerClasses(t.atomic, offset);
     offset = next;
     return {
       index,
