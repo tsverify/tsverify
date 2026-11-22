@@ -1,14 +1,15 @@
 /**
  * Type facts the extractor needs from the TypeScript checker, behind a seam so a TS 7 (tsgo)
- * backend can replace the ts-morph (TS 6) one later (spike X1).
+ * backend can replace the classic compiler API one (TS 5.4–6.x, `typescript.ts`) later (spike X1).
  *
  * Narrowing uses X1's **probe-first injection**: every candidate state write `W` is rewritten to
- * `(ref.field, W)` in the in-memory project *before* the first type query. The comma operator
+ * `(ref.field, W)` in an in-memory overlay of the program *before* the first type query. The comma operator
  * creates no flow node, so the probe read sees exactly the flow state just before `W`. No newline
  * is inserted, so lines never change and only columns on probed lines shift; `toOriginalPosition`
  * maps them back.
  */
-import { type Project, ts } from "ts-morph";
+import type * as TS from "@typescript/typescript6";
+import { ts } from "./typescript";
 
 /** Sorted literal values, or `"*"` when the type is not a finite literal set (`string`, `any`, …). */
 export type LiteralSet = readonly string[] | "*";
@@ -54,7 +55,7 @@ export interface TypeFacts {
 
 // --- type → literal set ------------------------------------------------------------------
 
-export function literalsOf(type: ts.Type, checker: ts.TypeChecker): LiteralSet {
+export function literalsOf(type: TS.Type, checker: TS.TypeChecker): LiteralSet {
   const F = ts.TypeFlags;
   if (type.flags & (F.Any | F.Unknown)) return "*";
   if (type.flags & F.Never) return [];
@@ -87,7 +88,7 @@ export function literalsOf(type: ts.Type, checker: ts.TypeChecker): LiteralSet {
 }
 
 /** A single string/number/boolean literal value of an expression's type, if it has exactly one. */
-export function singleLiteralOf(type: ts.Type, checker: ts.TypeChecker): string | undefined {
+export function singleLiteralOf(type: TS.Type, checker: TS.TypeChecker): string | undefined {
   if (type.isUnion()) return undefined;
   const s = literalsOf(type, checker);
   return s !== "*" && s.length === 1 ? s[0] : undefined;
@@ -104,7 +105,7 @@ const TRANSPARENT_ALIASES: ReadonlySet<string> = new Set([
 ]);
 
 /** Names a type node refers to: `Row` → `Row` plus what `Row` aliases; `Pick<Order, …>` → `Order`. */
-function typeNodeNames(node: ts.TypeNode, checker: ts.TypeChecker, depth: number): string[] {
+function typeNodeNames(node: TS.TypeNode, checker: TS.TypeChecker, depth: number): string[] {
   if (depth > 4) return [];
   if (ts.isParenthesizedTypeNode(node)) return typeNodeNames(node.type, checker, depth + 1);
   if (ts.isTypeReferenceNode(node)) {
@@ -120,7 +121,7 @@ function typeNodeNames(node: ts.TypeNode, checker: ts.TypeChecker, depth: number
  * the first argument of a transparent utility alias, and what a user alias stands for
  * (`type Shipment = Row; type Row = Pick<Order, …>` answers to `Order`).
  */
-export function typeNames(type: ts.Type, checker: ts.TypeChecker, depth = 0): string[] {
+export function typeNames(type: TS.Type, checker: TS.TypeChecker, depth = 0): string[] {
   if (depth > 4) return [];
   const names = new Set<string>();
   const alias = type.aliasSymbol;
@@ -150,7 +151,7 @@ export function typeNames(type: ts.Type, checker: ts.TypeChecker, depth = 0): st
 }
 
 /** The declared (not flow-narrowed) type of a reference expression. */
-export function declaredTypeOfRef(ref: ts.Expression, checker: ts.TypeChecker): ts.Type {
+export function declaredTypeOfRef(ref: TS.Expression, checker: TS.TypeChecker): TS.Type {
   const target = ts.isPropertyAccessExpression(ref) ? ref.name : ref;
   const sym =
     ref.kind === ts.SyntaxKind.ThisKeyword ? undefined : checker.getSymbolAtLocation(target);
@@ -160,10 +161,10 @@ export function declaredTypeOfRef(ref: ts.Expression, checker: ts.TypeChecker): 
 
 /** The declared type of `field` on a reference's declared type, if it has that property. */
 export function declaredFieldType(
-  ref: ts.Expression,
+  ref: TS.Expression,
   field: string,
-  checker: ts.TypeChecker,
-): ts.Type | undefined {
+  checker: TS.TypeChecker,
+): TS.Type | undefined {
   const refType = declaredTypeOfRef(ref, checker);
   const prop = checker.getPropertyOfType(checker.getApparentType(refType), field);
   return prop ? checker.getTypeOfSymbol(prop) : undefined;
@@ -189,7 +190,7 @@ function union(a: Allowed, b: Allowed): Allowed {
   return a && b ? new Set([...a, ...b]) : undefined;
 }
 
-function stripExpr(e: ts.Expression): ts.Expression {
+function stripExpr(e: TS.Expression): TS.Expression {
   let cur = e;
   while (
     ts.isParenthesizedExpression(cur) ||
@@ -204,7 +205,7 @@ function stripExpr(e: ts.Expression): ts.Expression {
 }
 
 /** `a`, `this`, `a.b`, also through `?.` and `!`: canonical text, else undefined. */
-function refText(e: ts.Expression): string | undefined {
+function refText(e: TS.Expression): string | undefined {
   const x = stripExpr(e);
   if (ts.isIdentifier(x)) return x.text;
   if (x.kind === ts.SyntaxKind.ThisKeyword) return "this";
@@ -216,7 +217,7 @@ function refText(e: ts.Expression): string | undefined {
 }
 
 /** The `const` initializer an identifier stands for (through imports), if it has one. */
-function constInitializer(id: ts.Identifier, checker: ts.TypeChecker): ts.Expression | undefined {
+function constInitializer(id: TS.Identifier, checker: TS.TypeChecker): TS.Expression | undefined {
   let sym = checker.getSymbolAtLocation(id);
   if (sym && sym.flags & ts.SymbolFlags.Alias) sym = checker.getAliasedSymbol(sym);
   const decl = sym?.valueDeclaration;
@@ -228,8 +229,8 @@ function constInitializer(id: ts.Identifier, checker: ts.TypeChecker): ts.Expres
 
 /** The string literals of an array literal (all elements must be literals). */
 function arrayLiterals(
-  e: ts.Expression,
-  checker: ts.TypeChecker,
+  e: TS.Expression,
+  checker: TS.TypeChecker,
   depth: number,
 ): string[] | undefined {
   const x = stripExpr(e);
@@ -248,8 +249,8 @@ function arrayLiterals(
 
 /** The literals of `new Set([...])` (or a `const` bound to one). */
 function setLiterals(
-  e: ts.Expression,
-  checker: ts.TypeChecker,
+  e: TS.Expression,
+  checker: TS.TypeChecker,
   depth: number,
 ): string[] | undefined {
   const x = stripExpr(e);
@@ -270,7 +271,7 @@ interface MembershipTarget {
   field: string;
   /** The field's finite domain, needed to read a negative test (`!L.includes(x)`); else undefined. */
   domain: readonly string[] | undefined;
-  checker: ts.TypeChecker;
+  checker: TS.TypeChecker;
 }
 
 /**
@@ -278,7 +279,7 @@ interface MembershipTarget {
  * anything (`L.includes(ref.field)` for a literal array `L`, `S.has(ref.field)` for a literal
  * `Set`); `!`, `&&` and `||` combine them; any other operand gives no information.
  */
-function allowedBy(cond: ts.Expression, holds: boolean, t: MembershipTarget): Allowed {
+function allowedBy(cond: TS.Expression, holds: boolean, t: MembershipTarget): Allowed {
   const e = stripExpr(cond);
   if (ts.isPrefixUnaryExpression(e) && e.operator === ts.SyntaxKind.ExclamationToken) {
     return allowedBy(e.operand, !holds, t);
@@ -297,7 +298,7 @@ function allowedBy(cond: ts.Expression, holds: boolean, t: MembershipTarget): Al
   if (!ts.isCallExpression(e) || e.arguments.length !== 1) return undefined;
   const callee = stripExpr(e.expression);
   if (!ts.isPropertyAccessExpression(callee) || !ts.isIdentifier(callee.name)) return undefined;
-  const arg = stripExpr(e.arguments[0] as ts.Expression);
+  const arg = stripExpr(e.arguments[0] as TS.Expression);
   if (
     !ts.isPropertyAccessExpression(arg) ||
     !ts.isIdentifier(arg.name) ||
@@ -319,7 +320,7 @@ function allowedBy(cond: ts.Expression, holds: boolean, t: MembershipTarget): Al
 }
 
 /** A statement after which the rest of its block does not run (`throw`, `return`, …). */
-function alwaysExits(st: ts.Statement): boolean {
+function alwaysExits(st: TS.Statement): boolean {
   if (
     ts.isThrowStatement(st) ||
     ts.isReturnStatement(st) ||
@@ -339,7 +340,7 @@ function alwaysExits(st: ts.Statement): boolean {
   return false;
 }
 
-function blockStatements(n: ts.Node): readonly ts.Statement[] | undefined {
+function blockStatements(n: TS.Node): readonly TS.Statement[] | undefined {
   if (ts.isBlock(n) || ts.isSourceFile(n) || ts.isModuleBlock(n)) return n.statements;
   if (ts.isCaseClause(n) || ts.isDefaultClause(n)) return n.statements;
   return undefined;
@@ -355,7 +356,7 @@ function blockStatements(n: ts.Node): readonly ts.Statement[] | undefined {
  * Undefined when no membership guard applies.
  */
 export function membershipAllowed(
-  at: ts.Node,
+  at: TS.Node,
   t: MembershipTarget,
 ): ReadonlySet<string> | undefined {
   let allowed: Allowed;
@@ -392,10 +393,10 @@ export function membershipAllowed(
  */
 export function withMembershipGuards(
   n: Narrowed,
-  at: ts.Node,
-  ref: ts.Expression,
+  at: TS.Node,
+  ref: TS.Expression,
   field: string,
-  checker: ts.TypeChecker,
+  checker: TS.TypeChecker,
 ): Narrowed {
   const text = refText(ref);
   if (text === undefined) return n;
@@ -411,7 +412,7 @@ export function withMembershipGuards(
   };
 }
 
-// --- ts-morph implementation --------------------------------------------------------------
+// --- classic compiler API implementation -------------------------------------------------
 
 interface Insertion {
   /** Original offset the text is inserted at. */
@@ -428,9 +429,9 @@ interface Planned {
 }
 
 /** Finds the node exactly covering `[start, end)` (smallest such node). */
-function nodeAtSpan(sf: ts.SourceFile, start: number, end: number): ts.Node | undefined {
-  let found: ts.Node | undefined;
-  const visit = (n: ts.Node): void => {
+function nodeAtSpan(sf: TS.SourceFile, start: number, end: number): TS.Node | undefined {
+  let found: TS.Node | undefined;
+  const visit = (n: TS.Node): void => {
     if (n.getStart(sf) <= start && n.getEnd() >= end) {
       if (n.getStart(sf) === start && n.getEnd() === end) found = n;
       ts.forEachChild(n, visit);
@@ -440,25 +441,75 @@ function nodeAtSpan(sf: ts.SourceFile, start: number, end: number): ts.Node | un
   return found;
 }
 
-export class TsMorphTypeFacts implements TypeFacts {
+/**
+ * A compiler host over the real file system (plus optional in-memory `files`) that serves the
+ * probed `overlay` text in place of a file's own, and hands out one `SourceFile` per file and text,
+ * so the probed program reuses every unprobed file of the base program as is.
+ */
+export interface OverlayHost extends TS.CompilerHost {
+  /** Probed text by file name, filled by `planNarrowing` before the probed program exists. */
+  readonly overlay: Map<string, string>;
+}
+
+export function createOverlayHost(
+  options: TS.CompilerOptions,
+  files: ReadonlyMap<string, string> = new Map(),
+): OverlayHost {
+  const overlay = new Map<string, string>();
+  const parsed = new Map<string, TS.SourceFile>();
+  const probed = new Map<string, TS.SourceFile>();
+  const host = ts.createCompilerHost(options, true);
+  const { fileExists, readFile, getSourceFile } = host;
+  // The default getSourceFile reads through `host.readFile`, so the overlay reaches it too.
+  host.fileExists = (name) => files.has(name) || fileExists.call(host, name);
+  host.readFile = (name) => overlay.get(name) ?? files.get(name) ?? readFile.call(host, name);
+  host.getSourceFile = (name, languageVersion, onError, shouldCreateNew) => {
+    const cache = overlay.has(name) ? probed : parsed;
+    let sf = cache.get(name);
+    if (sf === undefined) {
+      sf = getSourceFile.call(host, name, languageVersion, onError, shouldCreateNew);
+      if (sf !== undefined) cache.set(name, sf);
+    }
+    return sf;
+  };
+  return Object.assign(host, { overlay });
+}
+
+/**
+ * `TypeFacts` over a classic `ts.Program`. `base` is the unprobed program, used for syntax only;
+ * the probed program is created from it (reusing its unprobed files and module resolutions) with
+ * `host`'s overlay on the first type query.
+ */
+export class ProgramTypeFacts implements TypeFacts {
   private readonly planned: Planned[] = [];
   private readonly insertions = new Map<string, Insertion[]>();
-  private queried = false;
+  private probed: TS.Program | undefined;
 
-  constructor(private readonly project: Project) {}
+  constructor(
+    private readonly base: TS.Program,
+    private readonly host: OverlayHost,
+  ) {}
 
-  get checker(): ts.TypeChecker {
-    this.queried = true;
-    return this.project.getTypeChecker().compilerObject;
+  get checker(): TS.TypeChecker {
+    return this.program.getTypeChecker();
   }
 
-  get program(): ts.Program {
-    this.queried = true;
-    return this.project.getProgram().compilerObject;
+  get program(): TS.Program {
+    this.probed ??=
+      this.host.overlay.size === 0
+        ? this.base
+        : ts.createProgram({
+            rootNames: this.base.getRootFileNames(),
+            options: this.base.getCompilerOptions(),
+            host: this.host,
+            oldProgram: this.base,
+            configFileParsingDiagnostics: this.base.getConfigFileParsingDiagnostics(),
+          });
+    return this.probed;
   }
 
   planNarrowing(requests: readonly NarrowRequest[]): readonly NarrowHandle[] {
-    if (this.queried) throw new Error("extractor: planNarrowing after the first type query");
+    if (this.probed) throw new Error("extractor: planNarrowing after the first type query");
     const byFile = new Map<string, number[]>();
     const handles: NarrowHandle[] = [];
     for (const request of requests) {
@@ -471,7 +522,8 @@ export class TsMorphTypeFacts implements TypeFacts {
     }
     for (const [file, indices] of byFile) {
       if (this.insertions.has(file)) throw new Error(`extractor: ${file} probed twice`);
-      const sf = this.project.getSourceFileOrThrow(file);
+      const sf = this.base.getSourceFile(file);
+      if (sf === undefined) throw new Error(`extractor: ${file} is not in the program`);
       const text = sf.getFullText();
       // Opens sort by start, outer (longer) first; closes come before opens at the same offset
       // and inner (shorter) first, so nested spans stay well-formed.
@@ -509,7 +561,7 @@ export class TsMorphTypeFacts implements TypeFacts {
       }
       out += text.slice(last);
       this.insertions.set(file, inserts);
-      this.project.createSourceFile(file, out, { overwrite: true });
+      this.host.overlay.set(file, out);
     }
     return handles;
   }

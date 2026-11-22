@@ -27,7 +27,7 @@
  * dominates exactly when it is in every set.
  */
 import { compareStrings } from "@tsverify/ir";
-import type { ts } from "ts-morph";
+import type * as TS from "@typescript/typescript6";
 import { type Callees, frameCalls, type LeadGroup, leadsTo, type Reach } from "./callgraph";
 import { buildCfg, type Cfg, ENTRY, EXIT, type FunctionLike, reachable } from "./cfg";
 
@@ -52,12 +52,12 @@ export function cfgOf(fn: FunctionLike): Cfg {
 }
 
 /** Direct guard matches of a call: the binding keys it satisfies. */
-export type GuardMatcher = (call: ts.CallExpression) => readonly string[];
+export type GuardMatcher = (call: TS.CallExpression) => readonly string[];
 
 export interface GuardSite {
   key: string;
   /** The guard call (or guard-wrapper call) on a path to the write. */
-  call: ts.CallExpression;
+  call: TS.CallExpression;
 }
 
 export interface GuardFacts {
@@ -90,13 +90,13 @@ export class Dominance {
 
   constructor(
     private readonly callees: Callees,
-    private readonly isStop: (call: ts.CallExpression) => boolean,
+    private readonly isStop: (call: TS.CallExpression) => boolean,
     private readonly match: GuardMatcher,
     private readonly keys: readonly string[],
   ) {}
 
   /** Keys a call satisfies: direct matches plus wrappers that must call the guard. */
-  keysOfCall(call: ts.CallExpression): string[] {
+  keysOfCall(call: TS.CallExpression): string[] {
     const direct = this.match(call);
     if (direct.length > 0) return [...direct];
     if (this.isStop(call)) return [];
@@ -135,7 +135,7 @@ export class Dominance {
    * return: every one of a must-call wrapper's contains the key, and a helper doing
    * `if (admin) requireRole(…) else requireOwner(…)` passes either alternative. Null: over the cap.
    */
-  private callSets(call: ts.CallExpression): ReadonlySet<number> | null | undefined {
+  private callSets(call: TS.CallExpression): ReadonlySet<number> | null | undefined {
     const direct = this.match(call);
     if (direct.length > 0) {
       let mask = 0;
@@ -242,7 +242,7 @@ export class Dominance {
   }
 
   /** Guard facts for `write` (in frame `writeFrame`) as reached from `root`. */
-  analyze(root: Reach, writeFrame: FunctionLike, write: ts.Node): GuardFacts {
+  analyze(root: Reach, writeFrame: FunctionLike, write: TS.Node): GuardFacts {
     const leads = leadsTo(root, writeFrame, write);
 
     const domMemo = new Map<string, boolean>();

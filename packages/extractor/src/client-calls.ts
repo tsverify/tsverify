@@ -22,22 +22,23 @@
  * (`db["orders"]`), a destructured member (`const { orders } = db`), and a call's result as root.
  */
 import type { AtomicScope } from "@tsverify/ir";
-import { ts } from "ts-morph";
+import type * as TS from "@typescript/typescript6";
 import type { PersistenceAdapter } from "./adapters/types";
 import { inlineCallbackCall } from "./cfg";
 import { symbolOf } from "./resolve";
+import { ts } from "./typescript";
 
 export interface ScopeRef {
   /** The call that opens the scope, e.g. `db.transaction(…)`. */
-  call: ts.CallExpression;
+  call: TS.CallExpression;
   /** The inline callback that runs inside the scope. */
-  callback: ts.ArrowFunction | ts.FunctionExpression;
+  callback: TS.ArrowFunction | TS.FunctionExpression;
   kind: AtomicScope["kind"];
   gate: string;
 }
 
 export interface ClientCall {
-  call: ts.CallExpression;
+  call: TS.CallExpression;
   client: string;
   path: string;
   gate: string;
@@ -53,13 +54,13 @@ export interface ChainRoot {
   segments: string[];
 }
 
-function stripParens(n: ts.Expression): ts.Expression {
+function stripParens(n: TS.Expression): TS.Expression {
   let cur = n;
   while (ts.isParenthesizedExpression(cur)) cur = cur.expression;
   return cur;
 }
 
-function stripExpr(n: ts.Expression): ts.Expression {
+function stripExpr(n: TS.Expression): TS.Expression {
   let cur = n;
   while (
     ts.isParenthesizedExpression(cur) ||
@@ -73,7 +74,7 @@ function stripExpr(n: ts.Expression): ts.Expression {
 }
 
 /** Declarations whose declared type identifies an injected client. */
-function isTypedHolder(decl: ts.Declaration): boolean {
+function isTypedHolder(decl: TS.Declaration): boolean {
   return (
     ts.isParameter(decl) ||
     ts.isPropertyDeclaration(decl) ||
@@ -84,18 +85,18 @@ function isTypedHolder(decl: ts.Declaration): boolean {
 }
 
 export class ClientCalls {
-  private readonly memo = new Map<ts.CallExpression, ClientCall | null>();
+  private readonly memo = new Map<TS.CallExpression, ClientCall | null>();
   /** Client export type → the client names of that type (built on first use). */
-  private clientTypes: Map<ts.Type, string[]> | undefined;
+  private clientTypes: Map<TS.Type, string[]> | undefined;
 
   constructor(
-    private readonly checker: ts.TypeChecker,
+    private readonly checker: TS.TypeChecker,
     /** Resolved client symbol → client binding name. */
-    private readonly clients: ReadonlyMap<ts.Symbol, string>,
+    private readonly clients: ReadonlyMap<TS.Symbol, string>,
     private readonly adapter: PersistenceAdapter,
   ) {}
 
-  classify(call: ts.CallExpression): ClientCall | undefined {
+  classify(call: TS.CallExpression): ClientCall | undefined {
     const cached = this.memo.get(call);
     if (cached !== undefined) return cached ?? undefined;
     this.memo.set(call, null); // cycle guard
@@ -105,7 +106,7 @@ export class ClientCalls {
   }
 
   /** The scope an inline callback runs in, when it is the scope callback of a client call. */
-  scopeOfCallback(fn: ts.Node): ScopeRef | undefined {
+  scopeOfCallback(fn: TS.Node): ScopeRef | undefined {
     const call = inlineCallbackCall(fn);
     if (!call || !ts.isCallExpression(call)) return undefined;
     const outer = this.classify(call);
@@ -115,14 +116,14 @@ export class ClientCalls {
     if (!kind) return undefined;
     return {
       call,
-      callback: fn as ts.ArrowFunction | ts.FunctionExpression,
+      callback: fn as TS.ArrowFunction | TS.FunctionExpression,
       kind,
       gate: outer.gate,
     };
   }
 
   /** A client call that opens an atomic scope for one of its inline callbacks (`db.transaction`). */
-  isScopeOpener(call: ts.CallExpression): boolean {
+  isScopeOpener(call: TS.CallExpression): boolean {
     const cc = this.classify(call);
     if (!cc) return false;
     return call.arguments.some((a, i) => {
@@ -132,7 +133,7 @@ export class ClientCalls {
     });
   }
 
-  private compute(call: ts.CallExpression): ClientCall | undefined {
+  private compute(call: TS.CallExpression): ClientCall | undefined {
     const root = this.chainRoot(call.expression);
     // A scope alias is a stand-in for the client object; calling it is not a client call.
     if (!root || (root.scope && root.segments.length === 0)) return undefined;
@@ -142,8 +143,8 @@ export class ClientCalls {
   }
 
   /** The client a property chain (`db.orders.get`, `this.prisma.order`) is rooted at. */
-  chainRoot(expr: ts.Expression): ChainRoot | undefined {
-    const accesses: ts.PropertyAccessExpression[] = [];
+  chainRoot(expr: TS.Expression): ChainRoot | undefined {
+    const accesses: TS.PropertyAccessExpression[] = [];
     let e = stripExpr(expr);
     while (ts.isPropertyAccessExpression(e) && ts.isIdentifier(e.name)) {
       accesses.unshift(e);
@@ -157,7 +158,7 @@ export class ClientCalls {
       return undefined;
     }
     for (let i = 0; i < accesses.length; i++) {
-      const sym = symbolOf(accesses[i] as ts.PropertyAccessExpression, this.checker);
+      const sym = symbolOf(accesses[i] as TS.PropertyAccessExpression, this.checker);
       const client = sym && (this.clients.get(sym) ?? this.byType(sym));
       if (client !== undefined) return { client, segments: names.slice(i + 1) };
     }
@@ -165,7 +166,7 @@ export class ClientCalls {
   }
 
   /** The client an identifier is: a bound client's symbol, a scope alias (`tx`), or by type. */
-  rootOf(id: ts.Identifier): { client: string; scope?: ScopeRef } | undefined {
+  rootOf(id: TS.Identifier): { client: string; scope?: ScopeRef } | undefined {
     const sym = symbolOf(id, this.checker);
     if (!sym) return undefined;
     const direct = this.clients.get(sym);
@@ -176,7 +177,7 @@ export class ClientCalls {
     return typed === undefined ? undefined : { client: typed };
   }
 
-  private scopeAlias(sym: ts.Symbol): { client: string; scope: ScopeRef } | undefined {
+  private scopeAlias(sym: TS.Symbol): { client: string; scope: ScopeRef } | undefined {
     const decl = sym.valueDeclaration;
     if (!decl || !ts.isParameter(decl) || !ts.isIdentifier(decl.name)) return undefined;
     const fn = decl.parent;
@@ -188,7 +189,7 @@ export class ClientCalls {
   }
 
   /** The one client whose export type is `sym`'s declared type (an injected client). */
-  private byType(sym: ts.Symbol): string | undefined {
+  private byType(sym: TS.Symbol): string | undefined {
     const decl = sym.valueDeclaration;
     if (!decl || !isTypedHolder(decl)) return undefined;
     const type = this.checker.getNonNullableType(this.checker.getTypeOfSymbol(sym));
@@ -196,9 +197,9 @@ export class ClientCalls {
     return names?.length === 1 ? names[0] : undefined;
   }
 
-  private typeIndex(): Map<ts.Type, string[]> {
+  private typeIndex(): Map<TS.Type, string[]> {
     if (this.clientTypes) return this.clientTypes;
-    const index = new Map<ts.Type, string[]>();
+    const index = new Map<TS.Type, string[]>();
     for (const [sym, name] of this.clients) {
       const type = this.checker.getTypeOfSymbol(sym);
       if (!this.identifiesClient(type)) continue;
@@ -211,7 +212,7 @@ export class ClientCalls {
   }
 
   /** An object or function type with members: `any`, primitives and `{}` identify nothing. */
-  private identifiesClient(type: ts.Type): boolean {
+  private identifiesClient(type: TS.Type): boolean {
     if (!(type.flags & (ts.TypeFlags.Object | ts.TypeFlags.Intersection))) return false;
     return (
       this.checker.getPropertiesOfType(type).length > 0 ||

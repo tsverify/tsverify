@@ -4,7 +4,9 @@
  * - `dist/tsverify.js`: the `tsverify` bin, one ESM bundle of `src/index.ts` for Node 22+. Every
  *   `@tsverify/*` workspace package is bundled in, except `@tsverify/runtime`, which generated
  *   tests import and which is published on its own. Every third-party package stays external and
- *   must be a `dependencies` entry of this package; the build fails otherwise.
+ *   must be a `dependencies` entry of this package; the build fails otherwise. TypeScript is an
+ *   optional peer (`typescript` or `@typescript/typescript6`), loaded at runtime from the
+ *   analyzed project, so the build also fails if the bundle imports a peer statically.
  * - `dist/viewer/app.js` + `app.css`: the viewer's browser app, prebuilt so that an installed CLI
  *   never needs esbuild (`@tsverify/viewer`'s assets.ts picks them up next to the bundle, and its
  *   on-demand build, app-build.ts, is stubbed out of the bundle).
@@ -35,10 +37,12 @@ export const appStylesPath = missing;
 interface Manifest {
   version: string;
   dependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
 }
 
 const manifest = JSON.parse(readFileSync(join(PACKAGE_DIR, "package.json"), "utf8")) as Manifest;
 const dependencies = manifest.dependencies ?? {};
+const peerDependencies = manifest.peerDependencies ?? {};
 
 /** `@scope/name/sub` → `@scope/name`, `name/sub` → `name`. */
 function packageName(specifier: string): string {
@@ -100,6 +104,14 @@ const undeclared = [...externals].filter((name) => !(name in dependencies));
 if (undeclared.length > 0) {
   throw new Error(
     `the bundle imports packages that @tsverify/cli does not depend on: ${undeclared.join(", ")}`,
+  );
+}
+// The TypeScript peers come from the analyzed project, loaded at runtime (the extractor's
+// loadTypeScript): a static import would make them hard requirements of every install.
+const imported = Object.keys(peerDependencies).filter((name) => externals.has(name));
+if (imported.length > 0) {
+  throw new Error(
+    `the bundle imports the peer dependencies ${imported.join(", ")} statically; load them at runtime`,
   );
 }
 chmodSync(join(DIST, ENTRY), 0o755);

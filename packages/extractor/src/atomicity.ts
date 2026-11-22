@@ -17,7 +17,7 @@
  * until its own first `await`, so its suspensions do not delay the caller. An `await` inside an
  * inline callback suspends that callback only, so it counts only for writes inside it.
  */
-import { ts } from "ts-morph";
+import type * as TS from "@typescript/typescript6";
 import { type LeadGroup, leadsTo, type Reach } from "./callgraph";
 import {
   buildCfg,
@@ -30,9 +30,10 @@ import {
 } from "./cfg";
 import type { ClientCall, ScopeRef } from "./client-calls";
 import { symbolOf } from "./resolve";
+import { ts } from "./typescript";
 import type { WriteNode } from "./writes";
 
-function contains(outer: ts.Node, inner: ts.Node): boolean {
+function contains(outer: TS.Node, inner: TS.Node): boolean {
   return (
     outer.getSourceFile() === inner.getSourceFile() &&
     inner.pos >= outer.pos &&
@@ -43,7 +44,7 @@ function contains(outer: ts.Node, inner: ts.Node): boolean {
 /** The scope read, write and commit share, if any. */
 export function sharedScope(
   read: ClientCall | undefined,
-  write: ts.Node,
+  write: TS.Node,
   commit: ClientCall | undefined,
 ): ScopeRef | undefined {
   const scope = read?.scope;
@@ -65,8 +66,8 @@ const DEFERRING = new Set([
   "nextTick",
 ]);
 
-function calleeName(call: ts.CallExpression | ts.NewExpression): string | undefined {
-  let e: ts.Expression = call.expression;
+function calleeName(call: TS.CallExpression | TS.NewExpression): string | undefined {
+  let e: TS.Expression = call.expression;
   while (ts.isParenthesizedExpression(e)) e = e.expression;
   if (ts.isIdentifier(e)) return e.text;
   if (ts.isPropertyAccessExpression(e)) return e.name.text;
@@ -74,13 +75,13 @@ function calleeName(call: ts.CallExpression | ts.NewExpression): string | undefi
 }
 
 /** Suspension points in a frame (its body and inline callbacks), in source order. */
-const suspensionsMemo = new WeakMap<FunctionLike, ts.Node[]>();
+const suspensionsMemo = new WeakMap<FunctionLike, TS.Node[]>();
 
-function suspensionsOf(fn: FunctionLike): ts.Node[] {
+function suspensionsOf(fn: FunctionLike): TS.Node[] {
   const cached = suspensionsMemo.get(fn);
   if (cached) return cached;
-  const out: ts.Node[] = [];
-  const visit = (n: ts.Node): void => {
+  const out: TS.Node[] = [];
+  const visit = (n: TS.Node): void => {
     if ((isFunctionLike(n) && !inlineCallbackCall(n)) || ts.isClassLike(n)) return;
     if (
       ts.isAwaitExpression(n) ||
@@ -97,29 +98,29 @@ function suspensionsOf(fn: FunctionLike): ts.Node[] {
 }
 
 /** The function an `await` / `yield` suspends: its nearest enclosing function-like. */
-function suspendedFunction(n: ts.Node): ts.Node | undefined {
+function suspendedFunction(n: TS.Node): TS.Node | undefined {
   for (let p = n.parent; p; p = p.parent) if (isFunctionLike(p)) return p;
   return undefined;
 }
 
-function encloses(outer: ts.Node, inner: ts.Node): boolean {
+function encloses(outer: TS.Node, inner: TS.Node): boolean {
   return inner.pos >= outer.pos && inner.end <= outer.end;
 }
 
 /** The entity reference as seen in one frame: `this` or a symbol, then a property path. */
 interface EntityRef {
-  root: ts.Symbol | "this";
+  root: TS.Symbol | "this";
   path: readonly string[];
 }
 
-function stripRef(e: ts.Expression): ts.Expression {
+function stripRef(e: TS.Expression): TS.Expression {
   let cur = e;
   while (ts.isParenthesizedExpression(cur) || ts.isNonNullExpression(cur)) cur = cur.expression;
   return cur;
 }
 
 /** `w`, `this`, `ctx.job` → an `EntityRef`; anything else (calls, element access) → undefined. */
-function describeRef(e: ts.Expression, checker: ts.TypeChecker): EntityRef | undefined {
+function describeRef(e: TS.Expression, checker: TS.TypeChecker): EntityRef | undefined {
   const path: string[] = [];
   let cur = stripRef(e);
   while (ts.isPropertyAccessExpression(cur) && ts.isIdentifier(cur.name)) {
@@ -150,8 +151,8 @@ function prefixed(outer: EntityRef | undefined, inner: EntityRef): EntityRef | u
 function refInCaller(
   ref: EntityRef,
   callee: FunctionLike,
-  call: ts.CallExpression,
-  checker: ts.TypeChecker,
+  call: TS.CallExpression,
+  checker: TS.TypeChecker,
 ): EntityRef | undefined {
   if (ref.root === "this") {
     const target = stripRef(call.expression);
@@ -169,13 +170,13 @@ function refInCaller(
 }
 
 /** The function `this` refers to at `n`: its nearest enclosing non-arrow function-like. */
-function thisOwner(n: ts.Node): ts.Node | undefined {
+function thisOwner(n: TS.Node): TS.Node | undefined {
   for (let p = n.parent; p; p = p.parent) if (isFunctionLike(p) && !ts.isArrowFunction(p)) return p;
   return undefined;
 }
 
 /** The `(ref.field, W)` probe `type-facts.ts` injects before a write: not a read of the code. */
-function isProbe(read: ts.PropertyAccessExpression): boolean {
+function isProbe(read: TS.PropertyAccessExpression): boolean {
   const comma = read.parent;
   if (
     !ts.isBinaryExpression(comma) ||
@@ -185,7 +186,7 @@ function isProbe(read: ts.PropertyAccessExpression): boolean {
   ) {
     return false;
   }
-  let w: ts.Expression = comma.right;
+  let w: TS.Expression = comma.right;
   while (ts.isParenthesizedExpression(w)) w = w.expression;
   return (
     ts.isObjectLiteralExpression(w) ||
@@ -228,8 +229,8 @@ export function suspensionBefore(
   root: Reach,
   writeFrame: FunctionLike,
   write: WriteNode,
-  checker: ts.TypeChecker,
-): ts.Node | undefined {
+  checker: TS.TypeChecker,
+): TS.Node | undefined {
   const field = write.field;
   const leads = leadsTo(root, writeFrame, write.expr);
   const cfgFor = (fn: FunctionLike) => readCfgOf(fn, field);
@@ -312,7 +313,7 @@ export function suspensionBefore(
   };
 
   /** A suspension point in `fn` on a path to lead `g` with no re-check after it. */
-  const localSuspension = (fn: FunctionLike, g: LeadGroup): ts.Node | undefined => {
+  const localSuspension = (fn: FunctionLike, g: LeadGroup): TS.Node | undefined => {
     const cfg = cfgFor(fn);
     for (let p = g.node.parent; p && p !== fn; p = p.parent) {
       if (!isFunctionLike(p)) continue;
@@ -334,7 +335,7 @@ export function suspensionBefore(
   };
 
   const visited = new Set<FunctionLike>();
-  const visit = (fn: FunctionLike): ts.Node | undefined => {
+  const visit = (fn: FunctionLike): TS.Node | undefined => {
     if (visited.has(fn)) return undefined;
     visited.add(fn);
     for (const g of leads(fn)) {

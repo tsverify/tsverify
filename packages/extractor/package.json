@@ -10,11 +10,16 @@
       "default": "./src/index.ts"
     }
   },
+  "scripts": {
+    "test:ts5.9": "TSVERIFY_TEST_TYPESCRIPT=typescript59 vitest run --config test/versions.config.ts",
+    "test:ts6": "TSVERIFY_TEST_TYPESCRIPT=@typescript/typescript6 vitest run --config test/versions.config.ts"
+  },
   "dependencies": {
-    "@tsverify/ir": "workspace:*",
-    "ts-morph": "28.0.0"
+    "@tsverify/ir": "workspace:*"
   },
   "devDependencies": {
-    "@tsverify/spec": "workspace:*"
+    "@tsverify/spec": "workspace:*",
+    "@typescript/typescript6": "6.0.2",
+    "typescript59": "npm:typescript@5.9.3"
   }
 }

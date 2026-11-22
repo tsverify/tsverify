@@ -9,19 +9,20 @@
  * Not followed: element access, spread arguments, `let` variables, inline-callback parameters.
  */
 import type { ArgPath } from "@tsverify/ir";
-import { ts } from "ts-morph";
+import type * as TS from "@typescript/typescript6";
 import type { Reach } from "./callgraph";
 import type { FunctionLike } from "./cfg";
+import { ts } from "./typescript";
 
 interface LocalPath {
-  fn: ts.SignatureDeclaration;
+  fn: TS.SignatureDeclaration;
   param: number;
   path: string[];
 }
 
 const MAX_STEPS = 16;
 
-function strip(e: ts.Expression): ts.Expression {
+function strip(e: TS.Expression): TS.Expression {
   let cur = e;
   while (
     ts.isParenthesizedExpression(cur) ||
@@ -36,11 +37,11 @@ function strip(e: ts.Expression): ts.Expression {
 }
 
 /** Property path from a binding element up to its root binding pattern holder. */
-function bindingPath(el: ts.BindingElement): { holder: ts.Node; path: string[] } | undefined {
+function bindingPath(el: TS.BindingElement): { holder: TS.Node; path: string[] } | undefined {
   const path: string[] = [];
-  let cur: ts.Node = el;
+  let cur: TS.Node = el;
   while (ts.isBindingElement(cur)) {
-    const pattern: ts.Node = cur.parent;
+    const pattern: TS.Node = cur.parent;
     if (!ts.isObjectBindingPattern(pattern)) return undefined;
     const key = cur.propertyName ?? cur.name;
     if (!ts.isIdentifier(key) && !ts.isStringLiteral(key)) return undefined;
@@ -51,8 +52,8 @@ function bindingPath(el: ts.BindingElement): { holder: ts.Node; path: string[] }
 }
 
 function fromDeclaration(
-  decl: ts.Declaration,
-  checker: ts.TypeChecker,
+  decl: TS.Declaration,
+  checker: TS.TypeChecker,
   steps: number,
 ): LocalPath | undefined {
   if (ts.isParameter(decl)) {
@@ -62,7 +63,7 @@ function fromDeclaration(
   if (ts.isBindingElement(decl)) {
     const b = bindingPath(decl);
     if (!b) return undefined;
-    const base = fromDeclaration(b.holder as ts.Declaration, checker, steps + 1);
+    const base = fromDeclaration(b.holder as TS.Declaration, checker, steps + 1);
     return base && { ...base, path: [...base.path, ...b.path] };
   }
   if (ts.isVariableDeclaration(decl) && decl.initializer) {
@@ -74,8 +75,8 @@ function fromDeclaration(
 }
 
 function traceLocal(
-  expr: ts.Expression,
-  checker: ts.TypeChecker,
+  expr: TS.Expression,
+  checker: TS.TypeChecker,
   steps = 0,
 ): LocalPath | undefined {
   if (steps > MAX_STEPS) return undefined;
@@ -98,9 +99,9 @@ function samePath(a: ArgPath, b: ArgPath): boolean {
 
 /** Where `expr` (inside `reach`) comes from, as an `ArgPath` of the reach root's parameters. */
 export function traceToRoot(
-  expr: ts.Expression,
+  expr: TS.Expression,
   reach: Reach,
-  checker: ts.TypeChecker,
+  checker: TS.TypeChecker,
   depth = 0,
 ): ArgPath | undefined {
   const local = traceLocal(expr, checker);

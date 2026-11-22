@@ -1,6 +1,8 @@
-import { ts } from "ts-morph";
 import { describe, expect, it } from "vitest";
+import { installTypeScript } from "../test/typescript";
 import { buildCfg, ENTRY, EXIT, type FunctionLike, reachable } from "./cfg";
+
+const ts = installTypeScript();
 
 /**
  * Parses `function f() { … }` and answers: is the call to `target()` reachable from entry when

@@ -4,19 +4,24 @@
  *
  * Order matters (X1): `loadProject` → syntactic write discovery over `files` → `planNarrowing`
  * → only then `ProjectContext` (the first type query happens in its constructor).
+ *
+ * Uses the TypeScript installed by `useTypeScript` (`typescript.ts`).
  */
 import path from "node:path";
 import type { SourceLocation } from "@tsverify/ir";
-import { Project, ts } from "ts-morph";
-import { TsMorphTypeFacts } from "./type-facts";
+import type * as TS from "@typescript/typescript6";
+import { createOverlayHost, type OverlayHost, ProgramTypeFacts } from "./type-facts";
+import { ts } from "./typescript";
 
 export interface LoadedProject {
-  project: Project;
   /** Absolute project root, `/`-separated, no trailing slash. */
   root: string;
-  /** Original (unprobed) source files under analysis, sorted by path. */
-  files: ts.SourceFile[];
-  facts: TsMorphTypeFacts;
+  /**
+   * Original (unprobed) source files under analysis, sorted by path: the tsconfig's files and
+   * every file they import, minus declarations and `node_modules`.
+   */
+  files: TS.SourceFile[];
+  facts: ProgramTypeFacts;
 }
 
 export interface LoadError {
@@ -28,7 +33,7 @@ function toPosix(p: string): string {
 }
 
 /** Source files the extractor analyzes: project files that are neither declarations nor deps. */
-function isAnalyzed(sf: ts.SourceFile): boolean {
+function isAnalyzed(sf: TS.SourceFile): boolean {
   return !sf.isDeclarationFile && !sf.fileName.includes("/node_modules/");
 }
 
@@ -45,27 +50,47 @@ export function loadProject(projectRoot: string, tsconfig?: string): LoadedProje
           : `no tsconfig at ${configPath}`,
     };
   }
-  let project: Project;
+  const read = ts.readConfigFile(configPath, ts.sys.readFile);
+  if (read.error) {
+    const why = ts.flattenDiagnosticMessageText(read.error.messageText, "\n");
+    return { error: `cannot load ${configPath}: ${why}` };
+  }
+  let program: TS.Program;
+  let host: OverlayHost;
   try {
-    project = new Project({ tsConfigFilePath: configPath });
+    const config = ts.parseJsonConfigFileContent(
+      read.config,
+      ts.sys,
+      path.posix.dirname(configPath),
+      undefined,
+      configPath,
+    );
+    host = createOverlayHost(config.options);
+    // Project references are not passed on: imports of a referenced project resolve to its
+    // sources, which the extractor can read, rather than to its built declarations.
+    program = ts.createProgram({
+      rootNames: config.fileNames,
+      options: config.options,
+      host,
+      configFileParsingDiagnostics: config.errors,
+    });
   } catch (error) {
     return { error: `cannot load ${configPath}: ${(error as Error).message}` };
   }
-  const files = project
+  const files = program
     .getSourceFiles()
-    .map((sf) => sf.compilerNode)
     .filter(isAnalyzed)
     .sort((a, b) => (a.fileName < b.fileName ? -1 : a.fileName > b.fileName ? 1 : 0));
-  return { project, root, files, facts: new TsMorphTypeFacts(project) };
+  return { root, files, facts: new ProgramTypeFacts(program, host) };
 }
 
 /** Analysis context over the probed program. Constructing it performs the first type query. */
 export class ProjectContext {
-  readonly checker: ts.TypeChecker;
-  readonly program: ts.Program;
+  readonly checker: TS.TypeChecker;
+  readonly program: TS.Program;
   readonly root: string;
-  readonly facts: TsMorphTypeFacts;
-  private readonly originals: Map<string, ts.SourceFile>;
+  readonly facts: ProgramTypeFacts;
+  private readonly originals: Map<string, TS.SourceFile>;
 
   constructor(loaded: LoadedProject) {
     this.root = loaded.root;
@@ -76,13 +101,13 @@ export class ProjectContext {
   }
 
   /** The probed source file for an absolute path, if the program has it. */
-  sourceFile(absPath: string): ts.SourceFile | undefined {
+  sourceFile(absPath: string): TS.SourceFile | undefined {
     return this.program.getSourceFile(absPath);
   }
 
   /** Probed source files under analysis, in path order. */
-  analyzedFiles(): ts.SourceFile[] {
-    const out: ts.SourceFile[] = [];
+  analyzedFiles(): TS.SourceFile[] {
+    const out: TS.SourceFile[] = [];
     for (const name of this.originals.keys()) {
       const sf = this.program.getSourceFile(name);
       if (sf) out.push(sf);
@@ -90,7 +115,7 @@ export class ProjectContext {
     return out;
   }
 
-  isAnalyzed(sf: ts.SourceFile): boolean {
+  isAnalyzed(sf: TS.SourceFile): boolean {
     return this.originals.has(sf.fileName);
   }
 
@@ -104,7 +129,7 @@ export class ProjectContext {
   }
 
   /** Original-file location of a node of the probed program. */
-  loc(node: ts.Node): SourceLocation {
+  loc(node: TS.Node): SourceLocation {
     const sf = node.getSourceFile();
     const original = this.originals.get(sf.fileName) ?? sf;
     const start = this.facts.toOriginalPosition(sf.fileName, node.getStart(sf));

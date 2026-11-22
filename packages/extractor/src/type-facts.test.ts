@@ -1,6 +1,6 @@
-import { Project, ts } from "ts-morph";
 import { describe, expect, it } from "vitest";
-import { type NarrowRequest, TsMorphTypeFacts } from "./type-facts";
+import { installTypeScript } from "../test/typescript";
+import { createOverlayHost, type NarrowRequest, ProgramTypeFacts } from "./type-facts";
 import { findCandidateWrites, rebindWrites } from "./writes";
 
 const SOURCE = `
@@ -18,15 +18,16 @@ export function deep(ctx: { order: E }) { if (ctx.order.status === "c") ctx.orde
 `;
 
 function setup() {
-  const project = new Project({
-    useInMemoryFileSystem: true,
-    compilerOptions: { strict: true, target: ts.ScriptTarget.ES2022, lib: ["lib.es2022.d.ts"] },
-  });
-  const file = project.createSourceFile("/app/cases.ts", SOURCE).getFilePath();
-  const original = project.getSourceFileOrThrow(file).compilerNode;
+  const ts = installTypeScript();
+  const options = { strict: true, target: ts.ScriptTarget.ES2022, lib: ["lib.es2022.d.ts"] };
+  const file = "/app/cases.ts";
+  const host = createOverlayHost(options, new Map([[file, SOURCE]]));
+  const base = ts.createProgram({ rootNames: [file], options, host });
+  const original = base.getSourceFile(file);
+  if (!original) throw new Error(`${file} is not in the program`);
   const fields = new Set(["status"]);
   const candidates = findCandidateWrites([original], fields);
-  const facts = new TsMorphTypeFacts(project);
+  const facts = new ProgramTypeFacts(base, host);
   const requests: NarrowRequest[] = candidates.map((c) => ({
     file: c.file,
     span: c.span,
@@ -34,11 +35,11 @@ function setup() {
     field: c.field,
   }));
   const handles = facts.planNarrowing(requests);
-  return { project, facts, candidates, handles, original, file, fields };
+  return { facts, candidates, handles, original, file, fields };
 }
 
-describe("TsMorphTypeFacts (probe-first)", () => {
-  const { facts, candidates, handles, original, file, fields, project } = setup();
+describe("ProgramTypeFacts (probe-first)", () => {
+  const { facts, candidates, handles, original, file, fields } = setup();
   const answers = handles.map((h) => facts.narrowedLiteralsAt(h));
   const byRef = (i: number) => ({ ref: candidates[i]?.ref, ...answers[i] });
 
@@ -78,7 +79,7 @@ describe("TsMorphTypeFacts (probe-first)", () => {
     const writes = rebindWrites(
       candidates,
       fields,
-      (f) => project.getProgram().compilerObject.getSourceFile(f),
+      (f) => facts.program.getSourceFile(f),
       (f, o) => facts.toOriginalPosition(f, o),
     );
     writes.forEach((w, i) => {
@@ -86,9 +87,14 @@ describe("TsMorphTypeFacts (probe-first)", () => {
       expect(facts.toOriginalPosition(file, w.expr.getStart(sf))).toBe(candidates[i]?.span.start);
       expect(facts.toOriginalPosition(file, w.expr.getEnd())).toBe(candidates[i]?.span.end);
     });
-    const probed = project.getSourceFileOrThrow(file).getFullText();
+    const probed = facts.program.getSourceFile(file)?.getFullText() ?? "";
     expect(probed).toContain('(x.status, x.status = (y.status, y.status = "a"))');
     expect(probed.split("\n").length).toBe(original.text.split("\n").length);
+  });
+
+  it("leaves the base program's source file unprobed", () => {
+    expect(facts.program.getSourceFile(file)).not.toBe(original);
+    expect(original.text).toBe(SOURCE);
   });
 
   it("refuses to plan after the first type query", () => {

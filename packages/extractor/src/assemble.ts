@@ -33,7 +33,7 @@ import type {
   Transition,
 } from "@tsverify/ir";
 import { compareStrings, parseGuardRef } from "@tsverify/ir";
-import type { ts } from "ts-morph";
+import type * as TS from "@typescript/typescript6";
 import type { PersistenceAdapter, PersistenceFacts } from "./adapters/types";
 import { frameNaming, frameOf, type Reach } from "./callgraph";
 import type { FunctionLike } from "./cfg";
@@ -133,14 +133,14 @@ function implRefOf(ctx: ProjectContext, d: Draft): SymbolRef | undefined {
   return { file: ctx.rel(d.reach.root.getSourceFile().fileName), symbol: name };
 }
 
-function isLiteralArg(a: ts.Expression, checker: ts.TypeChecker): boolean {
+function isLiteralArg(a: TS.Expression, checker: TS.TypeChecker): boolean {
   return singleLiteralOf(checker.getTypeAtLocation(a), checker) !== undefined;
 }
 
 function invocationOf(
   env: AssembleEnv,
   d: Draft,
-  guardCalls: readonly ts.CallExpression[],
+  guardCalls: readonly TS.CallExpression[],
 ): InvocationShape | undefined {
   const checker = env.ctx.checker;
   const impl = implRefOf(env.ctx, d);

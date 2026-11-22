@@ -1,6 +1,7 @@
 /**
  * `extractAll`: one TypeScript program per project, every spec extracted against it.
  *
+ * 0. Install the project's TypeScript (`typescript.ts`): the caller's, or `loadTypeScript`'s.
  * 1. Load the tsconfig's files (`project.ts`).
  * 2. Syntax only: candidate state writes for every spec's state field (`writes.ts`).
  * 3. Plan every narrowing probe (`type-facts.ts`, X1 probe-first) — still no type query.
@@ -9,7 +10,7 @@
  */
 import type { BehaviorModel, Finding, PersistenceKind, SourceLocation } from "@tsverify/ir";
 import { compareStrings } from "@tsverify/ir";
-import { ts } from "ts-morph";
+import type * as TS from "@typescript/typescript6";
 import { assignAdapter } from "./adapters/assign";
 import { memoryAdapter } from "./adapters/memory";
 import { prismaAdapter } from "./adapters/prisma";
@@ -21,6 +22,7 @@ import { ClientCalls } from "./client-calls";
 import { Dominance } from "./dominance";
 import { matchesEntity, writtenValue } from "./entity";
 import { brokenLink, sortFindings, unanalyzable, uniqueIds } from "./findings";
+import { loadTypeScript } from "./load-typescript";
 import { loadProject, ProjectContext } from "./project";
 import { resolveClient, resolveGuard, resolveImpl, symbolOf } from "./resolve";
 import {
@@ -34,6 +36,7 @@ import {
   typeNames,
   withMembershipGuards,
 } from "./type-facts";
+import { type TypeScript, ts, useTypeScript } from "./typescript";
 import { findCandidateWrites, rebindWrites, type WriteNode } from "./writes";
 
 export interface ExtractOptions {
@@ -41,6 +44,11 @@ export interface ExtractOptions {
   projectRoot: string;
   /** tsconfig path, relative to `projectRoot`. Default `<projectRoot>/tsconfig.json`. */
   tsconfig?: string;
+  /**
+   * The TypeScript to read the code with (classic compiler API, 5.4 or later). Default:
+   * `loadTypeScript(projectRoot)`; `extractAll` throws its error when none is usable.
+   */
+  typescript?: TypeScript;
 }
 
 export interface ExtractResult {
@@ -78,7 +86,7 @@ function now(): number {
 }
 
 /** Imports `PrismaClient` by name (from a custom generator output such as `./generated/prisma`). */
-function importsPrismaClient(st: ts.ImportDeclaration): boolean {
+function importsPrismaClient(st: TS.ImportDeclaration): boolean {
   const bindings = st.importClause?.namedBindings;
   return (
     bindings !== undefined &&
@@ -111,7 +119,7 @@ const ADAPTERS: Partial<Record<PersistenceKind, PersistenceAdapter>> = {
   prisma: prismaAdapter,
 };
 
-function literalArgs(call: ts.CallExpression, checker: ts.TypeChecker): string[] {
+function literalArgs(call: TS.CallExpression, checker: TS.TypeChecker): string[] {
   const out: string[] = [];
   for (const a of call.arguments) {
     if (ts.isStringLiteral(a) || ts.isNoSubstitutionTemplateLiteral(a) || ts.isNumericLiteral(a)) {
@@ -126,7 +134,7 @@ function literalArgs(call: ts.CallExpression, checker: ts.TypeChecker): string[]
   return out;
 }
 
-function unprobedTypes(write: WriteNode, checker: ts.TypeChecker): Narrowed {
+function unprobedTypes(write: WriteNode, checker: TS.TypeChecker): Narrowed {
   const fieldType = declaredFieldType(write.ref, write.field, checker);
   return {
     values: "*",
@@ -138,11 +146,18 @@ function unprobedTypes(write: WriteNode, checker: ts.TypeChecker): Narrowed {
   };
 }
 
+function requireTypeScript(projectRoot: string): TypeScript {
+  const loaded = loadTypeScript(projectRoot);
+  if ("error" in loaded) throw new Error(loaded.error);
+  return loaded.ts;
+}
+
 export function extractAll(
   specs: BehaviorModel[],
   options: ExtractOptions,
 ): { results: ExtractResult[]; stats: ExtractStats } {
   const start = now();
+  useTypeScript(options.typescript ?? requireTypeScript(options.projectRoot));
   const loaded = loadProject(options.projectRoot, options.tsconfig);
   if ("error" in loaded) {
     const results = specs.map((spec) => ({
@@ -210,7 +225,7 @@ export function extractAll(
 }
 
 /** A file's name without directory and extension: the subject of findings outside any function. */
-function moduleName(ctx: ProjectContext, node: ts.Node): string {
+function moduleName(ctx: ProjectContext, node: TS.Node): string {
   const rel = ctx.rel(node.getSourceFile().fileName);
   return rel.slice(rel.lastIndexOf("/") + 1).replace(/\.[cm]?[jt]sx?$/, "");
 }
@@ -243,7 +258,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
   }
 
   // Links: clients, guards, impls.
-  const clientSyms = new Map<ts.Symbol, string>();
+  const clientSyms = new Map<TS.Symbol, string>();
   for (const [name, binding] of sortedEntries(spec.bindings.clients)) {
     const r = resolveClient(ctx, binding);
     if (r.ok) clientSyms.set(r.value, name);
@@ -262,7 +277,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
       );
     }
   }
-  const guards: { key: string; sym: ts.Symbol; args: string[] }[] = [];
+  const guards: { key: string; sym: TS.Symbol; args: string[] }[] = [];
   for (const [key, binding] of sortedEntries(spec.bindings.guards)) {
     const r = resolveGuard(ctx, binding);
     if (r.ok) guards.push({ key, sym: r.value, args: binding.args });
@@ -283,8 +298,8 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
   }
   const calls = new ClientCalls(checker, clientSyms, adapter);
   const guardSyms = new Set(guards.map((g) => g.sym));
-  const calleeSym = (call: ts.CallExpression) => symbolOf(call.expression, checker);
-  const match = (call: ts.CallExpression): string[] => {
+  const calleeSym = (call: TS.CallExpression) => symbolOf(call.expression, checker);
+  const match = (call: TS.CallExpression): string[] => {
     const sym = calleeSym(call);
     if (!sym || !guardSyms.has(sym)) return [];
     const lits = literalArgs(call, checker);
@@ -295,7 +310,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
       )
       .map((g) => g.key);
   };
-  const isStop = (call: ts.CallExpression): boolean => {
+  const isStop = (call: TS.CallExpression): boolean => {
     if (calls.classify(call)) return true;
     const sym = calleeSym(call);
     return sym !== undefined && guardSyms.has(sym);

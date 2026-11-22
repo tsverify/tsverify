@@ -28,18 +28,19 @@
  * suspension point). An `await` adds no throw edge of its own: the awaited call's edge covers a
  * rejection.
  */
-import { ts } from "ts-morph";
+import type * as TS from "@typescript/typescript6";
+import { ts } from "./typescript";
 
 export type FunctionLike =
-  | ts.FunctionDeclaration
-  | ts.MethodDeclaration
-  | ts.ConstructorDeclaration
-  | ts.GetAccessorDeclaration
-  | ts.SetAccessorDeclaration
-  | ts.FunctionExpression
-  | ts.ArrowFunction;
+  | TS.FunctionDeclaration
+  | TS.MethodDeclaration
+  | TS.ConstructorDeclaration
+  | TS.GetAccessorDeclaration
+  | TS.SetAccessorDeclaration
+  | TS.FunctionExpression
+  | TS.ArrowFunction;
 
-export function isFunctionLike(n: ts.Node): n is FunctionLike {
+export function isFunctionLike(n: TS.Node): n is FunctionLike {
   return (
     ts.isFunctionDeclaration(n) ||
     ts.isMethodDeclaration(n) ||
@@ -52,9 +53,9 @@ export function isFunctionLike(n: ts.Node): n is FunctionLike {
 }
 
 /** A function expression passed directly (through parentheses) as a call or `new` argument. */
-export function inlineCallbackCall(fn: ts.Node): ts.CallExpression | ts.NewExpression | undefined {
+export function inlineCallbackCall(fn: TS.Node): TS.CallExpression | TS.NewExpression | undefined {
   if (!ts.isArrowFunction(fn) && !ts.isFunctionExpression(fn)) return undefined;
-  let child: ts.Node = fn;
+  let child: TS.Node = fn;
   let p = fn.parent;
   while (p && ts.isParenthesizedExpression(p)) {
     child = p;
@@ -63,14 +64,14 @@ export function inlineCallbackCall(fn: ts.Node): ts.CallExpression | ts.NewExpre
   if (
     p &&
     (ts.isCallExpression(p) || ts.isNewExpression(p)) &&
-    p.arguments?.includes(child as ts.Expression)
+    p.arguments?.includes(child as TS.Expression)
   ) {
     return p;
   }
   return undefined;
 }
 
-function stripParens(n: ts.Expression): ts.Expression {
+function stripParens(n: TS.Expression): TS.Expression {
   let cur = n;
   while (ts.isParenthesizedExpression(cur)) cur = cur.expression;
   return cur;
@@ -82,10 +83,10 @@ export const THROW_EXIT = 2;
 
 export interface Cfg {
   /** The ts node of each CFG node; `undefined` for entry, exits and joins. */
-  readonly nodes: readonly (ts.Node | undefined)[];
+  readonly nodes: readonly (TS.Node | undefined)[];
   readonly succ: readonly (readonly number[])[];
   /** CFG nodes of a ts node (more than one when a `finally` block is built twice). */
-  idsOf(node: ts.Node): readonly number[];
+  idsOf(node: TS.Node): readonly number[];
   /** Nodes entered only by exceptional edges (a call or `throw` that did not complete). */
   readonly throwTargets: ReadonlySet<number>;
 }
@@ -104,9 +105,9 @@ interface JumpContext {
 }
 
 class Builder {
-  readonly nodes: (ts.Node | undefined)[] = [undefined, undefined, undefined];
+  readonly nodes: (TS.Node | undefined)[] = [undefined, undefined, undefined];
   readonly succ: number[][] = [[], [], []];
-  readonly ids = new Map<ts.Node, number[]>();
+  readonly ids = new Map<TS.Node, number[]>();
   private returnTo = EXIT;
   private throwTo = THROW_EXIT;
   private jumps: JumpContext[] = [];
@@ -115,7 +116,7 @@ class Builder {
 
   constructor(private readonly options: CfgOptions = {}) {}
 
-  private add(n: ts.Node | undefined): number {
+  private add(n: TS.Node | undefined): number {
     const id = this.nodes.length;
     this.nodes.push(n);
     this.succ.push([]);
@@ -134,7 +135,7 @@ class Builder {
     }
   }
 
-  private node(n: ts.Node, f: Frontier): Frontier {
+  private node(n: TS.Node, f: Frontier): Frontier {
     const id = this.add(n);
     this.connect(f, id);
     return [id];
@@ -164,7 +165,7 @@ class Builder {
     };
   }
 
-  private inline(fn: ts.ArrowFunction | ts.FunctionExpression, f: Frontier): Frontier {
+  private inline(fn: TS.ArrowFunction | TS.FunctionExpression, f: Frontier): Frontier {
     const saved = { returnTo: this.returnTo, jumps: this.jumps, labels: this.pendingLabels };
     const ret = this.join();
     this.returnTo = ret;
@@ -188,7 +189,7 @@ class Builder {
   private loop(
     labels: string[],
     continueTo: number,
-    body: ts.Statement,
+    body: TS.Statement,
     f: Frontier,
   ): { out: Frontier; breakTo: number } {
     const breakTo = this.join();
@@ -198,7 +199,7 @@ class Builder {
     return { out, breakTo };
   }
 
-  private stmt(s: ts.Statement, f: Frontier): Frontier {
+  private stmt(s: TS.Statement, f: Frontier): Frontier {
     if (ts.isBlock(s)) {
       let cur = f;
       for (const st of s.statements) cur = this.stmt(st, cur);
@@ -322,13 +323,13 @@ class Builder {
     return f;
   }
 
-  private varList(list: ts.VariableDeclarationList, f: Frontier): Frontier {
+  private varList(list: TS.VariableDeclarationList, f: Frontier): Frontier {
     let cur = f;
     for (const d of list.declarations) cur = this.expr(d.initializer, cur);
     return cur;
   }
 
-  private tryStmt(s: ts.TryStatement, f: Frontier): Frontier {
+  private tryStmt(s: TS.TryStatement, f: Frontier): Frontier {
     const outerThrow = this.throwTo;
     const tryThrow = this.throwJoin();
     this.throwTo = tryThrow;
@@ -350,7 +351,7 @@ class Builder {
     return normal;
   }
 
-  private expr(e: ts.Node | undefined, f: Frontier): Frontier {
+  private expr(e: TS.Node | undefined, f: Frontier): Frontier {
     if (!e) return f;
     if (isFunctionLike(e) || ts.isClassLike(e)) return f;
     if (ts.isBinaryExpression(e)) {
@@ -380,7 +381,7 @@ class Builder {
     if (ts.isCallExpression(e) || ts.isNewExpression(e)) {
       let cur = this.expr(e.expression, f);
       const skip = ts.isCallExpression(e) && ts.isOptionalChain(e) ? cur : [];
-      const callbacks: (ts.ArrowFunction | ts.FunctionExpression)[] = [];
+      const callbacks: (TS.ArrowFunction | TS.FunctionExpression)[] = [];
       for (const arg of e.arguments ?? []) {
         const a = stripParens(arg);
         if (ts.isArrowFunction(a) || ts.isFunctionExpression(a)) callbacks.push(a);
