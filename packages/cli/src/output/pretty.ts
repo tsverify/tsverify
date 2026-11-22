@@ -3,6 +3,7 @@ import { type Formatter, formatFindings, plainFormatter } from "@tsv/render";
 import pc from "picocolors";
 import type { Io } from "../io";
 import { allFindings, countSeverity, type Report, type SpecReport } from "../report";
+import type { TestCounts } from "../test-findings";
 
 const colorFormatter: Formatter = pc.createColors(true);
 
@@ -34,6 +35,9 @@ export function formatPretty(report: Report, io: Io): string {
       out += `${f.bold(spec.file)}  ${f.dim(projectLabel(spec, report))}\n`;
       out += `${formatFindings(spec.findings, options)}\n`;
     }
+    if (report.command === "test") {
+      out += `${f.dim("Generated-test results only: static findings (model checking, conformance) come from `tsv check`.")}\n`;
+    }
   } else {
     const findings = allFindings(report);
     if (findings.length > 0) out += formatFindings(findings, options);
@@ -43,7 +47,18 @@ export function formatPretty(report: Report, io: Io): string {
 
 function projectLabel(spec: SpecReport, report: Report): string {
   if (report.specOnly) return "spec only";
-  return spec.project ? `project: ${spec.project}` : "no project";
+  const project = spec.project ? `project: ${spec.project}` : "no project";
+  const g = spec.generated;
+  if (g === undefined) return project;
+  return `${project} · ${g.dir}: ${testCountText(g.tests)}`;
+}
+
+/** e.g. `35 tests, 34 passed, 1 failed`. */
+function testCountText(t: TestCounts): string {
+  const parts = [plural(t.total, "test"), `${t.passed} passed`];
+  if (t.failed > 0) parts.push(`${t.failed} failed`);
+  if (t.missing > 0) parts.push(`${t.missing} not run`);
+  return parts.join(", ");
 }
 
 /** e.g. `✓ 1 spec, 0 errors, 0 warnings (6 spec states, 6 code states)`. */
@@ -51,8 +66,17 @@ function summaryLine(report: Report, f: Formatter): string {
   const findings = allFindings(report);
   const errors = countSeverity(findings, "error");
   const warnings = countSeverity(findings, "warning");
+  const generated = report.specs.flatMap((s) => (s.generated ? [s.generated.tests] : []));
   let text = [
     plural(report.specs.length, "spec"),
+    ...(report.command === "test"
+      ? [
+          plural(
+            generated.reduce((n, t) => n + t.total, 0),
+            "generated test",
+          ),
+        ]
+      : []),
     plural(errors, "error"),
     plural(warnings, "warning"),
   ].join(", ");

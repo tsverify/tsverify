@@ -1,6 +1,7 @@
 import type { CheckStats } from "@tsv/checker";
 import type { ExtractStats } from "@tsv/extractor";
 import type { Finding, Severity } from "@tsv/ir";
+import type { TestCounts } from "./test-findings";
 
 /** One spec file's outcome: what `validate` and `check` hand to the output formats. */
 export interface SpecReport {
@@ -22,6 +23,8 @@ export interface SpecReport {
   codeStats?: CheckStats;
   /** Present when the spec's project was extracted. Shared by every spec of that project. */
   extract?: ExtractStats;
+  /** `test` only: where the spec's tests were generated (relative to the cwd) and how they ran. */
+  generated?: { dir: string; tests: TestCounts };
 }
 
 export interface Report {
@@ -29,6 +32,8 @@ export interface Report {
   specs: SpecReport[];
   /** `check --spec-only`: code conformance was skipped on purpose. */
   specOnly?: boolean;
+  /** `test`: the findings are generated-test results only (static ones come from `check`). */
+  command?: "test";
 }
 
 export function allFindings(report: Report): Finding[] {
