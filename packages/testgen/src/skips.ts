@@ -1,8 +1,8 @@
 import type { Finding, SourceLocation } from "@tsv/ir";
 
 /**
- * An `info` finding that explains why `tsv test` generated no test for something. Ids are
- * `unanalyzable:<behavior>:testgen[:<subject>]`.
+ * An `info` finding (category `not-generated`) that explains why `tsv test` generated no test for
+ * something. Ids are `not-generated:<behavior>:testgen[:<subject>]`.
  */
 export function skipFinding(
   behavior: string,
@@ -11,8 +11,8 @@ export function skipFinding(
   extra: { transition?: string; specAt?: SourceLocation; hint?: string } = {},
 ): Finding {
   const finding: Finding = {
-    id: `unanalyzable:${behavior}:testgen${subject === undefined ? "" : `:${subject}`}`,
-    category: "unanalyzable",
+    id: `not-generated:${behavior}:testgen${subject === undefined ? "" : `:${subject}`}`,
+    category: "not-generated",
     severity: "info",
     message,
     behavior,

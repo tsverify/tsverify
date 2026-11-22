@@ -14,7 +14,7 @@ const { files, skipped, tests } = generate({
   outDir: ".tsv/generated/order-lifecycle", // project-relative, used for import paths
 });
 // files:   { path (relative to outDir), content }[]
-// skipped: info findings (`unanalyzable:<behavior>:testgen:…`) saying what was not generated
+// skipped: info findings (`not-generated:<behavior>:testgen:…`) saying what was not generated
 // tests:   one descriptor per generated test(…), so the CLI can map vitest results back
 ```
 

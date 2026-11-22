@@ -89,8 +89,8 @@ describe("tsv test on examples/orders-app", { timeout: 60_000 }, () => {
     ]);
     // Only the info findings about guard tests that cannot be generated (impls without actor).
     expect(doc.findings.map((f) => f.id)).toEqual([
-      "unanalyzable:Order lifecycle:testgen:guards:expire",
-      "unanalyzable:Order lifecycle:testgen:guards:payment_succeeded",
+      "not-generated:Order lifecycle:testgen:guards:expire",
+      "not-generated:Order lifecycle:testgen:guards:payment_succeeded",
     ]);
     // The generated files are kept in the project.
     expect(run.files).toEqual(["forbidden.test.ts", "guards.test.ts", "paths.test.ts"]);

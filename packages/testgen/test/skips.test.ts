@@ -19,7 +19,7 @@ describe("skipped", () => {
     expect(result.files).toEqual([]);
     expect(result.skipped).toEqual([
       expect.objectContaining({
-        id: "unanalyzable:Order lifecycle:testgen:fixtures",
+        id: "not-generated:Order lifecycle:testgen:fixtures",
         severity: "info",
         message: expect.stringContaining("the spec has no `fixtures`"),
       }),
@@ -32,7 +32,7 @@ describe("skipped", () => {
     const result = run(spec);
     expect(result.files).toEqual([]);
     expect(result.skipped.map((f) => f.id)).toEqual([
-      "unanalyzable:Order lifecycle:testgen:persistence",
+      "not-generated:Order lifecycle:testgen:persistence",
     ]);
   });
 
@@ -43,7 +43,7 @@ describe("skipped", () => {
     const result = run(orderModel(), model);
     expect(result.skipped).toContainEqual(
       expect.objectContaining({
-        id: "unanalyzable:Order lifecycle:testgen:ship",
+        id: "not-generated:Order lifecycle:testgen:ship",
         transition: "ship",
         message:
           "tsv test generated no tests for `ship`: `prisma` persistence has no fakes yet (only `assign`)",
@@ -70,8 +70,8 @@ describe("skipped", () => {
     const result = run(spec);
     expect(result.skipped.map((f) => f.id)).toEqual(
       expect.arrayContaining([
-        "unanalyzable:Order lifecycle:testgen:refund",
-        "unanalyzable:Order lifecycle:testgen:ship",
+        "not-generated:Order lifecycle:testgen:refund",
+        "not-generated:Order lifecycle:testgen:ship",
       ]),
     );
     // checkout is still tested, but there is no non-permitted actor with a fixture left.

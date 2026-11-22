@@ -69,8 +69,8 @@ describe("clean orders app: path, forbidden and guard tests", () => {
 
   it("explains the guard tests it cannot generate", () => {
     expect(result.skipped.map((f) => [f.id, f.severity])).toEqual([
-      ["unanalyzable:Order lifecycle:testgen:guards:expire", "info"],
-      ["unanalyzable:Order lifecycle:testgen:guards:payment_succeeded", "info"],
+      ["not-generated:Order lifecycle:testgen:guards:expire", "info"],
+      ["not-generated:Order lifecycle:testgen:guards:payment_succeeded", "info"],
     ]);
   });
 

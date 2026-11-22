@@ -171,7 +171,7 @@ describe("generated replay options", () => {
     });
     expect(result.files.some((f) => f.path.startsWith("replay-"))).toBe(false);
     expect(result.skipped.map((f) => f.id)).toContain(
-      "unanalyzable:Order lifecycle:testgen:replay:implementation-property:Order lifecycle:effect-multiplicity:email.receipt",
+      "not-generated:Order lifecycle:testgen:replay:implementation-property:Order lifecycle:effect-multiplicity:email.receipt",
     );
   });
 
