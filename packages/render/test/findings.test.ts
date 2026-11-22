@@ -59,6 +59,13 @@ describe("formatFindings", () => {
     );
   });
 
+  it("omits the count line on request", () => {
+    const withCount = formatFindings(sampleFindings(), { cwd: SAMPLE_CWD });
+    const without = formatFindings(sampleFindings(), { cwd: SAMPLE_CWD, countLine: false });
+    const lines = withCount.trimEnd().split("\n");
+    expect(without).toBe(`${lines.slice(0, -2).join("\n")}\n`);
+  });
+
   it("reports an empty list", () => {
     expect(formatFindings([])).toBe("✓ no findings\n");
     expect(formatFindings([], { formatter: taggingFormatter })).toBe(

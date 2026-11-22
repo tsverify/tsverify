@@ -760,13 +760,6 @@
       "severity": "error",
       "message": "Exactly-once effect `email.receipt` fires 2 times for one Order.",
       "transition": "payment_succeeded",
-      "specAt": {
-        "file": "src/payments/webhook.ts",
-        "line": 18,
-        "column": 5,
-        "endLine": 18,
-        "endColumn": 26
-      },
       "codeAt": {
         "file": "src/payments/webhook.ts",
         "line": 23,
@@ -985,7 +978,14 @@
           }
         ]
       },
-      "hint": "narrow the `from` states of `payment_succeeded` so a repeated invocation is rejected, or deduplicate `email.receipt`"
+      "hint": "narrow the `from` states of `payment_succeeded` so a repeated invocation is rejected, or deduplicate `email.receipt`",
+      "specAt": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 27,
+        "column": 3,
+        "endLine": 35,
+        "endColumn": 53
+      }
     },
     {
       "id": "implementation-property:Order lifecycle:effect-multiplicity:stripe.refund",
@@ -995,13 +995,6 @@
       "severity": "error",
       "message": "Exactly-once effect `stripe.refund` fires 2 times for one Order.",
       "transition": "refund",
-      "specAt": {
-        "file": "src/orders/refund.ts",
-        "line": 17,
-        "column": 5,
-        "endLine": 17,
-        "endColumn": 30
-      },
       "codeAt": {
         "file": "src/orders/refund.ts",
         "line": 21,
@@ -1358,7 +1351,14 @@
           }
         ]
       },
-      "hint": "narrow the `from` states of `refund` so a repeated invocation is rejected, or deduplicate `stripe.refund`"
+      "hint": "narrow the `from` states of `refund` so a repeated invocation is rejected, or deduplicate `stripe.refund`",
+      "specAt": {
+        "file": "src/orders/order.behavior.yaml",
+        "line": 52,
+        "column": 3,
+        "endLine": 59,
+        "endColumn": 43
+      }
     }
   ],
   "specs": [

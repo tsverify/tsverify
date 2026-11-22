@@ -35,6 +35,8 @@ export function linkTransitions(spec: BehaviorModel, code: BehaviorModel): Links
   const unlinked: Transition[] = [];
   const sorted = [...code.transitions].sort((a, b) => compareStrings(a.name, b.name));
   for (const c of sorted) {
+    // A spec transition without `impl`, copied into the code model as assumed behavior.
+    if (c.sites === undefined && specByName.get(c.name)?.impl === undefined) continue;
     const target = sitesOf(c).specTransition;
     if (target === undefined) {
       unlinked.push(c);

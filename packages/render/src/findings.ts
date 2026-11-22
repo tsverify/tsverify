@@ -28,6 +28,8 @@ export interface FormatFindingsOptions {
   formatter?: Formatter;
   /** Absolute project root. Locations under it are shown relative to it; others are left as-is. */
   cwd?: string;
+  /** Append the `N errors · N warnings · N info` line (default true). Callers with their own summary turn it off. */
+  countLine?: boolean;
 }
 
 const SEVERITY_ORDER: Record<Severity, number> = { error: 0, warning: 1, info: 2 };
@@ -38,7 +40,7 @@ const NO_BEHAVIOR = "(no behavior)";
  * Findings as terminal text, grouped by behavior (by name; findings without one come last),
  * then ordered by severity, location and id. Each finding has a headline (severity icon,
  * category, locations) with its message, hint and counterexample indented below. Ends with a
- * count summary line.
+ * count summary line unless `countLine: false`.
  */
 export function formatFindings(findings: Finding[], options: FormatFindingsOptions = {}): string {
   const f = options.formatter ?? plainFormatter;
@@ -63,7 +65,8 @@ export function formatFindings(findings: Finding[], options: FormatFindingsOptio
     for (const finding of group) lines.push(...formatFinding(finding, f, options.cwd));
     lines.push("");
   }
-  lines.push(countLine(findings, f));
+  if (options.countLine !== false) lines.push(countLine(findings, f));
+  else lines.pop();
   return `${lines.join("\n")}\n`;
 }
 

@@ -27,7 +27,7 @@ export function terminalFormatter(io: Io): Formatter {
  */
 export function formatPretty(report: Report, io: Io): string {
   const f = terminalFormatter(io);
-  const options = { formatter: f, cwd: io.cwd };
+  const options = { formatter: f, cwd: io.cwd, countLine: false };
   let out = "";
   if (report.specs.some((s) => s.project !== undefined)) {
     for (const spec of report.specs) {
