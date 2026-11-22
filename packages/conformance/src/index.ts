@@ -1,9 +1,10 @@
 import { type BehaviorModel, compareStrings, type Finding } from "@tsv/ir";
 import type { Pairing } from "./finding";
+import { checkFromStates } from "./from-states";
 import { checkLinked, checkNoImpl, checkUnlinked, linkTransitions } from "./transitions";
 
 /** Per-pairing rules, in no particular order (findings are sorted afterwards). */
-const PAIRING_RULES: ((p: Pairing) => Finding[])[] = [];
+const PAIRING_RULES: ((p: Pairing) => Finding[])[] = [checkFromStates];
 
 /**
  * Compares a spec model with the as-implemented code model the extractor built from it and
