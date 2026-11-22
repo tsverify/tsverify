@@ -2,8 +2,8 @@ import { compare } from "@tsv/conformance";
 import { describe, expect, it } from "vitest";
 import {
   buildCodeModel,
-  cleanWrite,
   cleanWrites,
+  extraRefundWrite,
   patchSpec,
   patchWrite,
   specModel,
@@ -16,17 +16,6 @@ function run(writes: Write[], spec = specModel()) {
 }
 
 const REFUND_SPEC_AT = { file: "src/orders/order.behavior.yaml", line: 52, column: 3 };
-
-/** A second write in `refundOrder`'s call graph, to `to`. */
-function extraRefundWrite(to: string): Write {
-  return {
-    ...cleanWrite("refund"),
-    name: `refund->${to}`,
-    to,
-    write: [19, 5],
-    effects: [],
-  };
-}
 
 describe("transitions", () => {
   it("reports an unlinked write as undeclared, naming the function and states", () => {

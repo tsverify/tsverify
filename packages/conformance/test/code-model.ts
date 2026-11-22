@@ -393,3 +393,52 @@ export function variantCase(id: string): Case | undefined {
     ? VARIANT_CASES[id as keyof typeof VARIANT_CASES]()
     : undefined;
 }
+
+/** A second write in `refundOrder`'s call graph, to `to` (named per the `t->to` convention). */
+export function extraRefundWrite(to: string): Write {
+  return { ...cleanWrite("refund"), name: `refund->${to}`, to, write: [19, 5], effects: [] };
+}
+
+/** Synthetic mutations covering the rules no seeded bug exercises. */
+export const MUTATION_CASES = {
+  "missing-effect": () =>
+    codeCase(patchWrite(cleanWrites(), "payment_succeeded", (w) => ({ ...w, effects: [] }))),
+  "unmapped-effect": () =>
+    codeCase(
+      patchWrite(cleanWrites(), "refund", (w) => ({
+        ...w,
+        effects: [
+          ...w.effects,
+          { effect: "stripe.charges.create", gate: "stripe.charges.create", at: [20, 3] },
+        ],
+      })),
+    ),
+  "missing-transition": () => codeCase(cleanWrites().filter((w) => w.name !== "refund")),
+  "wrong-state": () =>
+    codeCase(
+      patchWrite(cleanWrites(), "ship", (w) => ({ ...w, name: "ship->refunded", to: "refunded" })),
+    ),
+  "extra-linked-write": () => codeCase([...cleanWrites(), extraRefundWrite("cancelled")]),
+  "undeclared-state": () => codeCase([...cleanWrites(), extraRefundWrite("archived")]),
+  "never-guarded": () =>
+    codeCase(patchWrite(cleanWrites(), "checkout", (w) => ({ ...w, guards: [] }))),
+  "extra-from": () =>
+    codeCase(
+      patchWrite(cleanWrites(), "checkout", (w) => ({
+        ...w,
+        fromState: from(["cancelled", "draft"]),
+      })),
+    ),
+  "strict-from": () => {
+    const spec = patchSpec(specModel(), "expire", (t) => ({
+      ...t,
+      from: ["draft", "pending_payment"],
+    }));
+    return { spec, code: buildCodeModel(spec, cleanWrites()) };
+  },
+  "no-impl": () => {
+    const spec = patchSpec(specModel(), "checkout", ({ impl: _, ...t }) => t);
+    const writes = patchWrite(cleanWrites(), "checkout", ({ specTransition: _, ...w }) => w);
+    return { spec, code: buildCodeModel(spec, writes) };
+  },
+} satisfies Record<string, () => Case>;
