@@ -14,7 +14,8 @@
  *   draining). A real bug reached through a different interleaving; report the divergence too.
  * - `replay-disagrees`: the property holds in the real code. Either the code is safer than the
  *   trace (diverged, e.g. `blocked` by a lock), or the schedule was followed but the effect never
- *   happened (a mapping or instrumentation gap). A warning with the divergence attached.
+ *   happened: a step was a no-op in the code (e.g. a conditional update that matched
+ *   nothing) or a mapping/instrumentation gap. A warning with the divergence attached.
  * - `inconclusive`: the caller cannot evaluate the property from one finished replay (`violated`
  *   is `undefined`), e.g. a liveness rule. The replay still ran; report it as info.
  */
