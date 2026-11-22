@@ -7,6 +7,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+- `by: [a, b]` means **any** listed actor: a call is authorized when it passes the transition's own `requires`
+  and all the `requires` of at least one listed actor. `guard-not-dominating` used to require every listed
+  actor's guards at once, which flagged correct owner-or-admin code and accepted owner-and-admin code. It now
+  reports each path to the write (`CodeSites.guardSets`) that passes no listed actor's guards in full, once,
+  naming what each actor is missing; without enumerated paths it falls back to the dominating guards. A
+  single-actor `by` is checked as before.
+- The plain-English summary reads a multi-actor `by` as alternatives and states the transition's `requires`
+  once, for every caller; the permission matrix legend says any one row's guards suffice.
+- Generated guard tests follow "any": besides rejecting actors outside `by`, each other listed actor with a
+  fixture must succeed on its own. Failing one actor's guards can't be expressed with one fixture per actor and
+  is reported as `not-generated`.
+- An unknown from-state (a state field typed `string`) is reported once, as the extractor's `unanalyzable`
+  warning, no longer also as `from-state-unconstrained`.
+- `from-state-unconstrained` points at the first `from` item of the transition.
+- The `non-atomic` hint for `memory` persistence asks for a synchronous check and write (no `await`/`yield`
+  between them) instead of a transaction or conditional update.
+
+### Added
+- `--strict` on `check` and `test`: `unanalyzable` warnings are reported as errors (exit 1), so code tsverify
+  can't analyze can't hide a finding. JSON has `strict: true`, SARIF results `level: error` and
+  `properties.strict`. Recommended for blocking CI ([`docs/workflows.md`](docs/workflows.md)).
+- Generated tests support clients bound as a bare exported function (call sites with `path: ""`, gate = the
+  client name): `instrument.effects` accepts the `""` call path and makes the fake client a recording function.
+
+### Fixed
+- `tsverify test` mocked each client module wholesale, so a guard or helper exported beside a client vanished
+  (`No "requireOwner" export is defined on the mock`). The mocks now replace only the bound exports.
+
 ## [0.1.0-alpha.0]
 
 The first alpha, packaged for npm but not published yet. It covers the whole pipeline, from a `*.behavior.yaml`

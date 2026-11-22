@@ -21,6 +21,7 @@ specified in `*.behavior.yaml` files and verified by `tsverify`. How to write th
   Reviewers see it in `tsverify diff --base origin/main`.
 - `unanalyzable` warnings mean the code is unchecked. Restructure the code (guide §7.5) or explain each one in the
   PR.
+- `--strict` (on `check` and `test`) makes `unanalyzable` warnings errors; CI that blocks should use it.
 - Use `--format json` when you parse the output.
 
 **Exit codes:** `0` pass · `1` violations: fix them, usually in the code · `2` invalid spec, broken link or

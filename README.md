@@ -56,6 +56,7 @@ bindings:
 ```sh
 tsverify check --spec-only    # model-check the spec alone: design bugs, with a counterexample trace
 tsverify check                # also extract what the code does and compare (exit 0 ok · 1 violations · 2 invalid input · 3 internal)
+tsverify check --strict       # in blocking CI: code tsverify can't analyze is an error, not a warning
 tsverify test                 # generate and run tests from spec + code; replays turn counterexamples into failing tests
 tsverify diff --base main     # behavior diff (Markdown + Mermaid) for the PR
 tsverify view                 # local viewer: diagram, matrix, findings, counterexample playback, live reload
