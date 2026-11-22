@@ -83,6 +83,7 @@ describe("check: code conformance", () => {
     const cwd = await tempSpecDir(lightProject());
     const r = await tsv(["check"], { cwd });
     expect(r.code).toBe(0);
+    expect(r.stdout).toMatch(/^src\/light\.behavior\.yaml {2}project: \.\nLight\n/);
     expect(r.stdout).toContain("ℹ unanalyzable  src/light.behavior.yaml:16:3");
     expect(r.stdout).toContain("smash: not linked to code (no impl)");
     expect(r.stdout).toMatch(
@@ -186,6 +187,9 @@ describe("check: code conformance", () => {
         hint: "Pass --project <dir> to name the TypeScript project root, or --spec-only to check the spec alone.",
       },
     ]);
+
+    const pretty = await tsv(["check"], { cwd });
+    expect(pretty.stdout).toMatch(/^order\.behavior\.yaml {2}no project\n/);
 
     const specOnly = await tsv(["check", "--spec-only"], { cwd });
     expect(specOnly.code).toBe(0);

@@ -8,7 +8,15 @@ describe("check --spec-only", () => {
     const r = await tsv(["check", "--spec-only", CANONICAL_DIR]);
     expect(r.code).toBe(0);
     expect(r.stderr).toBe("");
-    expect(r.stdout).toBe("✓ 1 spec, 0 errors, 0 warnings (6 spec states)\n");
+    expect(r.stdout).toBe(
+      [
+        `${CANONICAL_DIR}/order.behavior.yaml  spec only`,
+        "✓ no findings",
+        "",
+        "✓ 1 spec, 0 errors, 0 warnings (6 spec states)",
+        "",
+      ].join("\n"),
+    );
   });
 
   it("does not swallow the next path", async () => {
