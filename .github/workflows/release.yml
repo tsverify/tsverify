@@ -1,0 +1,44 @@
+# Draft: publishes @tsverify/runtime and @tsverify/cli to npm when a `v*` tag is pushed.
+# See RELEASING.md. Needs the `NPM_TOKEN` repository secret (an npm automation token for the
+# @tsverify org).
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+  # npm provenance (see the publish step) needs an OIDC token:
+  # id-token: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - name: Tag matches the package versions
+        run: |
+          for pkg in cli runtime; do
+            version=$(node -p "require('./packages/$pkg/package.json').version")
+            if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+              echo "::error::tag $GITHUB_REF_NAME does not match @tsverify/$pkg $version"
+              exit 1
+            fi
+          done
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run ci
+      - run: pnpm smoke:pack
+      # prepack builds each package and copies README/LICENSE/NOTICE/CHANGELOG in.
+      # Prereleases (v0.1.0-alpha.0) go to the `next` dist-tag, releases to `latest`.
+      # Provenance: add `--provenance` (and `id-token: write` above) once the repository is
+      # public; npm only accepts provenance from public source repositories.
+      - name: Publish
+        run: |
+          case "$GITHUB_REF_NAME" in *-*) tag=next ;; *) tag=latest ;; esac
+          pnpm --filter @tsverify/runtime --filter @tsverify/cli publish --access public --no-git-checks --tag "$tag"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
