@@ -47,11 +47,12 @@ The sidecar holds the trace and the `CodeSites` subset `mappingFromCode` reads. 
 entity in `plan.seedStatus`, spawns one worker per trace worker (each calls its transition's impl),
 `tryPlay`s the schedule, `drain`s, evaluates the property in code terms and calls `replayResult`.
 
-- **Planning.** When the runtime's default fast-forward leaves something drivable to replay, the
-  sidecar holds the trace unchanged (B3, B6). Otherwise testgen cuts it after the last step it
-  cannot drive and the test plans with `{ fastForward: false }`: an all-atomic trace (B4's
-  duplicate webhook) replays from the initial state; a step on an unlinked transition (B1's
-  `reopenOrder`) is seeded instead of replayed. `src/replay-plan.ts` mirrors the runtime's rules.
+- **Planning.** The sidecar holds the trace unchanged. When the runtime's default fast-forward
+  leaves something drivable to replay, the test plans with the default (B3, B6). Otherwise it
+  passes `{ replayFrom: i }`, the step after the last one it cannot drive: an all-atomic trace
+  (B4's duplicate webhook) replays from the initial state (`replayFrom: 1`); a step on an unlinked
+  transition (B1's `reopenOrder`, step 3) is seeded instead of replayed (`replayFrom: 4`).
+  `src/replay-plan.ts` mirrors the runtime's rules.
 - **Properties.** `effect-multiplicity` and `always` / `never` rules over status checks and effect
   counts are evaluated (`effects[gate]` = fast-forwarded prefix + calls in the replay; `status` =
   the stored entity). Anything else (`eventually`, liveness, structural properties) gives an

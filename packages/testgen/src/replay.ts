@@ -128,7 +128,7 @@ function replayFile(
   lines.push("};", "");
 
   lines.push(
-    `const plan = planFromTrace(sidecar.trace, mappingFromCode(sidecar.code)${plan.fastForward ? "" : ", { fastForward: false }"});`,
+    `const plan = planFromTrace(sidecar.trace, mappingFromCode(sidecar.code)${plan.replayFrom === undefined ? "" : `, { replayFrom: ${plan.replayFrom} }`});`,
   );
   lines.push(...scheduleComment(ctx, plan));
   lines.push("");

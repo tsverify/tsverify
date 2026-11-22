@@ -1,6 +1,7 @@
 /**
  * How a counterexample becomes a replay: the runtime's default fast-forward when it leaves
- * something drivable to replay, otherwise a cut after the last step the test cannot drive.
+ * something drivable to replay, otherwise `replayFrom` the step after the last one the test cannot
+ * drive. The sidecar always holds the trace unchanged.
  */
 import type { BehaviorModel, Finding, Trace } from "@tsv/ir";
 import { orderModel } from "@tsv/ir/testing";
@@ -52,7 +53,7 @@ describe("planReplay", () => {
     const planned = planReplay(specTrace as unknown as Trace, gates, drivable);
     expect(planned.ok).toBe(true);
     if (!planned.ok) return;
-    expect(planned.plan.fastForward).toBe(true);
+    expect(planned.plan.replayFrom).toBeUndefined();
     expect(planned.plan.trace).toBe(specTrace);
     expect(planned.plan.skipped.map((s) => s.action?.worker)).toEqual([
       "checkout#1",
@@ -72,7 +73,8 @@ describe("planReplay", () => {
     const planned = planReplay(trace, gates, drivable);
     expect(planned.ok).toBe(true);
     if (!planned.ok) return;
-    expect(planned.plan.fastForward).toBe(false);
+    expect(planned.plan.replayFrom).toBe(1);
+    expect(planned.plan.trace).toBe(trace);
     expect(planned.plan.skipped).toEqual([]);
     expect(planned.plan.seed.status).toBe("draft");
     expect(planned.plan.workers).toEqual([
@@ -81,12 +83,12 @@ describe("planReplay", () => {
     ]);
   });
 
-  it("cuts after a step on a transition the test cannot call (B1 reopenOrder)", () => {
+  it("replays from after a step on a transition the test cannot call (B1 reopenOrder)", () => {
     const trace = traces["b1-reopen"] as unknown as Trace;
     const planned = planReplay(trace, gates, drivable);
     expect(planned.ok).toBe(true);
     if (!planned.ok) return;
-    expect(planned.plan.fastForward).toBe(false);
+    expect(planned.plan.replayFrom).toBe(4);
     expect(planned.plan.skipped.map((s) => s.action?.worker)).toEqual([
       "checkout#1",
       "payment_succeeded#1",
@@ -96,14 +98,11 @@ describe("planReplay", () => {
       status: "pending_payment",
       effects: { "email.receipt": 1 },
     });
-    // The sidecar trace starts at the cut: its first step is the seeded state, without action.
-    expect(planned.plan.trace.steps.map((s) => [s.index, s.action?.worker])).toEqual([
-      [3, undefined],
-      [4, "payment_succeeded#2"],
-    ]);
+    expect(planned.plan.trace).toBe(trace);
+    expect(planned.plan.replayed.map((s) => s.action?.worker)).toEqual(["payment_succeeded#2"]);
   });
 
-  it("refuses when nothing drivable is left after the cut", () => {
+  it("refuses when nothing drivable is left after the last undrivable step", () => {
     const trace = traces["b1-reopen"] as unknown as Trace;
     const planned = planReplay(trace, gates, (t) => t !== "payment_succeeded" && drivable(t));
     expect(planned).toEqual({
@@ -117,7 +116,7 @@ describe("planReplay", () => {
 describe("generated replay options", () => {
   const spec = { ...orderModel(), file: "src/orders/order.behavior.yaml" };
 
-  it("passes { fastForward: false } with the cut trace", () => {
+  it("passes { replayFrom } with the unchanged trace", () => {
     const trace = traces["b1-reopen"] as unknown as Trace;
     const result = generate({
       spec,
@@ -127,14 +126,35 @@ describe("generated replay options", () => {
     });
     const test = result.files.find((f) => f.path === "replay-1.test.ts")?.content ?? "";
     expect(test).toContain(
-      "const plan = planFromTrace(sidecar.trace, mappingFromCode(sidecar.code), { fastForward: false });",
+      "const plan = planFromTrace(sidecar.trace, mappingFromCode(sidecar.code), { replayFrom: 4 });",
     );
     expect(test).toContain(
       '// steps 1-3 (checkout#1 atomic, payment_succeeded#1 atomic, reopenOrder#1 atomic) fast-forwarded: seed status "pending_payment"',
     );
     expect(test).toContain('const violated = !((effects["email.send"] ?? 0) <= 1);');
     const sidecar = JSON.parse(result.files.find((f) => f.path === "replay-1.json")?.content ?? "");
-    expect(sidecar.trace.steps).toHaveLength(2);
+    expect(sidecar.trace).toEqual(trace);
+  });
+
+  it("replays an all-atomic trace from the initial state (B4)", () => {
+    const trace = traces["b4-webhook-dup"] as unknown as Trace;
+    const result = generate({
+      spec,
+      code,
+      findings: [multiplicity(trace, "email.receipt")],
+      outDir: ".tsv/generated/order-lifecycle",
+    });
+    const test = result.files.find((f) => f.path === "replay-1.test.ts")?.content ?? "";
+    expect(test).toContain(
+      "const plan = planFromTrace(sidecar.trace, mappingFromCode(sidecar.code), { replayFrom: 1 });",
+    );
+    expect(test).toContain(
+      '// nothing fast-forwarded: the replay starts from status "draft"\n' +
+        "// step 1  payment_succeeded#1 atomic                       → [payment_succeeded#1, db.orders.get] [payment_succeeded#1, db.orders.save]\n" +
+        "// step 2  payment_succeeded#2 atomic (duplicate delivery)  → [payment_succeeded#2, db.orders.get] [payment_succeeded#2, db.orders.save]\n",
+    );
+    const sidecar = JSON.parse(result.files.find((f) => f.path === "replay-1.json")?.content ?? "");
+    expect(sidecar.trace).toEqual(trace);
   });
 
   it("explains a counterexample it cannot replay", () => {
