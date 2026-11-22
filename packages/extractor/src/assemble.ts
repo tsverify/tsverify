@@ -286,6 +286,14 @@ export function assemble(spec: BehaviorModel, drafts: Draft[], env: AssembleEnv)
     transitions.push(buildTransition(spec, d, name, env));
     concurrency[name] = d.linked ? (spec.concurrency[d.linked.name] ?? 2) : 2;
   }
+  // Spec transitions without `impl` can't be checked against code, so they are assumed to behave
+  // as specified: copied unchanged and without `sites`. Leaving them out would make the code model
+  // lose behavior and the checker report false implementation-property violations.
+  for (const t of spec.transitions) {
+    if (t.impl !== undefined || transitions.some((c) => c.name === t.name)) continue;
+    transitions.push(structuredClone(t));
+    concurrency[t.name] = spec.concurrency[t.name] ?? 2;
+  }
   transitions.sort((a, b) => compareStrings(a.name, b.name));
   const sortedConcurrency: Record<string, number> = {};
   for (const t of transitions) sortedConcurrency[t.name] = concurrency[t.name] as number;

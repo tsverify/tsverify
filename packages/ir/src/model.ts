@@ -178,6 +178,8 @@ export interface Bindings {
  *   - `requires` = bound guards that dominate the write; `atomic` = read and write share one scope
  *   - effect multiplicity comes from the spec declaration of that effect (`at-least-once` if undeclared)
  *   - `concurrency` copies the linked spec transition's bound (2 when unlinked)
+ *   - spec transitions without `impl` are copied unchanged and without `sites` (assumed to behave
+ *     as specified), so the code model stays complete; conformance skips them
  */
 export type ModelOrigin = "spec" | "code";
 

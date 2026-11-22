@@ -91,6 +91,19 @@ describe("check: code conformance", () => {
     );
   });
 
+  it("assumes transitions without impl behave as specified", async () => {
+    // The only way out of `on` has no impl. If the code model dropped it, the code-model checker
+    // would report `on` as stuck: a false implementation-property error.
+    const spec = LIGHT_SPEC.replace("terminal: [on, broken]", "terminal: [broken]").replace(
+      "  smash:\n    from: off",
+      "  smash:\n    from: on",
+    );
+    const cwd = await tempSpecDir({ ...lightProject(), "src/light.behavior.yaml": spec });
+    const r = await tsv(["check"], { cwd });
+    expect(r.stdout).not.toContain("implementation-property");
+    expect(r.code).toBe(0);
+  });
+
   it("fails conformance mismatches with exit 1 and cwd-relative code locations", async () => {
     const cwd = await tempSpecDir(lightProject("app/", UNGUARDED_CODE));
     const r = await tsv(["check", "--format", "json"], { cwd });
