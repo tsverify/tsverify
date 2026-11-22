@@ -44,6 +44,7 @@ export function formatPretty(report: Report, io: Io): string {
     if (findings.length > 0) out += formatFindings(findings, options);
   }
   out += enforcedOnlyNote(report, f);
+  out += strictNote(report, f);
   return `${out}${summaryLine(report, f)}\n`;
 }
 
@@ -56,6 +57,13 @@ function enforcedOnlyNote(report: Report, f: Formatter): string {
   }
   if (skipped === 0) return "";
   return `${f.dim(`--enforced-only: skipped ${plural(skipped, "spec")} without \`enforced: true\`.`)}\n`;
+}
+
+/** How many `unanalyzable` warnings `--strict` turned into errors. */
+function strictNote(report: Report, f: Formatter): string {
+  const promoted = report.strict?.promoted ?? 0;
+  if (promoted === 0) return "";
+  return `${f.dim(`--strict: ${plural(promoted, "unanalyzable finding")} reported as ${promoted === 1 ? "an error" : "errors"}.`)}\n`;
 }
 
 function projectLabel(spec: SpecReport, report: Report): string {

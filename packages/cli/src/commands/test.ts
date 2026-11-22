@@ -9,7 +9,14 @@ import { loadSpecs, resolveSpecFiles, selectEnforced } from "../inputs";
 import type { Io } from "../io";
 import { rebaseFile, rebaseLocations } from "../locations";
 import { formatReport, parseFormat } from "../output/format";
-import { allFindings, dedupeFindings, type Report, type SpecReport } from "../report";
+import {
+  allFindings,
+  applyStrict,
+  dedupeFindings,
+  isStrictPromoted,
+  type Report,
+  type SpecReport,
+} from "../report";
 import { testFindings } from "../test-findings";
 import { runGeneratedTests } from "../test-run";
 import { parseProject } from "./check";
@@ -21,6 +28,8 @@ export interface TestCommandOptions {
   project?: unknown;
   /** Keep only specs with `enforced: true` (and invalid ones, which may be enforced). */
   enforcedOnly?: unknown;
+  /** Also report the static `unanalyzable` warnings, as errors (`applyStrict`). */
+  strict?: unknown;
 }
 
 /** One spec whose tests were generated, waiting for its project's vitest run. */
@@ -40,7 +49,8 @@ interface Job {
  * as findings: `generated-test-failed`, `replay-confirmed`, `replay-disagrees`, plus `info`
  * findings for what could not be generated. Static findings are left to `tsverify check`; only input
  * errors (invalid spec, broken link) are reported as well, since they make the run invalid.
- * Exit 0, 1 on any error finding, 2 on invalid input (which takes precedence).
+ * `--strict` also reports the static `unanalyzable` warnings (what the generated tests may not
+ * cover), as errors. Exit 0, 1 on any error finding, 2 on invalid input (which takes precedence).
  */
 export async function testCommand(
   io: Io,
@@ -48,6 +58,8 @@ export async function testCommand(
   options: TestCommandOptions,
 ): Promise<ExitCode> {
   const format = parseFormat(options.format ?? "pretty");
+  const strict = options.strict === true;
+  const kept = (f: Finding) => isInputError(f) || (strict && isStrictPromoted(f));
   const project = await parseProject(options.project, io.cwd);
   const cwd = io.cwd;
   const files = await resolveSpecFiles(paths, cwd);
@@ -55,13 +67,13 @@ export async function testCommand(
   const enforcedOnly = options.enforcedOnly === true ? selectEnforced(loaded) : undefined;
   const specs = enforcedOnly?.kept ?? loaded;
 
-  const reports: SpecReport[] = specs.map(({ file, model, behavior, findings }) => ({
+  const specChecks = specs.map((s) => (s.model ? check(s.model).findings : []));
+  const reports: SpecReport[] = specs.map(({ file, model, behavior, findings }, i) => ({
     file,
     behavior,
     ...(model?.enforced && { enforced: true }),
-    findings: findings.filter(isInputError),
+    findings: [...findings, ...(specChecks[i] ?? [])].filter(kept),
   }));
-  const specChecks = specs.map((s) => (s.model ? check(s.model).findings : []));
   const outcomes = await checkCode(specs, { cwd, project });
 
   // Generate and write, grouped by project root (one vitest run each).
@@ -69,7 +81,7 @@ export async function testCommand(
   outcomes.forEach((outcome, i) => {
     const report = reports[i] as SpecReport;
     report.project = outcome.project;
-    report.findings.push(...outcome.findings.filter(isInputError));
+    report.findings.push(...outcome.findings.filter(kept));
     if (outcome.root === undefined || !outcome.spec || !outcome.code) return;
     roots.set(outcome.root, [...(roots.get(outcome.root) ?? []), i]);
   });
@@ -143,6 +155,7 @@ export async function testCommand(
     command: "test",
     ...(enforcedOnly && { enforcedOnly: { skipped: enforcedOnly.skipped } }),
   };
+  if (strict) applyStrict(report);
   io.stdout(formatReport(report, format, io));
   return exitCodeFor(allFindings(report));
 }

@@ -14,6 +14,8 @@ export interface JsonReport {
   findings: Finding[];
   specs: JsonSpec[];
   summary: { errors: number; warnings: number };
+  /** Present (and `true`) with `--strict`: `unanalyzable` warnings are reported as errors. */
+  strict?: true;
 }
 
 export interface JsonSpec {
@@ -63,6 +65,7 @@ export function toJsonReport(report: Report): JsonReport {
       errors: countSeverity(findings, "error"),
       warnings: countSeverity(findings, "warning"),
     },
+    ...(report.strict && { strict: true as const }),
   };
 }
 

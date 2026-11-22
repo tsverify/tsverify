@@ -150,6 +150,71 @@ describe("check: code conformance", () => {
     ]);
   });
 
+  describe("--strict", () => {
+    const stringTyped = () =>
+      tempSpecDir(
+        lightProject(
+          "",
+          UNGUARDED_CODE.replace('status: "off" | "on" | "broken";', "status: string;"),
+        ),
+      );
+
+    it("reports unanalyzable warnings as errors and exits 1 (json)", async () => {
+      const cwd = await stringTyped();
+      const r = await tsverify(["check", "--strict", "--format", "json"], { cwd });
+      expect(r.code).toBe(1);
+      const doc = parse(r.stdout);
+      expect(doc.strict).toBe(true);
+      expect(doc.summary).toEqual({ errors: 1, warnings: 0 });
+      expect(doc.findings.map((f) => [f.id, f.severity])).toEqual([
+        ["unanalyzable:Light:from-state:switch_on", "error"],
+        // A transition without impl is the spec's choice: it stays an info.
+        ["unanalyzable:Light:smash", "info"],
+      ]);
+    });
+
+    it("marks the raised results in SARIF and says so in pretty output", async () => {
+      const cwd = await stringTyped();
+      const sarif = await tsverify(["check", "--strict", "--format", "sarif"], { cwd });
+      expect(sarif.code).toBe(1);
+      const results = (
+        JSON.parse(sarif.stdout) as {
+          runs: [{ results: { ruleId: string; level: string; properties: object }[] }];
+        }
+      ).runs[0].results;
+      expect(results.map((x) => [x.ruleId, x.level, x.properties])).toEqual([
+        ["unanalyzable", "error", { behavior: "Light", transition: "switch_on", strict: true }],
+        ["unanalyzable", "note", { behavior: "Light", transition: "smash" }],
+      ]);
+      const pretty = await tsverify(["check", "--strict"], { cwd });
+      expect(pretty.code).toBe(1);
+      expect(pretty.stdout).toContain("✗ unanalyzable");
+      expect(pretty.stdout).toContain("--strict: 1 unanalyzable finding reported as an error.");
+      expect(pretty.stdout).toMatch(/✗ 1 spec, 1 error, 0 warnings/);
+    });
+
+    it("changes nothing on code it can analyze", async () => {
+      const cwd = await tempSpecDir(lightProject());
+      const r = await tsverify(["check", "--strict"], { cwd });
+      expect(r.code).toBe(0);
+      expect(r.stdout).not.toContain("--strict");
+    });
+
+    it("makes tsverify test report the static unanalyzable warnings, as errors", async () => {
+      const cwd = await stringTyped();
+      const plain = await tsverify(["test", "--format", "json"], { cwd });
+      expect(plain.code).toBe(0);
+      expect(parse(plain.stdout).findings.map((f) => f.category)).not.toContain("unanalyzable");
+      const r = await tsverify(["test", "--strict", "--format", "json"], { cwd });
+      expect(r.code).toBe(1);
+      const doc = parse(r.stdout);
+      expect(doc.strict).toBe(true);
+      expect(
+        doc.findings.filter((f) => f.severity !== "info").map((f) => [f.id, f.severity]),
+      ).toEqual([["unanalyzable:Light:from-state:switch_on", "error"]]);
+    });
+  });
+
   it("uses the nearest tsconfig.json", async () => {
     // src/tsconfig.json makes src/ the project root, so `impl: src/light.ts` no longer resolves.
     const cwd = await tempSpecDir({ ...lightProject(), "src/tsconfig.json": TSCONFIG });
