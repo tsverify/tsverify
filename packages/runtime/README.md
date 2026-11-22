@@ -65,8 +65,8 @@ planFromTrace(trace, mapping, { fastForward? = true } | { replayFrom: stepIndex 
   // { property, startIndex, seedStatus, seedEffects, skipped, workers, schedule, origins, expectedEffects }
 storeConfigFromCode(codeModel, "db") / effectsConfigFromCode(codeModel, "stripe")
 
-replayVerdict({ followed, violated }) → "confirmed" | "confirmed-divergent" | "replay-disagrees"
-replayResult(playOutcome, violated) → { verdict, followed, violated, divergence?: { kind, stepIndex, worker, message } }
+replayVerdict({ followed, violated }) → "confirmed" | "confirmed-divergent" | "replay-disagrees" | "inconclusive"
+replayResult(playOutcome, violated | undefined) → { verdict, followed, violated?, divergence?: { kind, stepIndex, worker, message } }
 ```
 
 ## Scheduler semantics
@@ -148,6 +148,10 @@ call `replayVerdict` / `replayResult`:
 | no | yes | `confirmed-divergent` | bug through another interleaving: fail, attach the divergence |
 | no | no | `replay-disagrees` | the code is safer than the trace (e.g. `blocked`): warning |
 | yes | no | `replay-disagrees` | mapping or instrumentation gap: warning |
+| either | `undefined` | `inconclusive` | the property is not evaluable from one replay (e.g. liveness): info |
+
+Pass `violated: undefined` when the property cannot be evaluated in code terms; the result then
+has no `violated` field, and the divergence (if any) is still attached.
 
 ## Fakes
 

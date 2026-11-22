@@ -261,10 +261,12 @@ describe("planFromTrace with replayFrom (all-atomic traces)", () => {
 });
 
 describe("replayVerdict", () => {
-  test("the four combinations", () => {
+  test("the four combinations, and a property that cannot be evaluated", () => {
     expect(replayVerdict({ followed: true, violated: true })).toBe("confirmed");
     expect(replayVerdict({ followed: false, violated: true })).toBe("confirmed-divergent");
     expect(replayVerdict({ followed: false, violated: false })).toBe("replay-disagrees");
     expect(replayVerdict({ followed: true, violated: false })).toBe("replay-disagrees");
+    expect(replayVerdict({ followed: true, violated: undefined })).toBe("inconclusive");
+    expect(replayVerdict({ followed: false })).toBe("inconclusive");
   });
 });
