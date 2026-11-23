@@ -13,6 +13,37 @@ describe("traceToText", () => {
     await expect(out).toMatchFileSnapshot("__golden__/b6-double-refund.txt");
   });
 
+  it("names a code model's second write of a transition by the transition and where it is", () => {
+    const at = { file: "src/orders/refund.ts", line: 15, column: 3 };
+    const trace: Trace = {
+      behavior: "Order lifecycle",
+      entity: "Order",
+      model: "code",
+      property: "effect-multiplicity",
+      kind: "invariant",
+      steps: [
+        { index: 0, state: { status: "paid", effects: {}, workers: [] } },
+        {
+          index: 1,
+          action: {
+            worker: "refund~2#1",
+            transition: "refund~2",
+            kind: "read",
+            outcome: "proceed",
+            at,
+          },
+          state: { status: "paid", effects: {}, workers: [] },
+        },
+      ],
+    };
+    const text = traceToText(trace);
+    expect(text).toContain("step 1  refund#1 (write at refund.ts:15) read → proceed  status=paid");
+    expect(text).not.toContain("~2");
+    const diagram = traceToSequenceDiagram(trace);
+    expect(diagram).toContain("participant refund_2_1 as refund#35;1 (write at refund.ts#58;15)");
+    expect(diagram).not.toContain("~2");
+  });
+
   it("shows rejected and duplicate actions, and workers that do not name their transition", () => {
     const trace: Trace = {
       behavior: "Order lifecycle",

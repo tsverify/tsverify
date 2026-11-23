@@ -1,3 +1,4 @@
+import type { SourceLocation } from "./location";
 import type { ModelOrigin } from "./model";
 
 /**
@@ -40,6 +41,12 @@ export interface TraceAction {
    */
   outcome?: "proceed" | "rejected";
   duplicate?: boolean;
+  /**
+   * Code models: the write a transition named `t~2`, `t~3`, … stands for (a spec transition's
+   * second, third, … write of its `to`). Those names are internal: a trace shows the spec
+   * transition and this location instead.
+   */
+  at?: SourceLocation;
 }
 
 export interface TraceStep {

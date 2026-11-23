@@ -45,7 +45,14 @@ import { ClientCalls } from "./client-calls";
 import { primaryDeclarationOf } from "./declarations";
 import { Dominance, type GuardMiss } from "./dominance";
 import { matchesEntity, writtenValue } from "./entity";
-import { brokenLink, mergeSharedWrites, sortFindings, unanalyzable, uniqueIds } from "./findings";
+import {
+  brokenLink,
+  mergeSharedWrites,
+  sortFindings,
+  spokenNames,
+  unanalyzable,
+  uniqueIds,
+} from "./findings";
 import { guardArgs } from "./guard-args";
 import { loadTypeScript, TypeScriptSetupError } from "./load-typescript";
 import { type LoadedProject, loadProject, ProjectContext } from "./project";
@@ -769,7 +776,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
   if (instanceImpls.length > 0) model.instanceImpls = instanceImpls;
   if (Object.keys(hiddenImpls).length > 0) model.hiddenImpls = hiddenImpls;
   if (unfakeable.length > 0) model.unfakeable = unfakeable;
-  const sorted = sortFindings(uniqueIds(mergeSharedWrites(findings)));
+  const sorted = sortFindings(uniqueIds(spokenNames(mergeSharedWrites(findings))));
   // After `uniqueIds`: each unread write names its finding by its final id.
   const unreadWrites: Record<string, UnreadWrite[]> = {};
   for (const impl of impls) {

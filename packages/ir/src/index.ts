@@ -37,6 +37,12 @@ export type {
   UnreadWrite,
 } from "./model";
 export {
+  isNumberedWrite,
+  shortLocation,
+  specTransitionName,
+  transitionLabel,
+} from "./names";
+export {
   formatGuardArgList,
   formatGuardRef,
   formatSymbolRef,

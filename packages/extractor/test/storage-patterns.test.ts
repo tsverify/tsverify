@@ -1510,3 +1510,25 @@ export async function ship(id: string) {
     expect(Object.keys(result.model?.uncalledClients ?? {})).toEqual(["email", "legacy", "stripe"]);
   });
 });
+
+describe("a second write of a transition", () => {
+  it("is named in messages by its spec transition, never `t~2` (the id keeps it)", () => {
+    const result = extract(
+      `${IMPORTS}
+export async function cancel(id: string, from: Parameters<typeof setStatusIf>[1] & string) {
+  if (await setStatusIf(id, "pending_payment", "cancelled")) return;
+  if (!(await setStatusIf(id, from, "cancelled"))) throw new Error("changed");
+}
+`,
+      [t("cancel", "cancelled", { from: ["pending_payment"] })],
+    );
+    expect(result.model?.transitions.map((x) => x.name)).toContain("cancel~2");
+    const f = result.findings.find(
+      (x) => x.id === "unanalyzable:Fixture orders:from-state:cancel~2",
+    );
+    expect(f?.message).toBe(
+      "cancel: the from-state of this write is unknown: the `from` argument of storage.setStatusIf (from) is not a literal state or a list of them",
+    );
+    expect(result.findings.some((x) => x.message.includes("~2"))).toBe(false);
+  });
+});

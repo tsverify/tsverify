@@ -1,6 +1,8 @@
 import {
   BUILTIN_PROPERTIES,
   compareStrings,
+  shortLocation,
+  specTransitionName,
   type Trace,
   type TraceAction,
   type TraceStep,
@@ -45,17 +47,22 @@ const ENTITY_ID = "Entity";
  */
 export function traceToSequenceDiagram(trace: Trace, options: SequenceDiagramOptions = {}): string {
   const workers: string[] = [];
+  const labels = new Map<string, string>();
   for (const step of trace.steps) {
     const w = step.action?.worker;
     if (w !== undefined && !workers.includes(w)) workers.push(w);
+    if (w !== undefined && !labels.has(w)) labels.set(w, workerLabel(w, step.action));
   }
   const ids = assignMermaidIds(workers, [ENTITY_ID]);
   const id = (w: string) => ids.get(w) ?? w;
 
   const lines = ["sequenceDiagram"];
   for (const w of workers) {
+    const label = labels.get(w) ?? w;
     lines.push(
-      id(w) === w ? `  participant ${w}` : `  participant ${id(w)} as ${escapeMermaidText(w)}`,
+      id(w) === w && label === w
+        ? `  participant ${w}`
+        : `  participant ${id(w)} as ${escapeMermaidText(label)}`,
     );
   }
   const entity = options.entity ?? trace.entity;
@@ -89,13 +96,29 @@ export function traceToSequenceDiagram(trace: Trace, options: SequenceDiagramOpt
   return `${lines.join("\n")}\n`;
 }
 
+/**
+ * How a trace shows a worker: its id, except that a code model's `refund~2#1` (the second write of
+ * `refund`, an internal name) is `refund#1 (write at refund.ts:15)` when the action says where.
+ */
+function workerLabel(worker: string, action: TraceAction | undefined): string {
+  if (action?.at === undefined || action.worker !== worker) return worker;
+  const hash = worker.lastIndexOf("#");
+  const base = hash < 0 ? worker : worker.slice(0, hash);
+  const n = hash < 0 ? "" : worker.slice(hash);
+  return `${specTransitionName(base)}${n} (write at ${shortLocation(action.at)})`;
+}
+
 /** `refund#1 read → proceed`. The transition is spelled out only if the worker id doesn't name it. */
 function describeAction(action: TraceAction, withWorker: boolean): string {
   const namesTransition =
     action.worker === action.transition || action.worker.startsWith(`${action.transition}#`);
   const parts: string[] = [];
-  if (withWorker) parts.push(action.worker);
-  if (!namesTransition) parts.push(withWorker ? `(${action.transition})` : action.transition);
+  if (withWorker) parts.push(workerLabel(action.worker, action));
+  if (!namesTransition) {
+    const transition =
+      action.at === undefined ? action.transition : specTransitionName(action.transition);
+    parts.push(withWorker ? `(${transition})` : transition);
+  }
   parts.push(action.kind);
   if (action.outcome !== undefined) parts.push(`→ ${action.outcome}`);
   if (action.duplicate) parts.push("(duplicate delivery)");

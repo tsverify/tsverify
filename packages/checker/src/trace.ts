@@ -1,4 +1,11 @@
-import type { Trace, TraceAction, TraceState, TraceStep, WorkerState } from "@tsverify/ir";
+import {
+  isNumberedWrite,
+  type Trace,
+  type TraceAction,
+  type TraceState,
+  type TraceStep,
+  type WorkerState,
+} from "@tsverify/ir";
 import type { StateStore } from "./explore";
 import type { CheckContext } from "./properties/context";
 import type { Action } from "./semantics";
@@ -69,6 +76,11 @@ export function buildTrace(
     const traceAction: TraceAction = { worker: worker.id, transition: t.name, kind: action.kind };
     if (action.kind !== "write") traceAction.outcome = "proceed";
     if (worker.duplicate) traceAction.duplicate = true;
+    if (model.origin === "code" && isNumberedWrite(t.name)) {
+      const modelled = model.transitions[t.index];
+      const at = modelled?.sites?.write ?? modelled?.at;
+      if (at !== undefined) traceAction.at = { ...at };
+    }
     steps.push({ index: steps.length, action: traceAction, state });
   }
 
