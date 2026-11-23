@@ -20,7 +20,7 @@ import {
 import { testFindings } from "../test-findings";
 import { runGeneratedTests } from "../test-run";
 import { findVitest, type ResolvedVitest } from "../vitest-resolve";
-import { parseProject } from "./check";
+import { parseMaxStates, parseProject } from "./check";
 
 export interface TestCommandOptions {
   /** Raw from cac; validated by `parseFormat`. */
@@ -31,6 +31,8 @@ export interface TestCommandOptions {
   enforcedOnly?: unknown;
   /** Also report the static `unanalyzable` warnings, as errors (`applyStrict`). */
   strict?: unknown;
+  /** Raw from cac: the checker's state limit per model, as for `tsverify check`. */
+  maxStates?: unknown;
 }
 
 /** One spec whose tests were generated, waiting for its project's vitest run. */
@@ -63,6 +65,7 @@ export async function testCommand(
   options: TestCommandOptions,
 ): Promise<ExitCode> {
   const format = parseFormat(options.format ?? "pretty");
+  const maxStates = parseMaxStates(options.maxStates);
   const strict = options.strict === true;
   const kept = (f: Finding) => isInputError(f) || (strict && isStrictPromoted(f));
   const project = await parseProject(options.project, io.cwd);
@@ -72,14 +75,14 @@ export async function testCommand(
   const enforcedOnly = options.enforcedOnly === true ? selectEnforced(loaded) : undefined;
   const specs = enforcedOnly?.kept ?? loaded;
 
-  const specChecks = specs.map((s) => (s.model ? check(s.model).findings : []));
+  const specChecks = specs.map((s) => (s.model ? check(s.model, { maxStates }).findings : []));
   const reports: SpecReport[] = specs.map(({ file, model, behavior, findings }, i) => ({
     file,
     behavior,
     ...(model?.enforced && { enforced: true }),
     findings: [...findings, ...(specChecks[i] ?? [])].filter(kept),
   }));
-  const outcomes = await checkCode(specs, { cwd, project });
+  const outcomes = await checkCode(specs, { cwd, project, maxStates });
 
   // `--strict`: not-generated findings raised to errors (`strictUntested`).
   let untested = 0;

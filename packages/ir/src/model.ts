@@ -33,12 +33,6 @@ export interface EffectDecl {
   /** Effect name as written in the spec, e.g. `stripe.refund`. See `Bindings.effects`. */
   name: string;
   multiplicity: EffectMultiplicity;
-  /**
-   * Code models only: no spec effect maps to this call's gate (conformance reports it as
-   * `undeclared-effect`). No rule can name it and it is `at-least-once`, so the checker does not
-   * count it: it adds no states and no trace counters.
-   */
-  unmapped?: boolean;
   at?: SourceLocation;
 }
 

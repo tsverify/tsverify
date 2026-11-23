@@ -60,7 +60,9 @@ export function buildTrace(
       state.status = layout.states[t.to] as string;
       // Counted effects only: a call no spec effect maps to (`EffectDecl.unmapped`) is not.
       const fired = new Set(
-        model.transitions[t.index]?.effects.filter((e) => !e.unmapped).map((e) => e.name),
+        model.transitions[t.index]?.effects
+          .filter((e) => layout.effectIndex.has(e.name))
+          .map((e) => e.name),
       );
       for (const name of fired) state.effects[name] = (state.effects[name] ?? 0) + 1;
     }

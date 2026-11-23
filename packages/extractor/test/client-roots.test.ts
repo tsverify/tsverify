@@ -214,7 +214,6 @@ describe("a client bound to a class, and bound clients nothing calls", () => {
     expect(transitionOf(result, "ship").effects).toContainEqual({
       name: "queue.isPaused",
       multiplicity: "at-least-once",
-      unmapped: true,
     });
     const withReads = structuredClone(bindings);
     (withReads.clients.queue as { reads?: string[] }).reads = ["isPaused"];

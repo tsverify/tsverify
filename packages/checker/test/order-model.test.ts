@@ -204,18 +204,21 @@ describe("code-origin duplicate webhook (B4 analogue)", () => {
     expectConsistent(trace);
   });
 
-  it("doesn't count a call no spec effect maps to: no states, no trace counter", () => {
+  it("counts no effect that nothing checks: no states, no trace counter", () => {
     const m = orderModel();
     m.origin = "code";
     transition(m, "payment_succeeded").from = "*";
     const plain = check(m).stats.states;
+    // Not exactly-once, and no rule names them: a call no spec effect maps to, a retried ack.
     for (const t of m.transitions) {
-      t.effects.push({ name: "flags.isEnabled", multiplicity: "at-least-once", unmapped: true });
+      t.effects.push({ name: "flags.isEnabled", multiplicity: "at-least-once" });
+      t.effects.push({ name: "queue.ack", multiplicity: "idempotent" });
     }
     const { findings, stats } = check(m);
     expect(stats.states).toBe(plain);
     const trace = findings.find((f) => f.id === RECEIPT_ID)?.trace;
     expect(trace?.steps.some((s) => "flags.isEnabled" in s.state.effects)).toBe(false);
+    expect(trace?.steps.some((s) => "queue.ack" in s.state.effects)).toBe(false);
   });
 
   it("points codeAt at the effect call site when the extractor recorded one", () => {
@@ -433,13 +436,34 @@ describe("state limit", () => {
     expect(limit?.hint).toBe(
       [
         "The explored states multiply: 6 states × 5 transitions at concurrency 2–3 (11 invocations that can each run at any point; 1 non-atomic, checkout, also pause between read and write) × 2 effect counters (0–2 each).",
-        "Lower the concurrency where invocations don't race, for every transition and then back up for the ones that do:",
+        "Lower the concurrency where invocations don't race, keeping it only for the non-atomic transitions, whose races matter:",
         "  concurrency:",
         "    default: 1",
         "    max_parallel: { checkout: 2 }",
-        "or raise the state limit (--max-states, now 10).",
+        "Or raise the state limit (--max-states, now 10).",
       ].join("\n"),
     );
+  });
+
+  it("never suggests more concurrency; says when the effect counters weigh most", () => {
+    const m = orderModel();
+    transition(m, "checkout").atomic = false;
+    for (const t of m.transitions) m.concurrency[t.name] = 1;
+    for (const t of m.transitions) {
+      for (const e of ["a", "b", "c", "d", "e"]) {
+        t.effects.push({ name: `audit.${e}`, multiplicity: "exactly-once" });
+      }
+    }
+    const [limit] = check(m, { maxStates: 3 }).findings.filter(
+      (f) => f.category === "unanalyzable",
+    );
+    const lines = limit?.hint?.split("\n") ?? [];
+    expect(limit?.hint).not.toContain("max_parallel");
+    expect(lines.slice(1)).toEqual([
+      "Every transition already runs one invocation at a time (concurrency 1).",
+      "Most of it is the effect counters: tsverify counts each exactly-once effect and each effect a rule counts (audit.a, audit.b, audit.c and 4 more). Declare an effect that may run more than once `idempotent` or `at-least-once`, and it is no longer counted unless a rule counts it.",
+      "Otherwise, raise the state limit (--max-states, now 3).",
+    ]);
   });
 });
 

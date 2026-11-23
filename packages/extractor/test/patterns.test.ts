@@ -400,7 +400,7 @@ describe("effect mapping", () => {
   it("maps gates to spec effect names, keeps unmapped gates, takes multiplicity from the spec", () => {
     const t = transitionOf(result, "refund");
     expect(t.effects).toEqual([
-      { name: "audit.log", multiplicity: "at-least-once", unmapped: true },
+      { name: "audit.log", multiplicity: "at-least-once" },
       { name: "email.receipt", multiplicity: "idempotent" },
       { name: "stripe.refund", multiplicity: "exactly-once" },
     ]);

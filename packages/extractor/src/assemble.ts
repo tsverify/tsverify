@@ -303,12 +303,9 @@ function buildTransition(
   const effectNames = [...new Set([...effects.map((e) => e.effect), ...assumed])].sort(
     compareStrings,
   );
-  // A call no spec effect maps to can't be named by a rule and is `at-least-once`: the checker
-  // doesn't count it (`EffectDecl.unmapped`).
   const effectDecls: EffectDecl[] = effectNames.map((e) => ({
     name: e,
     multiplicity: multiplicityOf(e, spec, t),
-    ...(specEffects.has(e) ? {} : { unmapped: true }),
   }));
 
   const decided = p.fromState

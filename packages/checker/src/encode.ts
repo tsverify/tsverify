@@ -12,6 +12,11 @@ import { allocateWorkerClasses, type WorkerClasses } from "./symmetry";
  * Field 0 is the status index. Worker fields hold class counts (see `symmetry.ts`); effect fields
  * hold counts saturated at `cap` (see `effectCap`). Every field is bounded by the model's
  * concurrency, so a row is a few dozen bytes and hashes and compares quickly.
+ *
+ * Only effects something checks get a count: an `exactly-once` effect (the `effect-multiplicity`
+ * built-in) and one a rule names (`count(effect …)`). An `idempotent` or `at-least-once` effect no
+ * rule names (a call no spec effect maps to is `at-least-once`) is never looked at, so counting
+ * it would only multiply the states; it is not in the state, nor in traces.
  */
 export const STATUS = 0;
 
@@ -79,7 +84,7 @@ export function buildLayout(model: BehaviorModel): Layout {
     if (i !== undefined) terminal[i] = 1;
   }
 
-  // Effects: every effect declared on a transition, sorted by name.
+  // Effects: every effect declared on a transition that something checks, sorted by name.
   const constants = effectConstants(model.rules.map((r) => r.expr));
   const effectDecls = new Map<
     string,
@@ -87,8 +92,6 @@ export function buildLayout(model: BehaviorModel): Layout {
   >();
   for (const t of model.transitions) {
     for (const e of t.effects) {
-      // A call no spec effect maps to: no rule names it, nothing checks it (`EffectDecl.unmapped`).
-      if (e.unmapped) continue;
       const entry = effectDecls.get(e.name);
       if (!entry) {
         effectDecls.set(e.name, { multiplicity: e.multiplicity, emitters: new Set([t.name]) });
@@ -98,7 +101,11 @@ export function buildLayout(model: BehaviorModel): Layout {
       }
     }
   }
-  const effectNames = [...effectDecls.keys()].sort();
+  // Only counts something checks: an exactly-once effect (`effect-multiplicity`), or one a rule
+  // names. Any other count is never looked at, and would only multiply the states.
+  const effectNames = [...effectDecls.keys()]
+    .filter((name) => effectDecls.get(name)?.multiplicity === "exactly-once" || constants.has(name))
+    .sort();
 
   let offset = STATUS + 1;
   const transitions: TransitionCode[] = model.transitions.map((t, index) => {
@@ -147,7 +154,7 @@ export function buildLayout(model: BehaviorModel): Layout {
     // Increment each distinct effect once per firing, in effect-name order.
     for (const name of [...new Set(t.effects.map((e) => e.name))].sort()) {
       const e = effectIndex.get(name);
-      if (!e) continue; // unmapped
+      if (!e) continue; // not counted
       code.effectFields.push(e.field);
       code.effectCaps.push(Math.min(e.cap, FIELD_MAX));
     }
