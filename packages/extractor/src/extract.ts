@@ -503,6 +503,19 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
         finding,
       });
     };
+    // An object held in a variable that tsverify can't follow to the call (`writes.ts`).
+    if (write.held?.issue !== undefined) {
+      const target = write.call
+        ? `, an object later passed to \`${write.call.expression.getText()}\``
+        : "";
+      notExtracted(
+        "write-shape",
+        `${spec.entity.name}.${write.field} is set in \`${write.held.name}\`${target}, but ${write.held.issue}; the write is not extracted`,
+        `${write.field} is set in \`${write.held.name}\`, but ${write.held.issue}`,
+        `Write the ${write.field} into the call that saves it, or hold the object in a \`const\` that is only passed to that one call, with the ${write.field} as a literal (docs/authoring-guide.md, "Restructuring unanalyzable code").`,
+      );
+      return;
+    }
     const unreadable = frame && analyze(frame).unreadable;
     if (unreadable) {
       notExtracted(

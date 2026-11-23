@@ -12,7 +12,10 @@
  * **Writes** are `data` writes (`writes.ts`): `data: { status: v }` (or `{ status: { set: v } }`) in
  * `<client>.<model>.update | updateMany | updateManyAndReturn(…)`, or the `update` object of
  * `<client>.<model>.upsert(…)`, where `<client>` is the bound client or the alias `tx` of an
- * interactive transaction. The call is the commit. Assignments and spreads are not state writes
+ * interactive transaction, also when the update object is held in a `const` first
+ * (`const data = { status: "refunded" }; … update({ where, data })`, `writes.ts`: one used only
+ * there is read the same; anything else is reported as `unanalyzable`). The call is the commit.
+ * Assignments and spreads are not state writes
  * here (an assigned field is never persisted), and `create` initializes a new entity, so it is not
  * a transition either. **Entity**: the write belongs to the spec whose `entity.name` equals the
  * model delegate, ignoring case (`prisma.order` → `Order`).

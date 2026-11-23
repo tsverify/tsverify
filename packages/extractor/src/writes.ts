@@ -29,6 +29,18 @@
  *   write passed there directly; anything else (an object built up before the call, a field set
  *   on it afterwards: `patch.status = …`) is reported as `unanalyzable`.
  *
+ * - (`data` / `spread`, held) the same objects held in a local variable first: an object literal
+ *   initializing `const data = { status: "paid" }` that the function then uses as an update call's
+ *   `data` (`prisma.order.update({ where: { id }, data })`) is a `data` write of that call; one with
+ *   a spread before the field, `const next = { ...order, status: "paid" }`, passed to a call
+ *   (`db.orders.save(next)`) is a `spread` write passed to it. The variable is followed by name,
+ *   in the function that declares it (`heldUses`, syntax only, like everything in phase 1). A
+ *   `const` used once that way, and otherwise only to read or set other fields, is read like the
+ *   object written into the call; anything else (a `let`, several such uses, the state field set
+ *   afterwards, other uses) is recorded in `WriteNode.held.issue`, and the write is reported as
+ *   `unanalyzable` instead of extracted. (With named storage functions, such objects are `held`
+ *   writes, above, unless they go to an update call's `data`.)
+ *
  * A conditional save (`setStatusIf(id, from, to)`, kind `update`) is a state write with no field
  * written in the code: the named-function adapter finds those in phase 2, by symbol, since they
  * need no probe (`adapters/functions.ts`).
@@ -86,6 +98,12 @@ export interface WriteNode {
   probed?: boolean;
   /** `update` writes with a fixed target (`to:` in the binding): the written state. */
   fixedValue?: string;
+  /**
+   * `data` / `spread` writes whose object is held in a local variable before `call` takes it
+   * (see the module comment): the variable's name, and why the write can't be read as if
+   * written into the call, when it can't (the write is then reported as `unanalyzable`).
+   */
+  held?: { name: string; issue?: string };
 }
 
 /** Update methods whose argument holds a `data`-shaped object, and the keys that hold it. */
@@ -210,6 +228,16 @@ function dataContext(
   if (!prop || !ts.isPropertyAssignment(prop) || unwrapArgument(prop.initializer) !== n) {
     return undefined;
   }
+  return dataContextOf(prop);
+}
+
+/**
+ * The update call whose first argument has `prop` as its update object (`data` of `update`,
+ * `update` of `upsert`), and that argument.
+ */
+function dataContextOf(
+  prop: TS.PropertyAssignment | TS.ShorthandPropertyAssignment,
+): { call: TS.CallExpression; args: TS.ObjectLiteralExpression } | undefined {
   const key = propertyName(prop);
   const args = prop.parent;
   if (key === undefined || !ts.isObjectLiteralExpression(args)) return undefined;
@@ -468,6 +496,217 @@ function matchHeldWrite(
   return undefined;
 }
 
+/** The function (or file) a declaration's variable is visible in, for `heldUses`. */
+function scopeOf(decl: TS.Node): TS.Node {
+  for (let p: TS.Node | undefined = decl.parent; p; p = p.parent) {
+    if (ts.isFunctionLike(p) || ts.isSourceFile(p)) return p;
+  }
+  return decl.getSourceFile();
+}
+
+/** `text` on one line, cut to `max` characters, for a message. */
+function excerpt(text: string, max = 40): string {
+  const one = text.replace(/\s+/g, " ");
+  return one.length <= max ? one : `${one.slice(0, max - 1)}…`;
+}
+
+/** How a function uses a variable holding an object literal (`heldUses`). */
+interface HeldUses {
+  /** Update calls that take the variable as their update object (`data: x`, `{ data }`). */
+  data: TS.CallExpression[];
+  /** Calls that take the variable as an argument. */
+  args: TS.CallExpression[];
+  /** Why the object is not just built once and handed over; empty when it is. */
+  issues: string[];
+}
+
+/**
+ * Phase 1 (syntax only, so by name): the uses of the variable `decl` declares, in the function
+ * (or file) that declares it. Reading or setting another field is fine; setting or deleting one
+ * of `fields` afterwards, any other use, a `let`, or a second variable of that name in the same
+ * function (which makes "by name" ambiguous) is an issue.
+ */
+function heldUses(decl: TS.VariableDeclaration, fields: ReadonlySet<string>): HeldUses {
+  const name = (decl.name as TS.Identifier).text;
+  const out: HeldUses = { data: [], args: [], issues: [] };
+  const issue = (why: string) => {
+    if (!out.issues.includes(why)) out.issues.push(why);
+  };
+  const usedIn = (node: TS.Node) =>
+    issue(`\`${name}\` is also used in \`${excerpt(node.getText())}\``);
+  if (!(decl.parent.flags & ts.NodeFlags.Const)) issue(`\`${name}\` is not a \`const\``);
+  forEachDescendant(scopeOf(decl), (n) => {
+    if (!ts.isIdentifier(n) || n.text !== name || n === decl.name) return;
+    const parent = n.parent;
+    if (ts.isPropertyAccessExpression(parent) && parent.name === n) return;
+    if (ts.isPropertyAssignment(parent) && parent.name === n) return;
+    if (
+      (ts.isVariableDeclaration(parent) ||
+        ts.isParameter(parent) ||
+        ts.isBindingElement(parent) ||
+        ts.isFunctionDeclaration(parent)) &&
+      parent.name === n
+    ) {
+      issue(`another \`${name}\` is declared in the same function`);
+      return;
+    }
+    if (ts.isShorthandPropertyAssignment(parent)) {
+      const context = dataContextOf(parent);
+      if (context) out.data.push(context.call);
+      else usedIn(parent.parent);
+      return;
+    }
+    let use: TS.Node = n;
+    while (
+      ts.isParenthesizedExpression(use.parent) ||
+      ts.isNonNullExpression(use.parent) ||
+      ts.isAsExpression(use.parent) ||
+      ts.isSatisfiesExpression(use.parent)
+    ) {
+      use = use.parent;
+    }
+    const p = use.parent;
+    if (ts.isPropertyAssignment(p) && p.initializer === use) {
+      const context = dataContextOf(p);
+      if (context) out.data.push(context.call);
+      else usedIn(p.parent);
+      return;
+    }
+    if (ts.isCallExpression(p) && p.arguments.some((a) => unwrapArgument(a) === use)) {
+      out.args.push(p);
+      return;
+    }
+    if (ts.isPropertyAccessExpression(p) && p.expression === use) {
+      const target = p.parent;
+      const assigned =
+        ts.isBinaryExpression(target) &&
+        target.left === p &&
+        target.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+        target.operatorToken.kind <= ts.SyntaxKind.LastAssignment;
+      if ((assigned || ts.isDeleteExpression(target)) && fields.has(p.name.text)) {
+        issue(`\`${name}.${p.name.text}\` is set after the object is built`);
+      }
+      return; // reading a field, or setting another one
+    }
+    usedIn(p);
+  });
+  return out;
+}
+
+/** Whether a variable named `name` is declared after `decl`, in `decl`'s function. */
+function declaredAfter(name: string, decl: TS.VariableDeclaration): boolean {
+  let found = false;
+  forEachDescendant(scopeOf(decl), (n) => {
+    found ||=
+      ts.isVariableDeclaration(n) &&
+      ts.isIdentifier(n.name) &&
+      n.name.text === name &&
+      n.getStart() > decl.getStart();
+  });
+  return found;
+}
+
+/** `held` of a write: the variable's name, and its issues joined, when there are any. */
+function heldInfo(decl: TS.VariableDeclaration, issues: string[]): WriteNode["held"] {
+  const name = (decl.name as TS.Identifier).text;
+  return { name, ...(issues.length > 0 ? { issue: issues.join(", ") } : {}) };
+}
+
+/**
+ * A `data` write held in a variable: an object literal with one of `fields`, held in `decl`,
+ * that the function uses as an update call's update object (see the module comment).
+ */
+function matchHeldDataWrite(
+  n: TS.ObjectLiteralExpression,
+  decl: TS.VariableDeclaration,
+  fields: ReadonlySet<string>,
+): WriteNode | undefined {
+  const prop = n.properties.find((p) => {
+    const name = propertyName(p);
+    return name !== undefined && fields.has(name);
+  }) as TS.PropertyAssignment | TS.ShorthandPropertyAssignment | undefined;
+  if (!prop) return undefined;
+  const uses = heldUses(decl, fields);
+  const [call] = uses.data;
+  if (!call) return undefined;
+  const name = (decl.name as TS.Identifier).text;
+  const issues = [...uses.issues];
+  if (uses.data.length > 1) {
+    issues.push(`\`${name}\` is the update object of ${uses.data.length} calls`);
+  }
+  for (const c of uses.args) {
+    issues.push(`\`${name}\` is also passed to \`${excerpt(c.expression.getText())}\``);
+  }
+  const ref = dataRefText(call);
+  if (ref !== undefined && declaredAfter(ref, decl)) {
+    issues.push(`\`${name}\` is built before \`${ref}\` is read`);
+  }
+  let value: TS.Expression = ts.isPropertyAssignment(prop)
+    ? prop.initializer
+    : (prop.name as TS.Identifier);
+  const inner = skipParens(value);
+  if (ts.isObjectLiteralExpression(inner)) {
+    const set = propertyNamed(inner, "set");
+    if (set && ts.isPropertyAssignment(set)) value = set.initializer;
+  }
+  const probe = probeRefOf(n);
+  return {
+    kind: "data",
+    field: propertyName(prop) as string,
+    expr: n,
+    site: prop,
+    ref: probe ?? n,
+    value,
+    call,
+    probed: probe !== undefined,
+    held: heldInfo(decl, issues),
+  };
+}
+
+/**
+ * A `spread` write held in a variable: `const next = { ...order, status: "paid" }`, which the
+ * function passes to a call (see the module comment).
+ */
+function matchHeldSpreadWrite(
+  n: TS.ObjectLiteralExpression,
+  decl: TS.VariableDeclaration,
+  fields: ReadonlySet<string>,
+): WriteNode | undefined {
+  let spread: TS.SpreadAssignment | undefined;
+  let found: { p: TS.ObjectLiteralElementLike; name: string } | undefined;
+  for (const p of n.properties) {
+    if (ts.isSpreadAssignment(p)) {
+      spread = p;
+      continue;
+    }
+    const name = propertyName(p);
+    if (spread && name !== undefined && fields.has(name)) {
+      found = { p, name };
+      break;
+    }
+  }
+  if (!spread || !found) return undefined;
+  const uses = heldUses(decl, fields);
+  const [call] = uses.args;
+  if (!call) return undefined;
+  const name = (decl.name as TS.Identifier).text;
+  const issues = [...uses.issues];
+  if (uses.args.length > 1) issues.push(`\`${name}\` is passed to ${uses.args.length} calls`);
+  const value = ts.isPropertyAssignment(found.p)
+    ? found.p.initializer
+    : ((found.p as TS.ShorthandPropertyAssignment).name as TS.Identifier);
+  return {
+    kind: "spread",
+    field: found.name,
+    expr: n,
+    site: found.p,
+    ref: spread.expression,
+    value,
+    call,
+    held: heldInfo(decl, issues),
+  };
+}
+
 /** Matches one node; shared by both phases so they find identical writes in identical order. */
 function matchWrite(
   n: TS.Node,
@@ -494,7 +733,13 @@ function matchWrite(
   if (ts.isObjectLiteralExpression(n)) {
     const parent = parentSkippingWrappers(n);
     if (parent && ts.isPropertyAssignment(parent)) return matchDataWrite(n, fields);
-    if (patch && heldDeclarationOf(n)) return matchHeldWrite(n, patch.fields);
+    const held = heldDeclarationOf(n);
+    if (held) {
+      return (
+        matchHeldDataWrite(n, held, fields) ??
+        (patch ? matchHeldWrite(n, patch.fields) : matchHeldSpreadWrite(n, held, fields))
+      );
+    }
     if (!parent || !(ts.isCallExpression(parent) || ts.isNewExpression(parent))) return undefined;
     if (!parent.arguments?.some((a) => unwrapArgument(a) === n)) return undefined;
     let spread: TS.SpreadAssignment | undefined;
@@ -561,7 +806,7 @@ export function findCandidateWrites(
         readNames ??= readNamesOf(sf, patch?.readSymbols ?? []);
         const decl = heldDeclarationOf(w.expr as TS.ObjectLiteralExpression);
         ref = decl && patchRefText(decl, readNames);
-      } else ref = w.call ? dataRefText(w.call) : referenceText(w.ref);
+      } else ref = w.kind === "data" && w.call ? dataRefText(w.call) : referenceText(w.ref);
       out.push({
         kind: w.kind,
         field: w.field,

@@ -281,3 +281,66 @@ describe("prisma auto-detection", () => {
     expect(result.model?.transitions.map((x) => x.sites?.persistence)).toEqual([]);
   });
 });
+
+describe("prisma: an update object held in a variable", () => {
+  const held = (name: string, to: string, from?: string[]): TransitionSpec => ({
+    name,
+    impl: `src/orders.ts#${name}`,
+    to,
+    ...(from ? { from } : {}),
+  });
+  const result = extractFixture(
+    "prisma-held",
+    orderSpec(
+      [
+        held("refundHeld", "refunded"),
+        held("shipHeld", "shipped"),
+        held("cancelHeldLet", "cancelled"),
+        held("cancelHeldLater", "cancelled"),
+        held("payHeldTwice", "paid", ["pending_payment"]),
+      ],
+      prismaBindings(),
+    ),
+  );
+  const finding = (id: string) => result.findings.find((f) => f.id === id);
+
+  it("a `const` used only as the update's `data` is read as if written into the call", () => {
+    const r = transitionOf(result, "refundHeld");
+    expect(r).toMatchObject({ from: ["paid"], to: "refunded", atomic: false });
+    expect(r.sites).toMatchObject({
+      write: { line: 7 },
+      read: { gate: "db.order.findUnique" },
+      commit: { gate: "db.order.update", at: { line: 8 } },
+    });
+    const s = transitionOf(result, "shipHeld");
+    expect(s).toMatchObject({ from: ["paid"], to: "shipped", atomic: true });
+    expect(s.sites?.atomic).toMatchObject({
+      kind: "conditional-update",
+      gate: "db.order.updateMany",
+    });
+  });
+
+  it("reports any other held update object, and extracts nothing from it", () => {
+    expect(finding("unanalyzable:Fixture orders:write-shape:cancelHeldLet")?.message).toMatch(
+      /^Order\.status is set in `data`, an object later passed to `prisma\.order\.update`, but `data` is not a `const`, `data` is also used in `data = \{ \.\.\.data \}`.*; the write is not extracted$/,
+    );
+    expect(finding("unanalyzable:Fixture orders:write-shape:cancelHeldLater")?.message).toContain(
+      "but `data.status` is set after the object is built",
+    );
+    expect(finding("unanalyzable:Fixture orders:write-shape:payHeldTwice")?.message).toContain(
+      "but `data` is the update object of 2 calls",
+    );
+    const sited = (result.model?.transitions ?? []).filter((t) => t.sites !== undefined);
+    expect(sited.map((t) => t.name)).toEqual(["refundHeld", "shipHeld"]);
+    // Each impl that reaches one is unconfirmed, not missing.
+    expect(Object.keys(result.model?.unreadWrites ?? {})).toEqual([
+      "cancelHeldLater",
+      "cancelHeldLet",
+      "payHeldTwice",
+    ]);
+  });
+
+  it("an object that never reaches an update is not a write", () => {
+    expect(result.findings.some((f) => f.id.includes("view"))).toBe(false);
+  });
+});

@@ -647,6 +647,33 @@ describe("spread-to-save write", () => {
   });
 });
 
+describe("spread-to-save write held in a variable", () => {
+  const result = extractFixture(
+    "spread-held",
+    orderSpec([
+      { name: "refund", impl: "src/refund.ts#refundOrder", to: "refunded" },
+      { name: "ship", impl: "src/refund.ts#shipTwice", to: "shipped" },
+    ]),
+  );
+
+  it("extracts a `const` spread object that only the save takes, with the save as the commit", () => {
+    const t = transitionOf(result, "refund");
+    expect(t.sites?.write).toMatchObject({ file: "src/refund.ts", line: 8 });
+    expect(t.sites?.commit).toMatchObject({ gate: "db.orders.save", at: { line: 9 } });
+    expect(t.atomic).toBe(true);
+    expect(t.from).toEqual(["paid"]);
+  });
+
+  it("reports one saved twice, instead of extracting it", () => {
+    expect(result.findings.map((f) => [f.id, f.severity])).toEqual([
+      ["unanalyzable:Fixture orders:write-shape:shipTwice", "warning"],
+    ]);
+    expect(result.findings[0]?.message).toBe(
+      "Order.status is set in `next`, an object later passed to `db.orders.save`, but `next` is passed to 2 calls; the write is not extracted",
+    );
+  });
+});
+
 describe("unanalyzable ids", () => {
   const result = extractFixture("finding-ids", orderSpec([]));
 
