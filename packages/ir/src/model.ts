@@ -128,6 +128,14 @@ export interface CodeSites {
    * reason and hint of the `non-atomic` finding.
    */
   atomicNote?: { message: string; hint: string; at: SourceLocation };
+  /**
+   * Why tsverify could not decide whether the read and write are atomic, when it could not: the
+   * write is saved through a function `bindings.storage` doesn't name, or no read of the entity
+   * was found. The extractor reports it once, as `unanalyzable`; the code transition then keeps
+   * the linked spec transition's `atomic` (as specified, like a transition without `impl`), so
+   * neither conformance (`non-atomic`) nor the checker gives a verdict on what it couldn't read.
+   */
+  atomicUnknown?: string;
   /** Bound guards called on some path to the write; `dominates` = called on every path. */
   guards: { guard: string; at: SourceLocation; dominates: boolean }[];
   /**
@@ -346,4 +354,25 @@ export interface BehaviorModel {
   fixtures?: Fixtures;
   /** Code models only: declaration location of each linked spec transition's `impl`, keyed by transition name. */
   implAt?: Record<string, SourceLocation>;
+  /**
+   * Code models only: state writes the extractor saw but could not read as a transition (a value
+   * that is not a literal, a patch object built up before it is saved, …), reached from a spec
+   * transition's `impl`, keyed by transition name. Each is already an `unanalyzable` finding
+   * (`finding` is its id). Conformance reports a transition with no readable write but one of
+   * these as unconfirmed (`unanalyzable`) instead of `missing-transition`.
+   */
+  unreadWrites?: Record<string, UnreadWrite[]>;
+}
+
+/** A state write the extractor could not read as a transition (`BehaviorModel.unreadWrites`). */
+export interface UnreadWrite {
+  at: SourceLocation;
+  /** The function the write is in. */
+  function: string;
+  /** Why it can't be read, in a few words, e.g. "the value `input.status` is not a single literal". */
+  reason: string;
+  /** The written state, when it is a literal (the write is unreadable for another reason). */
+  value?: string;
+  /** Id of the extractor's `unanalyzable` finding for the write. */
+  finding: string;
 }

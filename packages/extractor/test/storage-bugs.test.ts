@@ -82,11 +82,9 @@ describe("tsverify check on planted storage-function bugs", { timeout: 60_000 },
         "error implementation-property:Storage bugs:rule:Refund issued at most once per order",
         "error implementation-property:Storage bugs:effect-multiplicity:stripe.refund",
       ],
-      // Like a read the assign adapter cannot find: unanalyzable, and not atomic.
-      "v5-unbound-write": [
-        "warning unanalyzable:Storage bugs:storage:cancel",
-        "error non-atomic:Storage bugs:cancel",
-      ],
+      // Only the unanalyzable: tsverify can't tell how the write is stored, so it gives no
+      // verdict on its atomicity either.
+      "v5-unbound-write": ["warning unanalyzable:Storage bugs:storage:cancel"],
       "v6-helper-save": ["error non-atomic:Storage bugs:ship"],
     });
   });

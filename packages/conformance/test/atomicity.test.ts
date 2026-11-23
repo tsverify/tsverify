@@ -34,6 +34,14 @@ describe("atomicity", () => {
     ]);
   });
 
+  it("gives no verdict when the extractor could not decide atomicity (sites.atomicUnknown)", () => {
+    const { spec, code } = VARIANT_CASES["b3-refund-race"]();
+    for (const t of code.transitions) {
+      if (t.sites) t.sites.atomicUnknown = "it is saved through `legacy.patch`";
+    }
+    expect(compare(spec, code).filter((f) => f.category === "non-atomic")).toEqual([]);
+  });
+
   it("tells memory persistence to keep the check and the write synchronous", () => {
     const { spec, code } = VARIANT_CASES["b3-refund-race"]();
     for (const t of code.transitions) if (t.sites) t.sites.persistence = "memory";

@@ -1,10 +1,10 @@
 import { join } from "node:path";
 import { check } from "@tsverify/checker";
-import { type Finding, INPUT_ERROR_CATEGORIES } from "@tsverify/ir";
-import { type GeneratedTest, generate } from "@tsverify/testgen";
+import { type BehaviorModel, type Finding, INPUT_ERROR_CATEGORIES } from "@tsverify/ir";
+import { type GeneratedTest, type GenerateResult, generate } from "@tsverify/testgen";
 import { checkCode } from "../code-conformance";
 import { ExitCode, exitCodeFor } from "../exit-codes";
-import { outDirs, writeGenerated } from "../generated-dir";
+import { outDirs, removeGenerated, writeGenerated } from "../generated-dir";
 import { loadSpecs, resolveSpecFiles, selectEnforced } from "../inputs";
 import type { Io } from "../io";
 import { rebaseFile, rebaseLocations } from "../locations";
@@ -46,12 +46,14 @@ interface Job {
  * `tsverify test [paths…]`: run the `tsverify check` pipeline (spec → checker → extractor → conformance →
  * checker on the code model), generate vitest files per spec into
  * `<project>/.tsverify/generated/<spec-slug>/` (the directory is deleted first; the files are kept
- * afterwards), run them with vitest in-process, once per project root, and report the results
- * as findings: `generated-test-failed`, `replay-confirmed`, `replay-disagrees`, plus `info`
- * findings for what could not be generated. Static findings are left to `tsverify check`; only input
- * errors (invalid spec, broken link) are reported as well, since they make the run invalid.
- * `--strict` also reports the static `unanalyzable` warnings (what the generated tests may not
- * cover), as errors. Exit 0, 1 on any error finding, 2 on invalid input (which takes precedence).
+ * afterwards; a spec with no test gets no directory), run them with vitest in-process, once per
+ * project root, and report the results as findings: `generated-test-failed`, `replay-confirmed`,
+ * `replay-disagrees`, plus `info` findings for what could not be generated. Static findings are
+ * left to `tsverify check`; only input errors (invalid spec, broken link) are reported as well,
+ * since they make the run invalid. `--strict` also reports the static `unanalyzable` warnings
+ * (what the generated tests may not cover), as errors, and so is every transition with an `impl`
+ * that got no test at all, and a spec with such transitions that got none (`strictUntested`).
+ * Exit 0, 1 on any error finding, 2 on invalid input (which takes precedence).
  * vitest is an optional peer dependency (`vitest-resolve.ts`): when a project with tests to run
  * has no usable vitest, the command says so on stderr, before generating anything, and exits 2.
  */
@@ -79,6 +81,8 @@ export async function testCommand(
   }));
   const outcomes = await checkCode(specs, { cwd, project });
 
+  // `--strict`: not-generated findings raised to errors (`strictUntested`).
+  let untested = 0;
   // Generate and write, grouped by project root (one vitest run each).
   const roots = new Map<string, number[]>();
   outcomes.forEach((outcome, i) => {
@@ -119,8 +123,17 @@ export async function testCommand(
         findings: sourceFindings,
         outDir,
       });
+      const skipped = strict ? strictUntested(outcome.spec, generated) : generated.skipped;
+      report.findings.push(...rebaseLocations(skipped, root, cwd));
+      untested += skipped.filter(
+        (f) => f.category === "not-generated" && f.severity === "error",
+      ).length;
+      // Nothing to run: no directory (and none left over from an earlier run).
+      if (generated.tests.length === 0) {
+        await removeGenerated(root, outDir);
+        continue;
+      }
       await writeGenerated(root, outDir, generated.files);
-      report.findings.push(...rebaseLocations(generated.skipped, root, cwd));
       report.generated = {
         dir: rebaseFile(join(root, outDir), cwd, cwd),
         tests: { total: generated.tests.length, passed: 0, failed: 0, missing: 0 },
@@ -170,9 +183,67 @@ export async function testCommand(
     command: "test",
     ...(enforcedOnly && { enforcedOnly: { skipped: enforcedOnly.skipped } }),
   };
-  if (strict) applyStrict(report);
+  if (strict) applyStrict(report, untested);
   io.stdout(formatReport(report, format, io));
   return exitCodeFor(allFindings(report));
+}
+
+/**
+ * `--strict`: `generated.skipped`, where a transition with an `impl` that got no test at all is
+ * an error, and so is a spec that got no test although it has such transitions. The `info`
+ * finding that explains it is raised to an error (the transition's own `not-generated`, or the
+ * spec's, such as "no `fixtures`"); with none, an error `not-generated:<behavior>:strict[:<t>]`
+ * is added. A test kind that could not be generated (a guard test, a replay) stays `info`: the
+ * transition is still run.
+ */
+export function strictUntested(spec: BehaviorModel, generated: GenerateResult): Finding[] {
+  const linked = spec.transitions.filter((t) => t.impl !== undefined);
+  if (linked.length === 0) return generated.skipped;
+  const tested = new Set(generated.tests.map((t) => t.transition));
+  const raise = new Set<string>();
+  const added: Finding[] = [];
+  const base = (id: string): Finding => ({
+    id,
+    category: "not-generated",
+    severity: "error",
+    message: "",
+    behavior: spec.name,
+  });
+  const specWide = generated.skipped.filter(
+    (f) => f.transition === undefined && /^not-generated:.*:testgen:[^:]+$/.test(f.id),
+  );
+  if (generated.tests.length === 0) {
+    if (specWide.length > 0) for (const f of specWide) raise.add(f.id);
+    else {
+      added.push({
+        ...base(`not-generated:${spec.name}:strict`),
+        message: `tsverify test generated no tests for ${spec.name}, although ${linked.length === 1 ? "1 transition has" : `${linked.length} transitions have`} an \`impl\`: none of its code was run.`,
+        hint: "Read the other not-generated findings for why, and fix what they name (fixtures, storage, the writes tsverify can't read).",
+      });
+    }
+  }
+  for (const t of linked) {
+    if (tested.has(t.name)) continue;
+    const own = generated.skipped.find(
+      (f) => f.transition === t.name && f.id === `not-generated:${spec.name}:testgen:${t.name}`,
+    );
+    if (own) {
+      raise.add(own.id);
+      continue;
+    }
+    added.push({
+      ...base(`not-generated:${spec.name}:strict:${t.name}`),
+      message: `${t.name}: tsverify test generated no test for it, so its impl (${t.impl?.symbol}) was not run.`,
+      hint: "Read the spec-wide not-generated finding for why, and fix what it names.",
+      transition: t.name,
+      ...(specWide.length > 0 ? { causedBy: specWide.map((f) => f.id) } : {}),
+      ...(t.at === undefined ? {} : { specAt: t.at }),
+    });
+  }
+  return [
+    ...generated.skipped.map((f) => (raise.has(f.id) ? { ...f, severity: "error" as const } : f)),
+    ...added,
+  ];
 }
 
 function isInputError(f: Finding): boolean {

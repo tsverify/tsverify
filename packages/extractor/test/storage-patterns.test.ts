@@ -85,6 +85,18 @@ const CLIENTS = `
 export const stripe = { refunds: { async create(_p: { charge: string }) { return { id: "re_1" }; } } };
 export const email = { async send(_to: string, _what: string) {} };
 export const legacy = { async patch(_id: string, _p: Partial<import("./repo").Order>) {} };
+// A query builder in the style of Drizzle: no entity type, the column's states plus SQL.
+type SQL = { sql: string };
+export const qb = {
+  update(_table: "orders") {
+    return {
+      set(_values: { status?: import("./repo").Status | SQL; note?: string | SQL }) {
+        return { async where(_cond: unknown): Promise<number> { return 1; } };
+      },
+    };
+  },
+};
+export const http = { json(_body: unknown) {} };
 `;
 
 type FnSpec = string | ({ fn: string; args?: StorageRole[] } & Partial<StorageFunction>);
@@ -176,7 +188,7 @@ const IMPORTS = `
 import { getOrder, findOrder, saveOrder, patchOrder, setStatusIf, markShipped, refundIf, cancelOrThrow, repo } from "./repo";
 import { loadOrder, updateIf, store } from "./index";
 import { withTransaction } from "./db";
-import { stripe, email, legacy } from "./clients";
+import { stripe, email, legacy, qb, http } from "./clients";
 `;
 
 function t(name: string, to: string, extra: Partial<TransitionSpec> = {}): TransitionSpec {
@@ -394,7 +406,174 @@ export async function cancelLegacy(id: string) {
     );
     expect(f?.message).toContain("`legacy.patch`, which is not a `bindings.storage.save` function");
     expect(f?.hint).toContain("`bindings.storage` (`read`, `save`, `update` or `atomic`)");
-    expect(transitionOf(result, "cancelLegacy").atomic).toBe(false);
+    // No verdict on what it can't read: atomic as specified, with the reason.
+    const s = transitionOf(result, "cancelLegacy");
+    expect(s.atomic).toBe(true);
+    expect(s.sites?.atomicUnknown).toContain("`legacy.patch`");
+  });
+});
+
+describe("patches held in a variable", () => {
+  const result = extract(
+    `${IMPORTS}
+import type { Order, Status } from "./repo";
+export async function heldConst(id: string) {
+  const order = await getOrder(id);
+  if (order?.status !== "pending_payment") throw new Error("not pending");
+  const patch: Partial<Order> = { status: "cancelled" };
+  await patchOrder(id, patch);
+}
+export async function heldValue(id: string, next: Status) {
+  const order = await getOrder(id);
+  if (order?.status !== "pending_payment") throw new Error("not pending");
+  const patch: Partial<Order> = { status: next };
+  await patchOrder(id, patch);
+}
+export async function heldLater(id: string) {
+  const order = await getOrder(id);
+  if (order?.status !== "pending_payment") throw new Error("not pending");
+  const patch: Partial<Order> = {};
+  patch.status = "cancelled";
+  await patchOrder(id, patch);
+}
+export async function heldLet(id: string) {
+  const order = await getOrder(id);
+  if (order?.status !== "pending_payment") throw new Error("not pending");
+  let patch: Partial<Order> = { status: "cancelled" };
+  await patchOrder(id, patch);
+}
+export async function heldUnbound(id: string) {
+  const order = await getOrder(id);
+  if (order?.status !== "pending_payment") throw new Error("not pending");
+  const patch: Partial<Order> = { status: "cancelled" };
+  await legacy.patch(id, patch);
+}
+export async function builderHeld(id: string) {
+  const order = await getOrder(id);
+  if (order?.status !== "pending_payment") throw new Error("not pending");
+  const patch: { status?: Status; note?: string } = { status: "cancelled", note: "x" };
+  patch.note = "y";
+  await qb.update("orders").set(patch).where(id);
+}
+export async function builderInline(id: string) {
+  const order = await getOrder(id);
+  if (order?.status !== "pending_payment") throw new Error("not pending");
+  await qb.update("orders").set({ status: "cancelled" }).where(id);
+}
+export async function builderNoRead(id: string) {
+  await qb.update("orders").set({ status: "cancelled" }).where(id);
+  const patch: { status?: Status } = { status: "cancelled" };
+  await qb.update("orders").set(patch).where(id);
+}
+export async function reply(id: string) {
+  const order = await getOrder(id);
+  const body = { status: "ok", id: order?.id };
+  http.json(body);
+  http.json({ status: "ok" });
+}
+`,
+    [
+      t("heldConst", "cancelled", { from: ["pending_payment"] }),
+      t("heldValue", "cancelled", { from: ["pending_payment"] }),
+      t("heldLater", "cancelled", { from: ["pending_payment"] }),
+      t("heldLet", "cancelled", { from: ["pending_payment"] }),
+      t("heldUnbound", "cancelled", { from: ["pending_payment"] }),
+      t("builderHeld", "cancelled", { from: ["pending_payment"] }),
+      t("builderInline", "cancelled", { from: ["pending_payment"] }),
+      t("builderNoRead", "cancelled", { from: ["pending_payment"] }),
+    ],
+  );
+  const finding = (id: string) => result.findings.find((f) => f.id === id);
+
+  it("reports every write it can't read, and nothing for objects that aren't the entity's", () => {
+    expect(result.findings.map((f) => f.id)).toEqual([
+      "unanalyzable:Fixture orders:storage:builderHeld",
+      "unanalyzable:Fixture orders:storage:builderInline",
+      "unanalyzable:Fixture orders:storage:heldUnbound",
+      "unanalyzable:Fixture orders:write-shape:heldLater",
+      "unanalyzable:Fixture orders:write-shape:heldLet",
+      "unanalyzable:Fixture orders:write-value:heldValue",
+    ]);
+  });
+
+  it("a const patch passed to one bound save is read like a patch written into the call", () => {
+    const s = transitionOf(result, "heldConst");
+    expect(s.from).toEqual(["pending_payment"]);
+    expect(s.sites).toMatchObject({
+      write: { line: 11 },
+      read: { gate: "storage.getOrder" },
+      commit: { gate: "storage.patchOrder", at: { line: 12 } },
+      invocation: { entityId: { param: 0, path: [] } },
+    });
+  });
+
+  it("a held patch it can't read is not extracted, and says why", () => {
+    expect(finding("unanalyzable:Fixture orders:write-value:heldValue")?.message).toBe(
+      "Order.status is assigned a value that is not a single literal (next); the write is not extracted",
+    );
+    expect(finding("unanalyzable:Fixture orders:write-shape:heldLater")).toMatchObject({
+      message:
+        "Order.status is set on `patch`, an object later passed to `patchOrder`, after the object is built (`patch.status = …`); the write is not extracted",
+      codeAt: { line: 24 },
+    });
+    expect(finding("unanalyzable:Fixture orders:write-shape:heldLet")?.message).toBe(
+      "Order.status is set in `patch`, an object later passed to `patchOrder`, but `patch` is not a `const`; the write is not extracted",
+    );
+    expect(finding("unanalyzable:Fixture orders:write-shape:heldLet")?.hint).toContain(
+      "Restructuring unanalyzable code",
+    );
+    const names = result.model?.transitions.map((x) => x.name) ?? [];
+    for (const n of ["heldValue", "heldLater", "heldLet", "builderNoRead"]) {
+      expect(names).not.toContain(n);
+    }
+  });
+
+  it("records the unread writes each impl reaches, for conformance", () => {
+    expect(result.model?.unreadWrites).toEqual({
+      heldLater: [
+        {
+          at: expect.objectContaining({ line: 24 }),
+          function: "heldLater",
+          reason: "`patch.status` is set after the object is built",
+          value: "cancelled",
+          finding: "unanalyzable:Fixture orders:write-shape:heldLater",
+        },
+      ],
+      heldLet: [
+        {
+          at: expect.objectContaining({ line: 30 }),
+          function: "heldLet",
+          reason: "status is set in `patch`, but `patch` is not a `const`",
+          value: "cancelled",
+          finding: "unanalyzable:Fixture orders:write-shape:heldLet",
+        },
+      ],
+      heldValue: [
+        {
+          at: expect.objectContaining({ line: 17 }),
+          function: "heldValue",
+          reason: "the value `next` is not a single literal",
+          finding: "unanalyzable:Fixture orders:write-value:heldValue",
+        },
+      ],
+    });
+  });
+
+  it("a held patch passed to an unbound function is like one written into it", () => {
+    expect(finding("unanalyzable:Fixture orders:storage:heldUnbound")?.message).toContain(
+      "`legacy.patch`, which is not a `bindings.storage.save` function",
+    );
+    const s = transitionOf(result, "heldUnbound");
+    expect(s.from).toEqual(["pending_payment"]);
+    expect(s.sites?.atomicUnknown).toBeDefined();
+  });
+
+  it("a query builder's patch is the entity's when its states are exactly the entity's, after a read", () => {
+    expect(transitionOf(result, "builderHeld").from).toEqual(["pending_payment"]);
+    expect(transitionOf(result, "builderInline").from).toEqual(["pending_payment"]);
+    expect(finding("unanalyzable:Fixture orders:storage:builderInline")?.message).toContain(
+      '`qb.update("orders").set`',
+    );
   });
 });
 

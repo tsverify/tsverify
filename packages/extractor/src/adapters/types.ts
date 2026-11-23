@@ -54,6 +54,13 @@ export interface PersistenceFacts {
    * data layer): always an `unanalyzable` warning, whatever the spec's `atomic`.
    */
   unbound?: { message: string; hint: string };
+  /**
+   * The write sets the entity's state in a form tsverify can't read as a transition (a patch
+   * object built up before it is saved, a field set on it afterwards): it is not extracted, and
+   * becomes an `unanalyzable` warning. `reason` is the short form, for the transitions it leaves
+   * unconfirmed (`BehaviorModel.unreadWrites`).
+   */
+  unreadable?: { message: string; reason: string; hint: string };
 }
 
 export interface AdapterInput {

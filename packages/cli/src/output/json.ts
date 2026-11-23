@@ -35,7 +35,10 @@ export interface JsonSpec {
   codeStats?: JsonStats;
   /** Present when the spec's project was extracted (the same for every spec of a project). */
   extract?: JsonExtractStats;
-  /** `test` only: the generated directory (relative to the cwd) and the test counts. */
+  /**
+   * `test` only: the generated directory (relative to the cwd) and the test counts. Absent when
+   * no test was generated for the spec (no directory is written then).
+   */
   generated?: { dir: string; tests: TestCounts };
   /**
    * `check` only: transitions atomic only as declared (`bindings.storage.atomic`; tsverify does

@@ -788,6 +788,8 @@ describe("extractAll", () => {
     expect(result.findings.map((f) => [f.id, f.severity])).toEqual([
       ["unanalyzable:Fixture orders:persistence:drizzle", "warning"],
     ]);
+    // Any database can be described by the app's own functions instead.
+    expect(result.findings[0]?.hint).toContain("`bindings.storage`");
   });
 
   it("auto-detects assign when persistence is omitted", () => {

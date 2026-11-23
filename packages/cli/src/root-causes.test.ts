@@ -1,5 +1,5 @@
 import { check } from "@tsverify/checker";
-import type { BehaviorModel, Finding, FindingCategory, Transition } from "@tsverify/ir";
+import type { BehaviorModel, CodeSites, Finding, FindingCategory, Transition } from "@tsverify/ir";
 import { orderModel } from "@tsverify/ir/testing";
 import { describe, expect, it } from "vitest";
 import { linkRootCauses } from "./root-causes";
@@ -113,6 +113,71 @@ describe("linkRootCauses", () => {
     const traced = linked.filter((f) => f.trace !== undefined);
     expect(traced.length).toBeGreaterThan(0);
     for (const f of traced) expect(f.causedBy).toEqual([undeclared.id]);
+  });
+
+  describe("code that does less than the spec: liveness counterexamples", () => {
+    // Without payment_succeeded and expire, nothing leaves pending_payment: the code model is
+    // stuck there (no-stuck-states) and an unpaid order lingers (an `eventually` rule).
+    const stuck = () =>
+      codeModel((m) => {
+        m.transitions = m.transitions.filter(
+          (t) => t.name !== "payment_succeeded" && t.name !== "expire",
+        );
+      });
+    const liveness = (findings: readonly Finding[]) =>
+      findings.filter((f) => f.trace?.kind === "liveness");
+
+    it("links a missing transition that would leave the state the trace ends in", () => {
+      const missing = mismatch("missing-transition", "expire");
+      const unrelated = mismatch("missing-transition", "refund"); // leaves paid, not pending_payment
+      const linked = link(stuck(), [missing, unrelated]);
+      expect(liveness(linked).map((f) => [f.property, f.causedBy])).toEqual([
+        ["no-stuck-states", [missing.id]],
+        ["rule:Unpaid orders don't linger", [missing.id]],
+      ]);
+    });
+
+    it("links a transition the code writes only in forms tsverify can't read", () => {
+      const unconfirmed: Finding = {
+        ...mismatch("unanalyzable", "payment_succeeded"),
+        id: `unanalyzable:${BEHAVIOR}:payment_succeeded:unconfirmed`,
+        severity: "warning",
+      };
+      // Another unanalyzable finding on the transition is not a cause.
+      const other: Finding = { ...unconfirmed, id: `unanalyzable:${BEHAVIOR}:from-state:x` };
+      const linked = link(stuck(), [unconfirmed, other]);
+      for (const f of liveness(linked)) expect(f.causedBy).toEqual([unconfirmed.id]);
+      expect(liveness(linked)).toHaveLength(2);
+    });
+
+    it("links a stricter from-state warning when the code lacks the transition from the end state", () => {
+      const code = codeModel((m) => {
+        m.transitions = m.transitions.filter((t) => t.name !== "payment_succeeded");
+        const expire = transition(m, "expire");
+        expire.from = ["draft"];
+        expire.sites = { specTransition: "expire" } as CodeSites;
+      });
+      const stricter: Finding = {
+        ...mismatch("from-state-mismatch", "expire"),
+        id: `from-state-mismatch:${BEHAVIOR}:expire:pending_payment`,
+        severity: "warning",
+      };
+      const linked = linkRootCauses([stricter, ...check(code).findings], orderModel(), code);
+      const stuckAt = liveness(linked);
+      expect(stuckAt.length).toBeGreaterThan(0);
+      for (const f of stuckAt) expect(f.causedBy).toEqual([stricter.id]);
+      // Without the code model, the states it lacks are unknown: no link.
+      const unlinked = linkRootCauses([stricter, ...check(code).findings], orderModel());
+      for (const f of liveness(unlinked)) expect(f.causedBy).toBeUndefined();
+    });
+
+    it("never links a missing transition to an invariant counterexample", () => {
+      const missing = mismatch("missing-transition", "refund");
+      const linked = link(b3(), [missing]);
+      for (const f of linked.filter((x) => x.trace?.kind === "invariant")) {
+        expect(f.causedBy).toBeUndefined();
+      }
+    });
   });
 
   it("only links implementation-property findings, and only within one behavior", () => {

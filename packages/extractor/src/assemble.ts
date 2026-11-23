@@ -5,7 +5,9 @@
  * - `by`, `idempotent` from the linked spec transition (`[]` / `false` when unlinked)
  * - `requires` = bound guards that dominate the write; `atomic` = read and write share one scope
  *   (`memory`: no suspension point between the last re-check of the state field, else the impl's
- *   entry, and the write; scope `synchronous`)
+ *   entry, and the write; scope `synchronous`). When the adapter can't decide it (the write is
+ *   saved outside the named storage, or no read was found: an `unanalyzable` finding), a linked
+ *   write keeps the spec transition's `atomic`, with the reason in `sites.atomicUnknown`
  * - effect multiplicity from the spec's declaration of that effect (`at-least-once` if undeclared)
  * - `concurrency` copies the linked spec transition's bound (2 when unlinked)
  * - name, entity, actors, rules, bindings and file are copied from the spec; transitions sorted
@@ -297,8 +299,15 @@ function buildTransition(
     hint: `Check what ${p.commit?.gate ?? "the conditional save"} returns and stop when it saved nothing (\`if (!(await …)) throw …\`) before calling ${unchecked.gate}.`,
     at: unchecked.call,
   };
-  const atomic = escaped ? false : (linkAtomicity?.atomic ?? p.atomic);
+  let atomic = escaped ? false : (linkAtomicity?.atomic ?? p.atomic);
   if (escaped) atomicScope = undefined;
+  // Atomicity tsverify could not decide (reported above as `unanalyzable`) gets no verdict: the
+  // linked transition is taken as specified, like a spec transition without `impl`.
+  const atomicUnknown =
+    !atomic && !escaped && t !== undefined
+      ? (p.unbound?.message ?? (t.atomic ? p.problems[0] : undefined))
+      : undefined;
+  if (atomicUnknown !== undefined && t) atomic = t.atomic;
   // Why a scoped-looking write is still not atomic: conformance reports it in `non-atomic`.
   const note = atomic ? undefined : (escaped ?? p.notes?.[0]);
 
@@ -319,6 +328,7 @@ function buildTransition(
     ...(note
       ? { atomicNote: { message: note.message, hint: note.hint, at: ctx.loc(note.at) } }
       : {}),
+    ...(atomicUnknown !== undefined ? { atomicUnknown } : {}),
     guards,
     ...(guardFacts.sets ? { guardSets: guardFacts.sets } : {}),
     effects,

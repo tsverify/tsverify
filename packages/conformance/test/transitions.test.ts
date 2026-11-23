@@ -93,6 +93,69 @@ describe("transitions", () => {
     expect(other?.codeAt).toBeUndefined();
   });
 
+  it("reports a transition as unconfirmed, not missing, when its impl reaches a write it can't read", () => {
+    const spec = specModel();
+    const code = buildCodeModel(
+      spec,
+      cleanWrites().filter((w) => w.name !== "refund"),
+    );
+    const at = { file: "src/orders/refund.ts", line: 14, column: 5 };
+    const unread = {
+      at,
+      function: "setOrderStatus",
+      reason: "the value `next` is not a single literal",
+      finding: "unanalyzable:Order lifecycle:write-value:setOrderStatus",
+    };
+    const findings = compare(spec, { ...code, unreadWrites: { refund: [unread] } });
+    expect(findings).toEqual([
+      {
+        id: "unanalyzable:Order lifecycle:refund:unconfirmed",
+        category: "unanalyzable",
+        severity: "warning",
+        message:
+          "refund: couldn't confirm that refundOrder writes status = refunded: it changes status at refund.ts:14 in a form tsverify can't read (the value `next` is not a single literal).",
+        behavior: "Order lifecycle",
+        transition: "refund",
+        specAt: REFUND_SPEC_AT,
+        codeAt: at,
+        hint: "Restructure the write so tsverify can read it: status = 'refunded' as a literal, through the storage the spec binds (docs/authoring-guide.md §7.5). Until then refund is not checked against the code.",
+        causedBy: ["unanalyzable:Order lifecycle:write-value:setOrderStatus"],
+      },
+    ]);
+    // Several unread writes are all named.
+    const two = compare(spec, {
+      ...code,
+      unreadWrites: {
+        refund: [unread, { ...unread, at: { ...at, line: 20 }, finding: "f2", reason: "r2" }],
+      },
+    });
+    expect(two[0]?.message).toContain(
+      "at refund.ts:14 (the value `next` is not a single literal) and refund.ts:20 (r2), in forms tsverify can't read.",
+    );
+    expect(two[0]?.causedBy).toEqual([
+      "unanalyzable:Order lifecycle:write-value:setOrderStatus",
+      "f2",
+    ]);
+  });
+
+  it("still reports a missing transition when the unread writes are known to write another state", () => {
+    const spec = specModel();
+    const code = buildCodeModel(
+      spec,
+      cleanWrites().filter((w) => w.name !== "refund"),
+    );
+    const unread = {
+      at: { file: "src/orders/refund.ts", line: 14, column: 5 },
+      function: "refundOrder",
+      reason: "`patch.status` is set after the object is built",
+      value: "cancelled",
+      finding: "unanalyzable:Order lifecycle:write-shape:refundOrder",
+    };
+    expect(compare(spec, { ...code, unreadWrites: { refund: [unread] } }).map((f) => f.id)).toEqual(
+      ["missing-transition:Order lifecycle:refund"],
+    );
+  });
+
   it("reports a linked write to the wrong state as both undeclared and missing", () => {
     const writes = patchWrite(cleanWrites(), "ship", (w) => ({
       ...w,

@@ -211,7 +211,12 @@ describe("check: code conformance", () => {
       expect(doc.strict).toBe(true);
       expect(
         doc.findings.filter((f) => f.severity !== "info").map((f) => [f.id, f.severity]),
-      ).toEqual([["unanalyzable:Light:from-state:switch_on", "error"]]);
+      ).toEqual([
+        ["unanalyzable:Light:from-state:switch_on", "error"],
+        // No test was generated (no fixtures): under --strict, that is an error too.
+        ["not-generated:Light:testgen:fixtures", "error"],
+        ["not-generated:Light:strict:switch_on", "error"],
+      ]);
     });
   });
 
@@ -264,6 +269,24 @@ describe("check: code conformance", () => {
       specAt: { file: "specs/light.behavior.yaml" },
       codeAt: { file: "app/src/light.ts" },
     });
+  });
+
+  it("prints paths outside the cwd absolute in pretty output, relative in JSON", async () => {
+    const dir = await tempSpecDir({ ...lightProject("app/", UNGUARDED_CODE), "work/.keep": "" });
+    const cwd = join(dir, "work");
+    const pretty = await tsverify(["check", "../app"], { cwd });
+    expect(pretty.code).toBe(1);
+    expect(pretty.stdout).toContain(
+      `${join(dir, "app/src/light.behavior.yaml")}  project: ${join(dir, "app")}\n`,
+    );
+    expect(pretty.stdout).toContain(`${join(dir, "app/src/light.ts")}:7:3`);
+    expect(pretty.stdout).not.toContain("../");
+    const json = parse((await tsverify(["check", "../app", "--format", "json"], { cwd })).stdout);
+    expect(json.specs[0]).toMatchObject({
+      file: "../app/src/light.behavior.yaml",
+      project: "../app",
+    });
+    expect(json.findings.map((f) => f.codeAt?.file)).toContain("../app/src/light.ts");
   });
 
   it("rejects a --project directory that doesn't exist (exit 2)", async () => {
@@ -432,5 +455,136 @@ ${guards}
         codeAt: expect.objectContaining({ file: "src/cancel.ts", line: 12, column: 17 }),
       }),
     ]);
+  });
+});
+
+describe("check: state writes tsverify can't read (named storage functions)", () => {
+  // The OpenStatus shape: one generic verb, the target state from the input, in a patch object
+  // held in a variable and passed to a query builder; plus a literal one passed straight to it.
+  const REPO = `export type IncidentStatus = "open" | "mitigated" | "resolved";
+export type Incident = { id: number; status: IncidentStatus };
+type SQL = { sql: string };
+export type Tx = {
+  update(table: "incident"): {
+    set(values: { status?: IncidentStatus | SQL }): Promise<Incident | undefined>;
+  };
+};
+export async function getIncident(_tx: Tx, id: number): Promise<Incident> {
+  return { id, status: "open" };
+}
+export async function withTransaction<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return fn({} as Tx);
+}
+`;
+  const VERBS = `import { getIncident, type IncidentStatus, withTransaction } from "./repo";
+export async function setStatus(input: { id: number; status: IncidentStatus }) {
+  return withTransaction(async (tx) => {
+    const existing = await getIncident(tx, input.id);
+    if (existing.status === input.status) throw new Error("same");
+    const patch = { status: input.status };
+    const updated = await tx.update("incident").set(patch);
+    if (!updated) throw new Error("race");
+    return updated;
+  });
+}
+export function reply(json: (body: unknown) => void) {
+  const body = { status: "ok" };
+  json(body);
+  json({ status: "ok" });
+}
+`;
+  const SPEC = `behavior: Incidents
+entity:
+  name: Incident
+  state: status
+  states: [open, mitigated, resolved]
+  initial: open
+  terminal: [resolved]
+actors:
+  member: { trust: authenticated }
+transitions:
+  mitigate:
+    from: open
+    to: mitigated
+    by: member
+    atomic: true
+    impl: src/verbs.ts#IMPL_MITIGATE
+  resolve:
+    from: [open, mitigated]
+    to: resolved
+    by: member
+    atomic: true
+    impl: src/verbs.ts#setStatus
+bindings:
+  storage:
+    read: { fn: src/repo.ts#getIncident, args: [_, key] }
+    atomic: { fn: src/repo.ts#withTransaction, args: [callback] }
+`;
+  const MITIGATE = `import { getIncident, withTransaction } from "./repo";
+export async function mitigateInline(input: { id: number }) {
+  return withTransaction(async (tx) => {
+    const existing = await getIncident(tx, input.id);
+    if (existing.status !== "open") throw new Error("not open");
+    return tx.update("incident").set({ status: "mitigated" });
+  });
+}
+`;
+  const project = (mitigateImpl: string) =>
+    tempSpecDir({
+      "tsconfig.json": TSCONFIG,
+      "src/repo.ts": REPO,
+      "src/verbs.ts": VERBS,
+      ...(mitigateImpl.startsWith("mitigate.ts") ? { "src/mitigate.ts": MITIGATE } : {}),
+      "src/incident.behavior.yaml": SPEC.replace("verbs.ts#IMPL_MITIGATE", mitigateImpl),
+    });
+
+  it("reports a write it can't read, never `missing-transition`, and links the consequences", async () => {
+    const cwd = await project("verbs.ts#setStatus");
+    const r = await tsverify(["check", "--format", "json"], { cwd });
+    expect(r.stderr).toBe("");
+    const findings = parse(r.stdout).findings;
+    expect(findings.map((f) => f.category)).not.toContain("missing-transition");
+    const write = findings.find((f) => f.id === "unanalyzable:Incidents:write-value:setStatus");
+    expect(write).toMatchObject({
+      severity: "warning",
+      message:
+        "Incident.status is assigned a value that is not a single literal (input.status); the write is not extracted",
+      codeAt: { file: "src/verbs.ts", line: 6 },
+    });
+    const unconfirmed = findings.filter((f) => f.id.endsWith(":unconfirmed"));
+    expect(unconfirmed.map((f) => [f.id, f.severity, f.causedBy])).toEqual([
+      ["unanalyzable:Incidents:mitigate:unconfirmed", "warning", [write?.id]],
+      ["unanalyzable:Incidents:resolve:unconfirmed", "warning", [write?.id]],
+    ]);
+    expect(unconfirmed[0]?.message).toBe(
+      "mitigate: couldn't confirm that setStatus writes status = mitigated: it changes status at verbs.ts:6 in a form tsverify can't read (the value `input.status` is not a single literal).",
+    );
+    // The code model is stuck in `open`: a consequence of the unconfirmed transitions.
+    const stuck = findings.find((f) => f.property === "no-stuck-states");
+    expect(stuck?.causedBy).toEqual([
+      "unanalyzable:Incidents:mitigate:unconfirmed",
+      "unanalyzable:Incidents:resolve:unconfirmed",
+    ]);
+
+    const pretty = await tsverify(["check"], { cwd });
+    expect(pretty.stdout).toContain(
+      "    ↳ consequence: ⚠ unanalyzable  src/incident.behavior.yaml:11:3 · src/verbs.ts:6:21",
+    );
+    expect(pretty.stdout).toContain("      ↳ consequence: ✗ implementation-property");
+
+    const strict = await tsverify(["check", "--strict"], { cwd });
+    expect(strict.code).toBe(1);
+    expect(strict.stdout).toContain("--strict: 3 unanalyzable findings reported as errors.");
+  });
+
+  it("an unbound write gets only its unanalyzable finding, no non-atomic", async () => {
+    const cwd = await project("mitigate.ts#mitigateInline");
+    const r = await tsverify(["check", "--format", "json"], { cwd });
+    const ids = parse(r.stdout).findings.map((f) => f.id);
+    expect(ids.filter((id) => id.includes(":mitigate"))).toEqual([
+      "unanalyzable:Incidents:storage:mitigate",
+    ]);
+    // `reply`'s `{ status: "ok" }` objects are not the entity's.
+    expect(ids.some((id) => id.includes("reply"))).toBe(false);
   });
 });

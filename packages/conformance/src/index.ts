@@ -6,6 +6,8 @@ import { checkFromStates } from "./from-states";
 import { checkGuards } from "./guards";
 import { checkLinked, checkNoImpl, checkUnlinked, linkTransitions } from "./transitions";
 
+export { UNCONFIRMED_SUBJECT } from "./transitions";
+
 /** Per-pairing rules, in no particular order (findings are sorted afterwards). */
 const PAIRING_RULES: ((p: Pairing) => Finding[])[] = [
   checkFromStates,
@@ -46,7 +48,13 @@ export function compare(spec: BehaviorModel, code: BehaviorModel): Finding[] {
       findings.push(checkNoImpl(spec, t));
       continue;
     }
-    const result = checkLinked(spec, t, linked.get(t.name) ?? [], code.implAt?.[t.name]);
+    const result = checkLinked(
+      spec,
+      t,
+      linked.get(t.name) ?? [],
+      code.implAt?.[t.name],
+      code.unreadWrites?.[t.name],
+    );
     findings.push(...result.findings);
     for (const p of result.pairings) {
       for (const rule of PAIRING_RULES) findings.push(...rule(p));

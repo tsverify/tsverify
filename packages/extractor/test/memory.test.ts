@@ -256,9 +256,11 @@ describe("the same code under assign: no read through a bound client", () => {
     return spec;
   };
 
-  it("warns that atomicity is undecidable when the spec says atomic", () => {
+  it("warns that atomicity is undecidable when the spec says atomic, and gives no verdict", () => {
     const result = extractFixture("memory-sync", asAssign(true));
-    expect(transitionOf(result, "start").atomic).toBe(false);
+    // As specified (so conformance reports no `non-atomic`), with the reason.
+    expect(transitionOf(result, "start").atomic).toBe(true);
+    expect(transitionOf(result, "start").sites?.atomicUnknown).toContain("no read of");
     expect(result.findings.map((f) => [f.id, f.severity])).toEqual([
       ["unanalyzable:Jobs:read:start", "warning"],
     ]);

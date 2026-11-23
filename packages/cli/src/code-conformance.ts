@@ -107,7 +107,7 @@ export async function checkCode(
         findings.push(...checked.findings.map((f) => withSpecAt(f, spec)));
         outcome.codeStats = checked.stats;
       }
-      outcome.findings = rebaseLocations(linkRootCauses(findings, spec), root, cwd);
+      outcome.findings = rebaseLocations(linkRootCauses(findings, spec, result.model), root, cwd);
     });
   }
   return outcomes;

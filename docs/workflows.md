@@ -31,9 +31,23 @@ Invalid input (2) takes precedence over violations (1).
 | `markdown` (default for `diff`) | `diff` | reviewers | a PR comment |
 
 - **JSON** (`check`, `test`, `validate`): `{ version: 1, findings, specs, summary }`. Every finding has a stable `id`,
-  `category`, `severity`, `message`, and `specAt` / `codeAt` locations relative to the cwd. `specs[].enforced` is
-  present (and `true`) for specs marked `enforced: true`; `strict: true` is present for a `--strict` run. Bumping
-  `version` is a breaking change.
+  `category`, `severity`, `message`, and `specAt` / `codeAt` locations relative to the cwd (also when they are
+  outside it: `../…`; only the pretty output shows those as absolute paths); a consequence has `causedBy`, the ids
+  of the findings that explain it. `specs[].enforced` is present (and `true`) for specs marked `enforced: true`;
+  `strict: true` is present for a `--strict` run. Bumping `version` is a breaking change. Per spec:
+  - `stats` (the spec's model) and `codeStats` (the model extracted from the code), from the model checker:
+    `states` (distinct states explored), `edges` (steps explored between them, including into states already seen),
+    `complete` (`false` when `--max-states` stopped the search: results are incomplete) and `boundLimitedDeadlocks`
+    (end states reached only because every invocation the checker allows was used up; one more invocation would
+    go on, so they are artefacts of the bound and never reported as stuck).
+  - `extract` (`check`, `test`; the same for every spec of one project): `files` (source files read: the
+    tsconfig's files, without declaration files and `node_modules`), `writes` (candidate state writes found in
+    the syntax, for every spec's state field, before they are matched to a spec's entity) and `probes` (narrowing
+    probes injected to read from-states: one per candidate write whose entity is a plain reference, `order` or
+    `this.order`).
+  - `project` (`check`, `test`): the project root, relative to the cwd; `null` with `--spec-only` or without a
+    `tsconfig.json`. `declaredAtomic` (`check`): transitions atomic only because the spec declares a function
+    atomic. `generated` (`test`): the generated directory and the test counts; absent when no test was generated.
 - **JSON** (`diff`): `{ version: 1, base: { ref, commit }, head: "working tree", specs: [{ file, enforced?, diff }],
   summary }`, where `diff` is the `BehaviorDiff` from `@tsverify/ir` (field changes as `base` / `head` strings).
 - **SARIF 2.1.0**: one run, tool `tsverify`, one rule per finding category. Each result's primary location is the code
@@ -77,16 +91,20 @@ guards and counterexample replays); its findings are generated-test results only
 ### `--strict`
 
 `check` and `test` report an `unanalyzable` finding as a **warning** by default: `tsverify` could not analyze
-something, such as a state field typed `string`, a state write whose value is not a literal, a read it cannot
-place in an atomic scope, or a model that hit `--max-states`. A warning never fails a run, so reshaping code into
+something, such as a state field typed `string`, a state write whose value is not a literal or that is built in a
+shape it can't read (and the transitions it would confirm: "couldn't confirm that … writes …"), a write saved
+outside the storage the spec names, a read it cannot place in an atomic scope, or a model that hit `--max-states`. A warning never fails a run, so reshaping code into
 a form `tsverify` cannot read would quietly turn an error into a pass. `--strict` reports those warnings as
 **errors**, so the run exits 1:
 
 - JSON: their `severity` is `error`, they count in `summary.errors`, and the document has `strict: true`.
 - SARIF: their `level` is `error`, with `properties.strict: true`.
-- Pretty: they print as `✗ unanalyzable`, and a line says how many `--strict` raised.
+- Pretty: they print as `✗ unanalyzable` (`✗ not-generated` for `test`), and a line says how many `--strict` raised.
 - `tsverify test --strict` also reports the static `unanalyzable` warnings (normally left to `check`), since the
-  generated tests cannot cover what the extractor could not read.
+  generated tests cannot cover what the extractor could not read. And a transition with an `impl` that got no
+  generated test at all is an error (its `not-generated` finding is raised, or one is added), and so is a spec
+  that got no test while it has such transitions: "0 generated tests" never passes a strict run. A single test
+  kind that can't be generated (a guard test for an actor without a fixture, a replay) stays `info`.
 - `unanalyzable` infos stay infos: a transition without `impl` is the spec's own choice, visible in review.
 
 Fix the code (or the spec) until a strict run is clean, rather than dropping the flag.

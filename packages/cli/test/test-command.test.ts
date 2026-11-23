@@ -4,7 +4,9 @@
  */
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { orderModel } from "@tsverify/ir/testing";
 import { describe, expect, it } from "vitest";
+import { strictUntested } from "../src/commands/test";
 import type { JsonReport } from "../src/output/json";
 import { tsverify } from "./run";
 import { invalidSpecText, tempSpecDir } from "./temp-specs";
@@ -64,18 +66,51 @@ describe("tsverify test", () => {
         severity: "info",
       }),
     ]);
+    // Nothing generated: no `generated`, and no directory.
     expect(doc.specs).toEqual([
-      {
-        file: "src/light.behavior.yaml",
-        behavior: "Light switch",
-        project: ".",
-        generated: {
-          dir: ".tsverify/generated/light-switch",
-          tests: { total: 0, passed: 0, failed: 0, missing: 0 },
-        },
-      },
+      { file: "src/light.behavior.yaml", behavior: "Light switch", project: "." },
     ]);
-    expect(await readdir(join(cwd, ".tsverify/generated/light-switch"))).toEqual([]);
+    await expect(readdir(join(cwd, ".tsverify"))).rejects.toThrow(/ENOENT/);
+  });
+
+  it("removes the directory an earlier run left when it now generates nothing", async () => {
+    const cwd = await tempSpecDir({
+      ...PROJECT,
+      ".tsverify/generated/light-switch/paths.test.ts": "// stale\n",
+    });
+    const r = await tsverify(["test", "--format", "json"], { cwd });
+    expect(r.code).toBe(0);
+    expect(await readdir(join(cwd, ".tsverify/generated"))).toEqual([]);
+  });
+
+  describe("--strict", () => {
+    it("reports a transition with impl that got no test, and a spec that got none, as errors", async () => {
+      const cwd = await tempSpecDir(PROJECT);
+      const r = await tsverify(["test", "--strict", "--format", "json"], { cwd });
+      expect(r.code).toBe(1);
+      const doc = JSON.parse(r.stdout) as JsonReport;
+      expect(doc.findings.map((f) => [f.id, f.severity, f.causedBy])).toEqual([
+        ["not-generated:Light switch:testgen:fixtures", "error", undefined],
+        [
+          "not-generated:Light switch:strict:switch_on",
+          "error",
+          ["not-generated:Light switch:testgen:fixtures"],
+        ],
+      ]);
+      expect(doc.findings[1]?.message).toBe(
+        "switch_on: tsverify test generated no test for it, so its impl (switchOn) was not run.",
+      );
+      const pretty = await tsverify(["test", "--strict"], { cwd });
+      expect(pretty.stdout).toContain("--strict: 2 not-generated findings reported as errors.");
+      expect(pretty.stdout).toMatch(/✗ 1 spec, 0 generated tests, 2 errors, 0 warnings\n$/);
+    });
+
+    it("leaves a spec without linked transitions alone", async () => {
+      const spec = SPEC.replace("    impl: src/light.ts#switchOn\n", "");
+      const cwd = await tempSpecDir({ ...PROJECT, "src/light.behavior.yaml": spec });
+      const r = await tsverify(["test", "--strict", "--format", "json"], { cwd });
+      expect(r.code).toBe(0);
+    });
   });
 
   it("reports only generated-test findings, and says so in pretty output", async () => {
@@ -92,9 +127,7 @@ describe("tsverify test", () => {
     );
     const r = await tsverify(["test"], { cwd });
     expect(r.code).toBe(0);
-    expect(r.stdout).toContain(
-      "src/light.behavior.yaml  project: . · .tsverify/generated/light-switch: 0 tests, 0 passed",
-    );
+    expect(r.stdout).toContain("src/light.behavior.yaml  project: . · no tests generated");
     expect(r.stdout).toContain(
       "Generated-test results only: static findings (model checking, conformance) come from `tsverify check`.",
     );
@@ -131,5 +164,57 @@ describe("tsverify test", () => {
     const r = await tsverify(["test", "--format", "xml"]);
     expect(r.code).toBe(2);
     expect(r.stderr).toContain("--format must be one of pretty, json");
+  });
+});
+
+describe("strictUntested (tsverify test --strict)", () => {
+  const spec = orderModel();
+  const B = spec.name;
+  const info = (subject: string, transition?: string) => ({
+    id: `not-generated:${B}:testgen:${subject}`,
+    category: "not-generated" as const,
+    severity: "info" as const,
+    message: subject,
+    behavior: B,
+    ...(transition ? { transition } : {}),
+  });
+  const pathTest = (transition: string) => ({
+    file: "paths.test.ts",
+    name: transition,
+    kind: "path" as const,
+    transition,
+  });
+
+  it("raises a transition's own not-generated finding; partial gaps stay info", () => {
+    const tested = spec.transitions.filter((t) => t.name !== "refund").map((t) => t.name);
+    const result = strictUntested(spec, {
+      files: [],
+      tests: tested.map(pathTest),
+      skipped: [info("refund", "refund"), info("guards:ship:customer", "ship")],
+    });
+    expect(result.map((f) => [f.id, f.severity])).toEqual([
+      [`not-generated:${B}:testgen:refund`, "error"],
+      [`not-generated:${B}:testgen:guards:ship:customer`, "info"],
+    ]);
+  });
+
+  it("adds an error for an untested transition with no finding of its own", () => {
+    const tested = spec.transitions.filter((t) => t.name !== "ship").map((t) => t.name);
+    const result = strictUntested(spec, { files: [], tests: tested.map(pathTest), skipped: [] });
+    expect(result.map((f) => [f.id, f.severity, f.transition])).toEqual([
+      [`not-generated:${B}:strict:ship`, "error", "ship"],
+    ]);
+  });
+
+  it("reports a spec that got no test at all, even when every transition says why", () => {
+    const skipped = spec.transitions.map((t) => info(t.name, t.name));
+    const result = strictUntested(spec, { files: [], tests: [], skipped });
+    expect(result.filter((f) => f.severity === "error").map((f) => f.id)).toEqual([
+      ...skipped.map((f) => f.id),
+      `not-generated:${B}:strict`,
+    ]);
+    expect(result.at(-1)?.message).toBe(
+      `tsverify test generated no tests for ${B}, although 5 transitions have an \`impl\`: none of its code was run.`,
+    );
   });
 });

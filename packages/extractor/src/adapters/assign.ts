@@ -204,7 +204,7 @@ export const assignAdapter: PersistenceAdapter = {
     if (!read) {
       problems.push(
         `no read of \`${refText}\` through a bound client was found before this write, so ` +
-          "atomicity cannot be decided (reported as not atomic)",
+          "whether it is atomic cannot be decided (not checked)",
       );
     }
     const commit = findCommit(input, refSym, read);

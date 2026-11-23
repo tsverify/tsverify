@@ -20,7 +20,8 @@ npm i -D @tsverify/cli vitest   # if you want `tsverify test`, which runs the ge
 
 `check`, `view`, `diff`, `render`, `validate` and `schema` need nothing else; without vitest, `tsverify test` says so
 and exits 2. Until it is published, run it from a checkout of this repository with `pnpm install`, then
-`pnpm tsverify <command>`.
+`pnpm exec tsverify <command>`. (`pnpm tsverify <command>` works too, but goes through `pnpm run`, which reports
+exit codes 2 and 3 as 1. Use `pnpm exec` wherever the exit code matters.)
 
 tsverify bundles no TypeScript: it reads your code with **your project's** `typescript`, which must be
 **TypeScript 7** or later (`npm i -D typescript@latest`). It uses TypeScript 7's API, which runs the project's own

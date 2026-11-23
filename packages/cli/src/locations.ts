@@ -18,6 +18,22 @@ export function rebaseLocations<T>(value: T, from: string, to: string): T {
   return rebase(value, (file) => rebaseFile(file, from, to)) as T;
 }
 
+/**
+ * A cwd-relative path as pretty output shows it: absolute when it leaves the cwd (`../…`), which
+ * is shorter to read than a chain of `../` and can be pasted anywhere; unchanged otherwise.
+ * Pretty output only: JSON and SARIF keep cwd-relative paths (their documented contract).
+ */
+export function displayPath(file: string, cwd: string): string {
+  return file === ".." || file.startsWith("../") || file.startsWith("..\\")
+    ? resolve(cwd, file)
+    : file;
+}
+
+/** A copy of `value` with every `SourceLocation.file` shown as `displayPath` shows it. */
+export function displayLocations<T>(value: T, cwd: string): T {
+  return rebase(value, (file) => displayPath(file, cwd)) as T;
+}
+
 /** `file` (relative to `from`, or absolute) as a `/`-separated path relative to `to`. */
 export function rebaseFile(file: string, from: string, to: string): string {
   return relative(to, resolve(from, file)).split(sep).join("/") || ".";
