@@ -8,6 +8,13 @@
  * 3. Plan every narrowing probe (`type-facts.ts`, X1 probe-first) — still no type query.
  * 4. Type queries: entity matching, from-states, link resolution, call graph, guards, effects,
  *    persistence facts; then model assembly (`assemble.ts`).
+ *
+ * **Whose writes.** The program can hold files of other packages (a workspace package resolved
+ * to its sources through `paths` or `customConditions`). Only the project's own files
+ * (`ProjectContext.isOwnFile`: under the project root, or named by the tsconfig's own `files` /
+ * `include`) are searched for writes nobody asked about; a write in another file counts only
+ * where an `impl` reaches it. So a package's forwarding wrappers (`startAttempt(…) { return
+ * this.inner.startAttempt(…) }`) are not reported as `undeclared-transition`.
  */
 import type {
   BehaviorModel,
@@ -463,8 +470,15 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
     },
     probed: false,
   }));
+  /** A write in a file of another package is the project's only where an impl reaches it. */
+  const outside = (write: WriteNode): boolean => {
+    if (ctx.isOwnFile(write.expr.getSourceFile())) return false;
+    const frame = frameOf(write.expr);
+    return frame === undefined || !impls.some((i) => i.reach.frames.includes(frame));
+  };
   [...env.writes, ...extra].forEach((write, i) => {
     if (write.field !== spec.entity.stateField || !adapter.writeKinds.has(write.kind)) return;
+    if (outside(write)) return;
     const { narrowed, probed } = (env.types[i] ?? writeTypes[i - env.writes.length]) as WriteTypes;
     const decided = adapter.matchEntity?.(write, calls, spec.entity);
     const match =

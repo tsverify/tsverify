@@ -83,6 +83,20 @@ export class CompilerSession {
     return this.project(snapshot.getProject(this.configPath));
   }
 
+  /**
+   * The tsconfig as TypeScript reads it (`extends` followed): the files its own `files` /
+   * `include` name, and its compiler options. The same request in 7.0 and 7.1.
+   */
+  config(): { fileNames: readonly string[]; options: Record<string, unknown> } {
+    // 7.0: a method; 7.1: a getter returning the callable. The same call syntax works for both.
+    const api = this.api as unknown as { parseConfigFile(file: string): unknown };
+    const parsed = api.parseConfigFile(this.configPath) as {
+      fileNames?: readonly string[] | null;
+      options?: Record<string, unknown> | null;
+    };
+    return { fileNames: parsed.fileNames ?? [], options: parsed.options ?? {} };
+  }
+
   /** The project with `files` (absolute path → text) in place of those files on disk. */
   openWith(files: ReadonlyMap<string, string>): TS.Project {
     if (this.snapshot71) {

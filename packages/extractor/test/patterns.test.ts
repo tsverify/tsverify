@@ -427,6 +427,41 @@ describe("effects on the write's path", () => {
   });
 });
 
+describe("writes in files outside the project", () => {
+  // `_pkg/store.ts` is outside the project root and not in its tsconfig's include: it is in the
+  // program only because `src/ship.ts` imports it (as a workspace package resolved to its
+  // sources would be).
+  const result = extractFixture(
+    "outside-writes",
+    orderSpec([{ name: "ship", impl: "src/ship.ts#ship", to: "shipped" }]),
+  );
+
+  it("counts one an impl reaches, and nothing else there", () => {
+    expect(result.model?.transitions.map((t) => t.name)).toEqual(["cancelHere", "ship"]);
+    expect(transitionOf(result, "ship")).toMatchObject({
+      from: ["paid"],
+      sites: { write: { file: "../_pkg/store.ts", line: 9 }, specTransition: "ship" },
+    });
+    // `forceRefund` writes too, but no impl reaches it: not the project's to report.
+    expect(result.findings).toEqual([]);
+  });
+
+  it("files the tsconfig includes are the project's own, wherever they are", () => {
+    // `cancelHere` is in `src`: an unlinked write.
+    expect(transitionOf(result, "cancelHere").sites?.specTransition).toBeUndefined();
+    // The same code with `../_pkg` in the tsconfig's include: `forceRefund` is the project's.
+    const included = extractFixture(
+      "outside-included",
+      orderSpec([{ name: "ship", impl: "src/ship.ts#ship", to: "shipped" }]),
+    );
+    expect(included.model?.transitions.map((t) => t.name)).toEqual([
+      "cancelHere",
+      "forceRefund",
+      "ship",
+    ]);
+  });
+});
+
 describe("unlinked write", () => {
   const result = extractFixture(
     "unlinked-write",
