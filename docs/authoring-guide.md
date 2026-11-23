@@ -660,7 +660,9 @@ transitions:
 | Leaving `unanalyzable` warnings unexplained | The code is unchecked, and CI stays green | Restructure ([§7.5](#75-restructuring-unanalyzable-code)) or explain each one in the PR |
 | Writing the state when creating an entity (`order.status = "draft"` on a new object) | `undeclared-transition` | Create entities with an object literal or ORM `create` |
 | Test files in the analyzed tsconfig | `undeclared-transition` from tests | `"include": ["src"]` in the project's tsconfig |
-| A TypeScript 7 project without `@typescript/typescript6` | `check` and `test` exit 2: "tsverify needs the TypeScript compiler API to read your code. This project has TypeScript 7.x, which no longer includes it" | `npm i -D @typescript/typescript6`. tsverify reads code with the project's own TypeScript; 5.4–6.x has the API it needs, 7 does not, older versions are not supported. `--spec-only` needs no TypeScript |
+| A project on TypeScript 5 or 6 | `check` and `test` exit 2: "tsverify needs TypeScript 7 or later to read your code. This project has TypeScript 5.9.3: upgrade it with `npm i -D typescript@latest`." | `npm i -D typescript@latest`. tsverify reads code with the project's own TypeScript, through TypeScript 7's API, which earlier versions do not have. `--spec-only` needs no TypeScript |
+| Installing tsverify into a TypeScript 5 or 6 project with npm | `npm i -D @tsverify/cli` fails with `ERESOLVE`: "Could not resolve dependency: peerOptional typescript@">=7.0.0" from @tsverify/cli" | Upgrade TypeScript first (`npm i -D typescript@latest`), then install tsverify |
+| A tsconfig that TypeScript 7 rejects (`baseUrl`, `moduleResolution: node10`, other options TypeScript 6 only deprecated) | `check` and `test` exit 2: "TypeScript 7.0.2 rejects …/tsconfig.json: Option 'baseUrl' has been removed. …" | Fix the tsconfig until `tsc --noEmit` accepts it (e.g. replace `baseUrl` with relative `paths`, use `moduleResolution: bundler` or `nodenext`) |
 
 ---
 
