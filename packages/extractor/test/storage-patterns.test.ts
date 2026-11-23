@@ -741,6 +741,39 @@ export async function shipBlind(id: string) {
     expect(s.from).toEqual(all);
   });
 
+  it("`returns: count` also reads a count object (`r.count === 0`)", () => {
+    const counted = extract(
+      `${IMPORTS}
+/** A conditional save that returns a count object, like Prisma's \`updateMany\`. */
+export async function shipMany(id: string): Promise<{ count: number }> {
+  return { count: (await markShipped(id)) ? 1 : 0 };
+}
+export async function shipChecked(id: string) {
+  const r = await shipMany(id);
+  if (r.count === 0) return;
+  await email.send(id, "shipped");
+}
+export async function shipUnchecked(id: string) {
+  const r = await shipMany(id);
+  await email.send(id, "shipped");
+  if (r.count < 1) return;
+}
+`,
+      [t("shipChecked", "shipped"), t("shipUnchecked", "shipped")],
+      storageOf({
+        update: [{ fn: "src/impl.ts#shipMany", from: ["paid"], to: "shipped", returns: "count" }],
+      }),
+    );
+    const checked = transitionOf(counted, "shipChecked");
+    expect(checked.atomic).toBe(true);
+    expect(checked.sites?.effects.map((e) => e.gate)).toEqual(["email.send"]);
+    const unchecked = transitionOf(counted, "shipUnchecked");
+    expect(unchecked.atomic).toBe(false);
+    expect(unchecked.sites?.atomicNote?.message).toContain(
+      "is not behind a check of the save's result",
+    );
+  });
+
   it("fixed from / to, and each `returns` kind's failure test", () => {
     const ship = transitionOf(result, "ship");
     expect(ship.from).toEqual(["paid"]);

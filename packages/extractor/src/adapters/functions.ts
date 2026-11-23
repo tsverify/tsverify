@@ -1024,7 +1024,11 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
     const subjectOf =
       (subject: TS.CallExpression) =>
       (e: TS.Expression): boolean => {
-        const s = strip(e);
+        let s = strip(e);
+        // `returns: count` may be a count object, as Prisma's `updateMany` returns: `r.count`.
+        if (returns === "count" && ts.isPropertyAccessExpression(s) && s.name.text === "count") {
+          s = strip(s.expression);
+        }
         if (s === subject) return true;
         if (!ts.isIdentifier(s)) return false;
         const decl = valueDeclarationOf(symbolOf(s, checker));
