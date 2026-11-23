@@ -562,8 +562,8 @@ How to find them:
   (`if (!(await setStatusIf(…))) throw …`, `if (updated === undefined) return`): an effect that can run before
   that check (or before the update) fires even when nothing was saved, and `check` reports the transition as
   `non-atomic`. An effect only in the "nothing saved" branch is not the transition's.
-- **Pass every argument a role names.** The generated tests' fake reads each role's argument, so a `patch`
-  role needs an object even when there is nothing to merge (`updateStatusIf(id, "paid", "refunded", {})`).
+- **Pass every argument a role names.** The generated tests' fake reads each role's argument. The one exception
+  is a `patch`: leaving it out (`updateStatusIf(id, "paid", "refunded")`) counts as `{}`, so nothing is merged.
 - **`atomic` is declared, not proven.** Name a function only if it really serializes the callback against
   other requests (a database transaction at a sufficient isolation level, or a lock). tsverify trusts the
   declaration and can't check what happens inside; the generated replay tests still run the race through it.

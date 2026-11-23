@@ -100,6 +100,21 @@ describe("instrument.storage", () => {
     expect(fake.read("Order", "o4")).toEqual({ id: "o4", status: "pending" });
   });
 
+  test("a left-out patch merges nothing; other wrong arguments still fail", async () => {
+    const { fake, f } = setup({
+      key: "id",
+      read: [],
+      save: [fn("patchOrder", ["key", "patch"])],
+      update: [fn("setStatusIf", ["key", "from", "to", "patch"])],
+      atomic: [],
+    });
+    expect(await f.setStatusIf("o1", "paid", "refunded")).toBe(true);
+    expect(fake.read("Order", "o1")).toEqual(paid("refunded"));
+    await f.patchOrder("o1");
+    expect(fake.read("Order", "o1")).toEqual(paid("refunded"));
+    await expect(f.patchOrder("o1", "not an object")).rejects.toThrow(/"patch" role/);
+  });
+
   describe("update: a conditional save", () => {
     test("sets the target state only from a from-state (one state or a list)", async () => {
       const { fake, f } = setup();

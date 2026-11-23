@@ -171,6 +171,8 @@ export function storage<const E extends string>(
     };
     const objectArg = (args: readonly unknown[], role: "entity" | "patch"): Row => {
       const value = pick(args, role);
+      // An optional trailing `patch` left out (`updateStatusIf(id, "paid", "refunded")`) merges nothing.
+      if (role === "patch" && value === undefined) return {};
       if (typeof value !== "object" || value === null || Array.isArray(value)) {
         throw new Error(
           `${label}: argument ${fn.args.indexOf(role) + 1} has the "${role}" role, but got ${preview(value, 60)} (an object)`,
