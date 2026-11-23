@@ -89,9 +89,10 @@ import type {
   StorageRole,
 } from "@tsverify/ir";
 import { type Callees, frameCalls, frameOf, leadsTo, MAX_DEPTH, type Reach } from "../callgraph";
-import { type FunctionLike, inlineCallbackCall, isFunctionLike } from "../cfg";
+import { ENTRY, type FunctionLike, inlineCallbackCall, isFunctionLike, reachable } from "../cfg";
 import type { ClientCall } from "../client-calls";
 import { primaryDeclarationOf, valueDeclarationOf } from "../declarations";
+import { cfgOf } from "../dominance";
 import { functionOfDeclaration, symbolOf } from "../resolve";
 import type * as TS from "../ts-types";
 import {
@@ -1076,12 +1077,12 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
     const returns = bound.returns ?? "changed";
     const leads = leadsTo(reach, frame, write.expr);
 
-    const subjectOf =
-      (subject: TS.CallExpression) =>
+    const subjectFor =
+      (subject: TS.CallExpression, kind: StorageFunction["returns"]) =>
       (e: TS.Expression): boolean => {
         let s = strip(e);
         // `returns: count` may be a count object, as Prisma's `updateMany` returns: `r.count`.
-        if (returns === "count" && ts.isPropertyAccessExpression(s) && s.name.text === "count") {
+        if (kind === "count" && ts.isPropertyAccessExpression(s) && s.name.text === "count") {
           s = strip(s.expression);
         }
         if (s === subject) return true;
@@ -1094,6 +1095,34 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
           strip(decl.initializer) === subject
         );
       };
+    const subjectOf = (subject: TS.CallExpression) => subjectFor(subject, returns);
+
+    /**
+     * Whether `node` (in `fn`) runs only once another conditional save in `fn` went through: one
+     * that can't find the state changed (`returns: throws`, or `from` every state) on every path
+     * to `node`, or one whose "saved" branch `node` is in. Such an effect is that write's (it
+     * follows a state change that did happen), so it doesn't run "although this save found the
+     * state changed": `if (await promote(id)) { await queue.enqueue(…); return; }` before
+     * `await expire(id)`.
+     */
+    const afterAnotherWrite = (node: TS.Node, fn: FunctionLike): boolean => {
+      for (const c of frameCalls(fn)) {
+        if (c === save || c.getEnd() > node.getStart()) continue;
+        const other = fns.of(c);
+        if (other?.kind !== "update") continue;
+        const kind = other.fn.returns ?? "changed";
+        const blind = other.fn.from && entity.states.every((s) => other.fn.from?.includes(s));
+        if (kind === "throws" || blind) {
+          const cfg = cfgOf(fn);
+          const ids = cfg.idsOf(node);
+          const seen = reachable(cfg, [ENTRY], new Set(cfg.idsOf(c)));
+          if (ids.length > 0 && !ids.some((id) => seen[id] === 1)) return true;
+          continue;
+        }
+        if (branchOutcome(node, fn, subjectFor(c, kind), kind) === "success") return true;
+      }
+      return false;
+    };
 
     /** How `fn` (on the path to the save, through `lead`) reports a failed save to its callers. */
     const propagationMemo = new Map<FunctionLike, Propagation>();
@@ -1155,6 +1184,7 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
       stack: Set<FunctionLike>,
     ): EffectOutcome => {
       const groups = leads(fn);
+      if (afterAnotherWrite(node, fn)) return "attributed";
       if (groups.length === 0) {
         // A frame called from attributed call sites: as those call sites.
         if (stack.has(fn)) return "attributed";

@@ -267,6 +267,10 @@ function buildTransition(
   // Effects that run only after a failed conditional save are not the transition's; ones that
   // can run although it failed escape the atomic step.
   let unchecked: ClientCall | undefined;
+  const specEffects = new Set([
+    ...Object.keys(spec.bindings.effects),
+    ...spec.transitions.flatMap((x) => x.effects.map((e) => e.name)),
+  ]);
   const attributed = effectCalls(
     d.reach,
     m.frame,
@@ -282,7 +286,10 @@ function buildTransition(
         reach: d.reach,
         checker: ctx.checker,
       }) ?? "attributed";
-    if (outcome === "unchecked") unchecked ??= cc;
+    // Only an effect the spec knows of escapes the atomic step: another call is reported as
+    // `undeclared-effect`, "a gate no spec effect maps to", and can break no spec rule.
+    if (outcome === "unchecked" && specEffects.has(effectNameOf(cc.gate, spec, t)))
+      unchecked ??= cc;
     return outcome !== "excluded";
   });
   const effects: (CallSite & { effect: string })[] = attributed

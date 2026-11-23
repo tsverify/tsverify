@@ -841,6 +841,76 @@ export async function shipBlind(id: string) {
     expect(s.from).toEqual(all);
   });
 
+  it("an effect that follows another conditional save that went through is that save's", () => {
+    const all = ["draft", "pending_payment", "paid", "shipped", "refunded", "cancelled"];
+    const result = extract(
+      `${IMPORTS}
+async function tryShip(id: string): Promise<boolean> {
+  if (!(await setStatusIf(id, "paid", "shipped"))) return false;
+  await email.send(id, "shipped");
+  return true;
+}
+/** Ships when it can, else cancels: the email is the shipment's, not the cancellation's. */
+export async function shipOrCancel(id: string) {
+  if (await tryShip(id)) return;
+  if (!(await setStatusIf(id, "paid", "cancelled"))) throw new Error("changed");
+}
+/** After a save that can't fail, an effect is that save's too. */
+export async function shipThenCancel(id: string) {
+  await markShipped(id);
+  await email.send(id, "shipped");
+  if (!(await setStatusIf(id, "shipped", "cancelled"))) throw new Error("changed");
+}
+/** An effect before both saves still runs although the second one finds the state changed. */
+export async function emailFirst(id: string) {
+  await email.send(id, "working on it");
+  await markShipped(id);
+  if (!(await setStatusIf(id, "shipped", "cancelled"))) throw new Error("changed");
+}
+`,
+      [
+        t("shipOrCancel", "cancelled", { from: ["paid"] }),
+        t("shipThenCancel", "cancelled", { from: ["shipped"] }),
+        t("emailFirst", "cancelled", { from: ["shipped"] }),
+      ],
+      storageOf({
+        update: [
+          "src/repo.ts#setStatusIf",
+          { fn: "src/repo.ts#markShipped", from: all, to: "shipped", returns: "throws" },
+        ],
+      }),
+    );
+    for (const name of ["shipOrCancel", "shipThenCancel"]) {
+      const c = transitionOf(result, name);
+      expect({ name, atomic: c.atomic, note: c.sites?.atomicNote }).toEqual({
+        name,
+        atomic: true,
+        note: undefined,
+      });
+    }
+    expect(transitionOf(result, "emailFirst").sites?.atomicNote?.message).toBe(
+      "email.send can run although storage.setStatusIf found status changed: the call is not behind a check of the save's result",
+    );
+  });
+
+  it("a call no spec effect maps to doesn't make the transition non-atomic", () => {
+    const result = extract(
+      `${IMPORTS}
+export async function refundAfterLog(id: string) {
+  await legacy.patch(id, {});
+  if (!(await setStatusIf(id, "paid", "refunded"))) throw new Error("changed");
+}
+`,
+      [t("refundAfterLog", "refunded")],
+      storageOf({ update: ["src/repo.ts#setStatusIf"] }),
+    );
+    const s = transitionOf(result, "refundAfterLog");
+    // legacy.patch is a bound client call, but not a spec effect: `undeclared-effect` says so.
+    expect(s.sites?.effects.map((e) => e.gate)).toEqual(["legacy.patch"]);
+    expect(s.atomic).toBe(true);
+    expect(s.sites?.atomicNote).toBeUndefined();
+  });
+
   it("`returns: count` also reads a count object (`r.count === 0`)", () => {
     const counted = extract(
       `${IMPORTS}

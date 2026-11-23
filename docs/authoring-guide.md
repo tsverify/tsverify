@@ -632,8 +632,12 @@ How to find them:
   `count` (`0`), `entity` (`undefined`) or `throws`. The code is expected to stop when it does
   (`if (!(await setStatusIf(…))) throw …`, `if (updated === undefined) return`): an effect that can run before
   that check (or before the update) fires even when nothing was saved, and `check` reports the transition as
-  `non-atomic`. An effect only in the "nothing saved" branch is not the transition's. A `count` may also be a
-  count object (`r.count === 0`), as Prisma's `updateMany` returns.
+  `non-atomic`. An effect only in the "nothing saved" branch is not the transition's. An effect that runs only
+  once another conditional save went through (in its "saved" branch, or after one bound with `returns: throws`)
+  is that save's, not one that runs "although nothing was saved" (`if (await promote(id)) { await
+  queue.enqueue(…); return; }` before `await expire(id)`). Only spec effects (named in `bindings.effects` or
+  declared on a transition) count: another call is reported as `undeclared-effect` instead. A `count` may also be
+  a count object (`r.count === 0`), as Prisma's `updateMany` returns.
 - **An unconditional ("blind") update** writes its state whatever the stored one is (`update({ where: { id } })`
   with a fixed status, a store method such as `startAttempt(id, …)` that sets `EXECUTING` unconditionally). Bind
   it with `from` **every state** (a YAML anchor helps: `from: &ALL [DELAYED, PENDING, …]`, then `from: *ALL`) and
