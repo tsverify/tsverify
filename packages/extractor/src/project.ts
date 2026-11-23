@@ -16,7 +16,7 @@ import { CompilerSession } from "./compiler";
 import { TypeScriptSetupError } from "./load-typescript";
 import type * as TS from "./ts-types";
 import { ProgramTypeFacts } from "./type-facts";
-import { typescript } from "./typescript";
+import { ts, typescript } from "./typescript";
 
 export interface LoadedProject {
   /** Absolute project root, `/`-separated, no trailing slash. */
@@ -47,6 +47,34 @@ function isAnalyzedName(fileName: string): boolean {
   return !DECLARATION_FILE.test(fileName) && !fileName.includes("/node_modules/");
 }
 
+/** Codes of TypeScript's compiler-option diagnostics (`Option 'baseUrl' has been removed.`). */
+function isOptionDiagnostic(d: TS.Diagnostic): boolean {
+  return d.code >= 5000 && d.code < 7000;
+}
+
+const REMOVED_OPTIONS_HINT =
+  "TypeScript 7 removed some older tsconfig options (such as `baseUrl` and `moduleResolution: node10`) that TypeScript 6 only deprecated; fix the tsconfig until `tsc --noEmit` accepts it.";
+
+/**
+ * The tsconfig's own problems, as TypeScript reports them: an unreadable tsconfig (a syntax
+ * error) is a load error; options TypeScript rejects stop the run (`TypeScriptSetupError`), since
+ * the project would not compile either.
+ */
+function checkConfig(project: TS.Project, configPath: string): LoadError | undefined {
+  const isError = (d: TS.Diagnostic) => d.category === ts.DiagnosticCategory.Error;
+  const parsing = project.program.getConfigFileParsingDiagnostics().filter(isError);
+  const syntax = parsing.find((d) => d.code < 2000);
+  if (syntax) return { error: `cannot load ${configPath}: ${syntax.text}` };
+  const options = [...parsing, ...project.program.getProgramDiagnostics()]
+    .filter(isError)
+    .filter(isOptionDiagnostic);
+  if (options.length === 0) return undefined;
+  const messages = [...new Set(options.map((d) => d.text))].join(" ");
+  throw new TypeScriptSetupError(
+    `TypeScript ${typescript.version} rejects ${configPath}: ${messages} ${REMOVED_OPTIONS_HINT}`,
+  );
+}
+
 export function loadProject(projectRoot: string, tsconfig?: string): LoadedProject | LoadError {
   const root = toPosix(path.resolve(projectRoot)).replace(/\/$/, "");
   const configPath = toPosix(
@@ -70,6 +98,11 @@ export function loadProject(projectRoot: string, tsconfig?: string): LoadedProje
   }
   try {
     const base = session.open();
+    const problem = checkConfig(base, configPath);
+    if (problem) {
+      session.close();
+      return problem;
+    }
     // Project references are not followed: imports of a referenced project resolve to its
     // sources, which the extractor can read, rather than to its built declarations.
     const files: TS.SourceFile[] = [];

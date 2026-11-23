@@ -1,4 +1,7 @@
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
+import { mkdir, symlink } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { tsverify } from "./run";
@@ -15,6 +18,11 @@ vi.mock("@tsverify/extractor", async (importOriginal) => {
       original.loadTypeScript(root, pathToFileURL(join(root, "tsverify.js"))),
   };
 });
+
+/** The monorepo's TypeScript 7 package directory, linked into temp projects. */
+const TS7_MANIFEST = createRequire(import.meta.url).resolve("typescript/package.json");
+const TS7 = dirname(TS7_MANIFEST);
+const TS7_VERSION = (JSON.parse(readFileSync(TS7_MANIFEST, "utf8")) as { version: string }).version;
 
 const SPEC = `behavior: Light
 entity:
@@ -55,6 +63,14 @@ function ts59Project(): Record<string, string> {
   };
 }
 
+/** A project with the monorepo's TypeScript 7 installed. */
+async function ts7Project(files: Record<string, string>): Promise<string> {
+  const cwd = await tempSpecDir(files);
+  await mkdir(join(cwd, "node_modules"), { recursive: true });
+  await symlink(TS7, join(cwd, "node_modules", "typescript"), "dir");
+  return cwd;
+}
+
 const HEADLINE = "error: tsverify needs TypeScript 7 or later to read your code.";
 
 describe("check: no TypeScript 7", () => {
@@ -80,6 +96,26 @@ describe("check: no TypeScript 7", () => {
   it("still checks the spec alone with --spec-only", async () => {
     const cwd = await tempSpecDir(ts59Project());
     const r = await tsverify(["check", "--spec-only"], { cwd });
+    expect(r.stderr).toBe("");
+    expect(r.code).toBe(0);
+  });
+});
+
+describe("check: a tsconfig TypeScript 7 rejects", () => {
+  it("exits 2 with TypeScript's message and a hint", async () => {
+    const tsconfig = `{ "compilerOptions": { "moduleResolution": "node10" }, "include": ["src"] }\n`;
+    const cwd = await ts7Project(lightProject(tsconfig));
+    const r = await tsverify(["check"], { cwd });
+    expect(r.code).toBe(2);
+    expect(r.stdout).toBe("");
+    expect(r.stderr).toBe(
+      `error: TypeScript ${TS7_VERSION} rejects ${cwd}/tsconfig.json: Option 'moduleResolution=node10' has been removed. Please remove it from your configuration. TypeScript 7 removed some older tsconfig options (such as \`baseUrl\` and \`moduleResolution: node10\`) that TypeScript 6 only deprecated; fix the tsconfig until \`tsc --noEmit\` accepts it.\n`,
+    );
+  });
+
+  it("checks the project once the tsconfig is fixed", async () => {
+    const cwd = await ts7Project(lightProject());
+    const r = await tsverify(["check"], { cwd });
     expect(r.stderr).toBe("");
     expect(r.code).toBe(0);
   });

@@ -21,8 +21,8 @@ export class UsageError extends Error {
 }
 
 /**
- * The project cannot be analyzed as set up, e.g. it has no TypeScript with the compiler API:
- * reported on stderr without the usage text, exit code 2.
+ * The project cannot be analyzed as set up, e.g. it has no TypeScript 7, or TypeScript rejects
+ * its tsconfig: reported on stderr without the usage text, exit code 2.
  */
 export class SetupError extends Error {
   override readonly name = "SetupError";
