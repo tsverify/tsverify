@@ -1,0 +1,10 @@
+{
+  "id": "v6-helper-save",
+  "bug": "the helper that reads and saves the order is called outside withTransaction",
+  "expected": [
+    {
+      "category": "non-atomic",
+      "transition": "ship"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "id": "v2-from-mismatch",
+  "bug": "the conditional save also refunds shipped orders",
+  "expected": [
+    {
+      "category": "from-state-mismatch",
+      "transition": "refund",
+      "subject": "shipped"
+    }
+  ]
+}

@@ -75,7 +75,13 @@ import type { ClientCall } from "../client-calls";
 import { primaryDeclarationOf, valueDeclarationOf } from "../declarations";
 import { functionOfDeclaration, symbolOf } from "../resolve";
 import type * as TS from "../ts-types";
-import { alwaysExits, blockStatements, literalsOf, typeNames } from "../type-facts";
+import {
+  alwaysExits,
+  blockStatements,
+  declaredTypeOfRef,
+  literalsOf,
+  typeNames,
+} from "../type-facts";
 import { ts } from "../typescript";
 import { referenceText, unwrapArgument, type WriteNode } from "../writes";
 import { returnedExpressions, throughLocal } from "./assign";
@@ -650,10 +656,23 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
     if (write.kind === "patch") {
       const call = write.call as TS.CallExpression;
       const b = fns.of(call);
+      // The probe (chosen by syntax) counts only when it reads an entity.
+      const probed =
+        write.probed === true &&
+        typeNames(declaredTypeOfRef(write.ref, checker), checker).includes(entity.name);
       if (b?.kind !== "save") {
         return {
           ...base,
           atomic: false,
+          ...(probed
+            ? {}
+            : {
+                fromState: {
+                  values: "*",
+                  unconstrained: false,
+                  reason: `no read of the ${entity.name} precedes the call`,
+                },
+              }),
           unbound: unbound(
             `${entity.name}.${field} is written in a patch passed to \`${call.expression.getText()}\`, which is not a \`bindings.storage.save\` function`,
           ),
@@ -662,7 +681,7 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
       const commit = fns.clientCall(call) as ClientCall;
       const key = argAt(call, b.fn, "key");
       const keyFacts = key ? { entityKey: key } : {};
-      if (!write.probed) {
+      if (!probed) {
         return {
           ...base,
           commit,

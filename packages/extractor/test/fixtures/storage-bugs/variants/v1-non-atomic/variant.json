@@ -1,0 +1,10 @@
+{
+  "id": "v1-non-atomic",
+  "bug": "ship reads and saves outside withTransaction on an atomic transition",
+  "expected": [
+    {
+      "category": "non-atomic",
+      "transition": "ship"
+    }
+  ]
+}

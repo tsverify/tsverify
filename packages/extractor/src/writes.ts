@@ -312,10 +312,11 @@ function readNamesOf(sf: TS.SourceFile, symbols: readonly string[]): ReadonlySet
   return names;
 }
 
-/** Whether `init` is `await? <name>(…)` for one of `names`. */
-function isReadCall(init: TS.Expression, names: ReadonlySet<string>): boolean {
+/** Whether `init` is `await? <name>(…)` for one of `names` (any call when `names` is undefined). */
+function isReadCall(init: TS.Expression, names: ReadonlySet<string> | undefined): boolean {
   const e = stripValue(init);
   if (!ts.isCallExpression(e)) return false;
+  if (!names) return true;
   const callee = referenceText(e.expression);
   return callee !== undefined && names.has(callee);
 }
@@ -328,9 +329,18 @@ function isInlineCallback(fn: TS.Node): boolean {
 
 /**
  * Phase 1: a `patch` write's probe reference: the closest `const X = await? <read>(…)` before
- * the call in an enclosing block of its function (inline callbacks included).
+ * the call in an enclosing block of its function (inline callbacks included), else the closest
+ * `const X = await? <any call>(…)` (a read under a name phase 1 cannot see, such as a renamed
+ * re-export). Phase 2 uses the probe only when `X` is typed as the entity.
  */
 function patchRefText(call: TS.CallExpression, names: ReadonlySet<string>): string | undefined {
+  return closestConstCall(call, names) ?? closestConstCall(call, undefined);
+}
+
+function closestConstCall(
+  call: TS.CallExpression,
+  names: ReadonlySet<string> | undefined,
+): string | undefined {
   let child: TS.Node = call;
   for (let p: TS.Node | undefined = call.parent; p; child = p, p = p.parent) {
     if (ts.isFunctionLike(p) && !isInlineCallback(p)) return undefined;

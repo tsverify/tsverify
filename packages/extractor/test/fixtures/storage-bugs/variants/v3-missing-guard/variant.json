@@ -1,0 +1,10 @@
+{
+  "id": "v3-missing-guard",
+  "bug": "cancel never checks the admin role",
+  "expected": [
+    {
+      "category": "guard-not-dominating",
+      "transition": "cancel"
+    }
+  ]
+}
