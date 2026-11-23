@@ -412,6 +412,12 @@ export interface BehaviorModel {
    */
   instanceImpls?: string[];
   /**
+   * Code models only: spec transitions whose `impl` `tsverify check` reads as usual but a generated
+   * test can't import or call, by transition name, with why: it is not exported from its module,
+   * or it is a private (`#`) method (`tsverify test` reports them as not generated).
+   */
+  hiddenImpls?: Record<string, string>;
+  /**
    * Code models only: bindings the generated tests can't replace with a fake, and why: a client
    * bound to a class (replacing the export with an object would break `new`), a storage function
    * that is a method of an interface (a type, with no value to replace) or of a class.

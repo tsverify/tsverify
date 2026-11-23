@@ -9,6 +9,17 @@ import {
 } from "./refs";
 
 describe("parseSymbolRef", () => {
+  it("reads a private method of a class (`Class.#method`), but not a private head", () => {
+    expect(parseSymbolRef("src/queue.ts#Queue.#moveToFallback")).toEqual({
+      file: "src/queue.ts",
+      symbol: "Queue.#moveToFallback",
+    });
+    expect(parseSymbolRef("src/queue.ts##moveToFallback")).toBeUndefined();
+    expect(parseSymbolRef("src/queue.ts#Queue.#")).toBeUndefined();
+  });
+});
+
+describe("parseSymbolRef", () => {
   it("parses file#symbol", () => {
     expect(parseSymbolRef("src/orders/refund.ts#refundOrder")).toEqual({
       file: "src/orders/refund.ts",

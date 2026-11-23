@@ -71,6 +71,25 @@ describe("skipped", () => {
     expect(result.tests.some((t) => t.transition === "refund")).toBe(true);
   });
 
+  it("a transition whose impl a test can't import or call (not exported, private)", () => {
+    const model = code();
+    model.hiddenImpls = {
+      ship: "its impl src/admin/orders.ts#shipOrder is not exported (shipOrder is not an export of src/admin/orders.ts), so a generated test can't import it",
+    };
+    const result = run(orderModel(), model);
+    expect(result.skipped).toContainEqual(
+      expect.objectContaining({
+        id: "not-generated:Order lifecycle:testgen:ship",
+        severity: "info",
+        message:
+          "tsverify test generated no tests for `ship`: its impl src/admin/orders.ts#shipOrder is not exported (shipOrder is not an export of src/admin/orders.ts), so a generated test can't import it",
+        hint: "Export it, or point `impl` at an exported function that calls it.",
+      }),
+    );
+    expect(result.files.some((f) => f.content.includes("shipOrder("))).toBe(false);
+    expect(result.tests.some((t) => t.transition === "refund")).toBe(true);
+  });
+
   it("everything when a bound export can't be replaced by a fake", () => {
     const model = code();
     model.unfakeable = [

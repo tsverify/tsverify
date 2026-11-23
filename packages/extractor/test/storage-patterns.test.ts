@@ -1333,6 +1333,46 @@ export async function shipViaLoader(id: string) {
   });
 });
 
+describe("impls a generated test can't call", () => {
+  const result = extract(
+    `${IMPORTS}
+export class Shipper {
+  async run(id: string) {
+    await this.#ship(id);
+  }
+  async #ship(id: string) {
+    if (!(await setStatusIf(id, "paid", "shipped"))) throw new Error("changed");
+  }
+}
+async function refundQuietly(id: string) {
+  if (!(await setStatusIf(id, "paid", "refunded"))) throw new Error("changed");
+}
+export async function refund(id: string) {
+  await refundQuietly(id);
+}
+`,
+    [
+      { name: "ship", impl: "src/impl.ts#Shipper.#ship", to: "shipped" },
+      { name: "refund", impl: "src/impl.ts#refundQuietly", to: "refunded" },
+    ],
+  );
+
+  it("a private method (`Class.#method`) and a function that isn't exported are read as impls", () => {
+    expect(result.findings).toEqual([]);
+    expect(transitionOf(result, "ship")).toMatchObject({ from: ["paid"], atomic: true });
+    expect(transitionOf(result, "ship").sites?.function.name).toBe("Shipper.#ship");
+    expect(transitionOf(result, "refund")).toMatchObject({ from: ["paid"], atomic: true });
+  });
+
+  it("tells `tsverify test` it can't call them, and why", () => {
+    expect(result.model?.hiddenImpls).toEqual({
+      refund:
+        "its impl src/impl.ts#refundQuietly is not exported (refundQuietly is not an export of src/impl.ts), so a generated test can't import it",
+      ship: "its impl src/impl.ts#Shipper.#ship is a private method (#ship), which code outside its class can't call",
+    });
+  });
+});
+
 describe("storage functions themselves", () => {
   it("are not looked into, and a binding that does not resolve is a broken link", () => {
     const result = extract(

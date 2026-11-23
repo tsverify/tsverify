@@ -1,6 +1,7 @@
 import type { GuardBinding, GuardRef, SymbolRef } from "./model";
 
-const SYMBOL_REF = /^([^#\s]+)#([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)$/;
+/** `path#symbol`, `path#Class.method`, `path#Class.#privateMethod`. */
+const SYMBOL_REF = /^([^#\s]+)#([A-Za-z_$][\w$]*(?:\.#?[A-Za-z_$][\w$]*)*)$/;
 const GUARD_REF = /^([A-Za-z_][\w-]*)(?:\(([^()]*)\))?$/;
 const GUARD_BINDING = /^([^#\s]+)#([A-Za-z_$][\w$]*)(?:\((.*)\))?$/s;
 

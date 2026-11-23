@@ -178,6 +178,16 @@ export function buildContext(input: ContextInput): { ctx?: Context; skipped: Fin
       skip("it has no `impl`");
       continue;
     }
+    const hidden = code.hiddenImpls?.[t.name];
+    if (hidden !== undefined) {
+      skip(
+        hidden,
+        hidden.includes("private method")
+          ? "Test it with your own tests, or point `impl` at the public function that calls it."
+          : "Export it, or point `impl` at an exported function that calls it.",
+      );
+      continue;
+    }
     if (code.instanceImpls?.includes(t.name)) {
       skip(
         `its impl ${formatSymbolRef(t.impl)} is an instance method, and a generated test can't build an object of its class to call it on yet`,

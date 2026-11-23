@@ -576,6 +576,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
 
   const impls: { name: string; fn: FunctionLike; reach: Reach }[] = [];
   const instanceImpls: string[] = [];
+  const hiddenImpls: Record<string, string> = {};
   const implAt: Record<string, SourceLocation> = {};
   for (const t of [...spec.transitions].sort((a, b) => compareStrings(a.name, b.name))) {
     if (!t.impl) continue;
@@ -584,6 +585,16 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
       impls.push({ name: t.name, fn: r.value, reach: reachFrom(r.value) });
       implAt[t.name] = ctx.loc(frameNaming(r.value).node);
       if (isInstanceMember(r.value)) instanceImpls.push(t.name);
+      // Read as usual by `check`; a generated test imports and calls it, so `test` can't.
+      const head = t.impl.symbol.split(".")[0] as string;
+      const privateMember = t.impl.symbol.split(".").find((m) => m.startsWith("#"));
+      if (privateMember !== undefined) {
+        hiddenImpls[t.name] =
+          `its impl ${formatSymbolRef(t.impl)} is a private method (${privateMember}), which code outside its class can't call`;
+      } else if (!isExportedPath(ctx, t.impl)) {
+        hiddenImpls[t.name] =
+          `its impl ${formatSymbolRef(t.impl)} is not exported (${head} is not an export of ${t.impl.file}), so a generated test can't import it`;
+      }
     } else {
       findings.push(
         brokenLink(
@@ -763,6 +774,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
   });
   if (Object.keys(uncalled).length > 0) model.uncalledClients = uncalled;
   if (instanceImpls.length > 0) model.instanceImpls = instanceImpls;
+  if (Object.keys(hiddenImpls).length > 0) model.hiddenImpls = hiddenImpls;
   if (unfakeable.length > 0) model.unfakeable = unfakeable;
   const sorted = sortFindings(uniqueIds(mergeSharedWrites(findings)));
   // After `uniqueIds`: each unread write names its finding by its final id.
