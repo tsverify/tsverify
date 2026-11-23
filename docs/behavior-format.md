@@ -198,7 +198,7 @@ save: { fn: src/orders/repo.ts#patchOrder, args: [key, patch] }
 |---|---|---|
 | `fn` | all | `path#symbol` |
 | `args` | all | the role of each positional argument (below); default: read `[key]`, save `[entity]`, update `[key, from, to]` without the roles a fixed `from` / `to` replaces, atomic `[callback]` |
-| `returns` | update | what the conditional save returns: `changed` (default: `true`, or `false` when the state check fails), `count` (rows changed: `1` or `0`), `entity` (the updated entity, or `undefined`), `throws` (it throws when the check fails, and returns nothing useful on success) |
+| `returns` | update | what the conditional save returns: `changed` (default: `true`, or `false` when the state check fails), `count` (rows changed: `1` or `0`, or an object with that `count`, as Prisma's `updateMany` returns), `entity` (the updated entity, or `undefined`), `throws` (it throws when the check fails, and returns nothing useful on success) |
 | `from` | update | fixed from-state(s), when no argument has the `from` role; declared states |
 | `to` | update | fixed target state, when no argument has the `to` role; a declared state |
 

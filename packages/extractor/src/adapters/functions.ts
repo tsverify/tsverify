@@ -190,6 +190,26 @@ export class StorageFunctions {
     return this.byPath.get(path);
   }
 
+  /**
+   * The bound functions some call in `files` resolves to (by path). Calls already looked up are
+   * used first (`extraWrites` looks up every call of the analyzed files); the files are only
+   * scanned for the functions left.
+   */
+  called(files: readonly TS.SourceFile[]): Set<string> {
+    const found = new Set<string>();
+    for (const b of this.memo.values()) if (b) found.add(b.path);
+    const visit = (n: TS.Node): void => {
+      if (found.size === this.byPath.size) return;
+      if (ts.isCallExpression(n)) {
+        const b = this.of(n);
+        if (b) found.add(b.path);
+      }
+      n.forEachChild(visit);
+    };
+    for (const sf of files) visit(sf);
+    return found;
+  }
+
   /** `call` as a `storage.<symbol>` client call, when it calls a bound function. */
   clientCall(call: TS.CallExpression): ClientCall | undefined {
     const b = this.of(call);
@@ -994,13 +1014,21 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
   const effectOutcome = ({ call, write, frame, reach }: EffectInput): EffectOutcome => {
     if (write.kind !== "update") return "attributed";
     const save = write.call as TS.CallExpression;
-    const returns = (fns.of(save) as BoundFunction).fn.returns ?? "changed";
+    const bound = (fns.of(save) as BoundFunction).fn;
+    // An unconditional ("blind") update, `from` every state, never finds the state changed: no
+    // effect can run "although it saved nothing".
+    if (bound.from && entity.states.every((s) => bound.from?.includes(s))) return "attributed";
+    const returns = bound.returns ?? "changed";
     const leads = leadsTo(reach, frame, write.expr);
 
     const subjectOf =
       (subject: TS.CallExpression) =>
       (e: TS.Expression): boolean => {
-        const s = strip(e);
+        let s = strip(e);
+        // `returns: count` may be a count object, as Prisma's `updateMany` returns: `r.count`.
+        if (returns === "count" && ts.isPropertyAccessExpression(s) && s.name.text === "count") {
+          s = strip(s.expression);
+        }
         if (s === subject) return true;
         if (!ts.isIdentifier(s)) return false;
         const decl = valueDeclarationOf(symbolOf(s, checker));

@@ -1,5 +1,5 @@
 import { stat } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 export const TSCONFIG = "tsconfig.json";
 
@@ -18,11 +18,30 @@ export async function findProjectRoot(specFile: string): Promise<string | undefi
   }
 }
 
-/** Resolves `--project` against `cwd`; `undefined` when the directory doesn't exist. */
-export async function resolveProjectDir(dir: string, cwd: string): Promise<string | undefined> {
-  const absolute = resolve(cwd, dir);
+/**
+ * A TypeScript project named on the command line (`--project`): its root, which `impl` and
+ * binding paths are relative to, and its tsconfig file when it is not `<root>/tsconfig.json`.
+ */
+export interface ProjectRef {
+  /** Absolute project root. */
+  root: string;
+  /** The tsconfig file name, relative to `root` (e.g. `tsconfig.src.json`); default `tsconfig.json`. */
+  tsconfig?: string;
+}
+
+/**
+ * Resolves `--project` against `cwd`: a directory is the project root (with its `tsconfig.json`);
+ * a file is the tsconfig, and its directory the root. `undefined` when there is no such path.
+ */
+export async function resolveProject(path: string, cwd: string): Promise<ProjectRef | undefined> {
+  const absolute = resolve(cwd, path);
   try {
-    return (await stat(absolute)).isDirectory() ? absolute : undefined;
+    const stats = await stat(absolute);
+    if (stats.isDirectory()) return { root: absolute };
+    const name = basename(absolute);
+    return stats.isFile()
+      ? { root: dirname(absolute), ...(name === TSCONFIG ? {} : { tsconfig: name }) }
+      : undefined;
   } catch {
     return undefined;
   }

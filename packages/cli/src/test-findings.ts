@@ -9,6 +9,11 @@
  * | replay verdict `replay-disagrees`       | `replay-disagrees` (warning)              |
  * | replay verdict `inconclusive`           | `unanalyzable` (info)                     |
  * | replay test fails without a verdict     | `generated-test-failed` (error): it could not run |
+ * | test files fail before their tests run  | one `generated-test-failed` (error) per distinct error, `…:setup:<first file>`, with a setup hint and the original error |
+ *
+ * A test fails "before it runs" (a setup failure, not a behavior one) when vitest could not load
+ * its file (`TestOutcome.setup`: an import that doesn't resolve, a module mock that can't be
+ * built), or its error says so (`SETUP_ERROR`).
  *
  * Replay verdicts come from `task.meta.tsverifyReplay`, which every generated replay test sets
  * before its assertion (see packages/testgen/README.md). A `replay-confirmed` finding has
@@ -51,6 +56,8 @@ export function testFindings(input: MapInput): { findings: Finding[]; counts: Te
   const byKey = new Map(outcomes.map((o) => [`${o.file}\n${o.name}`, o]));
   const counts: TestCounts = { total: tests.length, passed: 0, failed: 0, missing: 0 };
   const findings: Finding[] = [];
+  // Setup failures, by their first error: usually one cause fails every file the same way.
+  const setup = new Map<string, { files: string[]; tests: number; error: string }>();
   for (const test of tests) {
     const file = `${outDir}/${test.file}`;
     const outcome = byKey.get(`${file}\n${test.name}`) ?? byKey.get(`${file}\n`);
@@ -61,6 +68,14 @@ export function testFindings(input: MapInput): { findings: Finding[]; counts: Te
     }
     if (outcome.state === "passed") counts.passed++;
     else counts.failed++;
+    if (outcome.state !== "passed" && isSetupFailure(outcome)) {
+      const error = firstError(outcome.errors);
+      const seen = setup.get(error) ?? { files: [], tests: 0, error };
+      if (!seen.files.includes(file)) seen.files.push(file);
+      seen.tests++;
+      setup.set(error, seen);
+      continue;
+    }
 
     if (test.kind !== "replay") {
       if (outcome.state !== "passed") findings.push(failed(behavior, file, test, outcome.errors));
@@ -74,7 +89,40 @@ export function testFindings(input: MapInput): { findings: Finding[]; counts: Te
     }
     findings.push(replayFinding(behavior, file, test, meta, source));
   }
+  for (const failure of setup.values()) findings.push(setupFailed(behavior, failure));
   return { findings, counts };
+}
+
+/**
+ * Errors that mean a test never got to the code under test: a module that doesn't resolve or
+ * load, or a mock vitest couldn't build.
+ */
+const SETUP_ERROR =
+  /Failed to resolve (entry for package|import)|Cannot find (module|package)|Failed to load url|does not provide an export named|error when mocking a module|ERR_MODULE_NOT_FOUND/;
+
+function isSetupFailure(outcome: TestOutcome): boolean {
+  return outcome.setup === true || outcome.errors.some((e) => SETUP_ERROR.test(e));
+}
+
+/** One finding for the tests in `files` that failed before they ran, with the same `error`. */
+function setupFailed(
+  behavior: string,
+  { files, tests, error }: { files: string[]; tests: number; error: string },
+): Finding {
+  const names = files.map((f) => f.slice(f.lastIndexOf("/") + 1));
+  const dir = (files[0] ?? "").slice(0, (files[0] ?? "").lastIndexOf("/"));
+  const list =
+    names.length === 1
+      ? names[0]
+      : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return {
+    id: `generated-test-failed:${behavior}:setup:${names[0]}`,
+    category: "generated-test-failed",
+    severity: "error",
+    message: `The generated tests in ${list} could not start (${tests === 1 ? "1 test" : `${tests} tests`}), before any of the code under test ran: ${error}`,
+    behavior,
+    hint: `A setup problem, not a behavior the spec forbids. Check that every module the tests import resolves under vitest as it does in the project (package \`exports\` conditions, tsconfig \`paths\` and \`customConditions\`, a workspace package that must be built first), and that the exports \`bindings\` names can be replaced by fakes. The tests are kept in ${dir}/.`,
+  };
 }
 
 function failed(

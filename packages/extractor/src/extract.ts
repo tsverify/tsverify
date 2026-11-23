@@ -8,6 +8,13 @@
  * 3. Plan every narrowing probe (`type-facts.ts`, X1 probe-first) — still no type query.
  * 4. Type queries: entity matching, from-states, link resolution, call graph, guards, effects,
  *    persistence facts; then model assembly (`assemble.ts`).
+ *
+ * **Whose writes.** The program can hold files of other packages (a workspace package resolved
+ * to its sources through `paths` or `customConditions`). Only the project's own files
+ * (`ProjectContext.isOwnFile`: under the project root, or named by the tsconfig's own `files` /
+ * `include`) are searched for writes nobody asked about; a write in another file counts only
+ * where an `impl` reaches it. So a package's forwarding wrappers (`startAttempt(…) { return
+ * this.inner.startAttempt(…) }`) are not reported as `undeclared-transition`.
  */
 import type {
   BehaviorModel,
@@ -37,6 +44,8 @@ import { brokenLink, sortFindings, unanalyzable, uniqueIds } from "./findings";
 import { loadTypeScript, TypeScriptSetupError } from "./load-typescript";
 import { type LoadedProject, loadProject, ProjectContext } from "./project";
 import {
+  isInstanceMember,
+  pathHeadKind,
   resolveClient,
   resolveGuard,
   resolveImpl,
@@ -75,6 +84,17 @@ export interface ExtractResult {
   spec: string;
   model?: BehaviorModel;
   findings: Finding[];
+}
+
+export interface ExtractAllResult {
+  /** One per spec, in order. */
+  results: ExtractResult[];
+  stats: ExtractStats;
+  /**
+   * The project tsconfig's `customConditions`, when it sets any: the package `exports`
+   * conditions its imports resolve with (generated tests resolve with them too).
+   */
+  customConditions?: string[];
 }
 
 export interface ExtractStats {
@@ -186,10 +206,7 @@ function requireTypeScript(projectRoot: string): TypeScript {
  * `TypeScriptSetupError` when the project cannot be read as set up (no TypeScript 7, a tsconfig
  * TypeScript rejects).
  */
-export function extractAll(
-  specs: BehaviorModel[],
-  options: ExtractOptions,
-): { results: ExtractResult[]; stats: ExtractStats } {
+export function extractAll(specs: BehaviorModel[], options: ExtractOptions): ExtractAllResult {
   const start = now();
   useTypeScript(options.typescript ?? requireTypeScript(options.projectRoot));
   const loaded = loadProject(options.projectRoot, options.tsconfig);
@@ -222,7 +239,7 @@ function extractLoaded(
   specs: BehaviorModel[],
   loaded: LoadedProject,
   start: number,
-): { results: ExtractResult[]; stats: ExtractStats } {
+): ExtractAllResult {
   // Phase 1 (syntax) and probe planning: no type query before planNarrowing.
   const fields = new Set(specs.map((s) => s.entity.stateField));
   const patch = patchOptions(specs);
@@ -262,6 +279,7 @@ function extractLoaded(
   const results = specs.map((spec) => extractSpec(spec, env));
   return {
     results,
+    ...(loaded.customConditions ? { customConditions: loaded.customConditions } : {}),
     stats: {
       files: loaded.files.length,
       writes: candidates.length,
@@ -293,10 +311,23 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
     : (spec.bindings.persistence ?? detectPersistence(ctx));
   // Named storage functions: resolved by symbol, for the `functions` adapter.
   let storage: StorageFunctions | undefined;
+  // Bindings `tsverify test` can't replace with a fake (`BehaviorModel.unfakeable`).
+  const unfakeable: { binding: string; reason: string }[] = [];
   if (storageBinding) {
     const bound = new Map<TS.Symbol, BoundFunction>();
     for (const { kind: fnKind, fn } of storageFunctions(storageBinding)) {
       const r = resolveStorageFunction(ctx, fn);
+      const head = fn.ref.symbol.split(".")[0] as string;
+      const headKind = r.ok && fn.ref.symbol.includes(".") ? pathHeadKind(ctx, fn.ref) : undefined;
+      if (headKind !== undefined) {
+        unfakeable.push({
+          binding: `storage.${fn.ref.symbol}`,
+          reason:
+            headKind === "type"
+              ? `${fn.ref.symbol} is a method of ${head}, a type, which has no value to replace`
+              : `${fn.ref.symbol} is a method of the class ${head}, which would have to be replaced as a whole`,
+        });
+      }
       if (r.ok) bound.set(r.value, { kind: fnKind, fn, path: fn.ref.symbol });
       else {
         findings.push(
@@ -344,8 +375,15 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
   const clientSyms = new Map<TS.Symbol, string>();
   for (const [name, binding] of sortedEntries(spec.bindings.clients)) {
     const r = resolveClient(ctx, binding);
-    if (r.ok) clientSyms.set(r.value, name);
-    else {
+    if (r.ok) {
+      clientSyms.set(r.value, name);
+      if (r.value.flags & ts.SymbolFlags.Class) {
+        unfakeable.push({
+          binding: `clients.${name}`,
+          reason: `client ${name} is the class ${binding.export}, and a fake object in its place would break \`new ${binding.export}(…)\``,
+        });
+      }
+    } else {
       findings.push(
         brokenLink(
           behavior,
@@ -421,6 +459,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
   };
 
   const impls: { name: string; fn: FunctionLike; reach: Reach }[] = [];
+  const instanceImpls: string[] = [];
   const implAt: Record<string, SourceLocation> = {};
   for (const t of [...spec.transitions].sort((a, b) => compareStrings(a.name, b.name))) {
     if (!t.impl) continue;
@@ -428,6 +467,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
     if (r.ok) {
       impls.push({ name: t.name, fn: r.value, reach: reachFrom(r.value) });
       implAt[t.name] = ctx.loc(frameNaming(r.value).node);
+      if (isInstanceMember(r.value)) instanceImpls.push(t.name);
     } else {
       findings.push(
         brokenLink(
@@ -463,8 +503,15 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
     },
     probed: false,
   }));
+  /** A write in a file of another package is the project's only where an impl reaches it. */
+  const outside = (write: WriteNode): boolean => {
+    if (ctx.isOwnFile(write.expr.getSourceFile())) return false;
+    const frame = frameOf(write.expr);
+    return frame === undefined || !impls.some((i) => i.reach.frames.includes(frame));
+  };
   [...env.writes, ...extra].forEach((write, i) => {
     if (write.field !== spec.entity.stateField || !adapter.writeKinds.has(write.kind)) return;
+    if (outside(write)) return;
     const { narrowed, probed } = (env.types[i] ?? writeTypes[i - env.writes.length]) as WriteTypes;
     const decided = adapter.matchEntity?.(write, calls, spec.entity);
     const match =
@@ -503,6 +550,19 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
         finding,
       });
     };
+    // An object held in a variable that tsverify can't follow to the call (`writes.ts`).
+    if (write.held?.issue !== undefined) {
+      const target = write.call
+        ? `, an object later passed to \`${write.call.expression.getText()}\``
+        : "";
+      notExtracted(
+        "write-shape",
+        `${spec.entity.name}.${write.field} is set in \`${write.held.name}\`${target}, but ${write.held.issue}; the write is not extracted`,
+        `${write.field} is set in \`${write.held.name}\`, but ${write.held.issue}`,
+        `Write the ${write.field} into the call that saves it, or hold the object in a \`const\` that is only passed to that one call, with the ${write.field} as a literal (docs/authoring-guide.md, "Restructuring unanalyzable code").`,
+      );
+      return;
+    }
     const unreadable = frame && analyze(frame).unreadable;
     if (unreadable) {
       notExtracted(
@@ -570,6 +630,8 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
     }
   }
 
+  const uncalled = reportUncalled(spec, ctx, calls, clientSyms, storage, findings);
+
   const model = assemble(spec, drafts, {
     ctx,
     calls,
@@ -579,7 +641,11 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
     adapter,
     findings,
     implAt,
+    uncalledClients: new Set(Object.keys(uncalled)),
   });
+  if (Object.keys(uncalled).length > 0) model.uncalledClients = uncalled;
+  if (instanceImpls.length > 0) model.instanceImpls = instanceImpls;
+  if (unfakeable.length > 0) model.unfakeable = unfakeable;
   const sorted = sortFindings(uniqueIds(findings));
   // After `uniqueIds`: each unread write names its finding by its final id.
   const unreadWrites: Record<string, UnreadWrite[]> = {};
@@ -590,5 +656,96 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
     if (reached.length > 0) unreadWrites[impl.name] = reached;
   }
   if (Object.keys(unreadWrites).length > 0) model.unreadWrites = unreadWrites;
+  assumeUnconfirmed(spec, model);
   return { spec: behavior, model, findings: sorted };
+}
+
+/**
+ * A bound client (`bindings.clients`) or storage function (`bindings.storage`, every kind) that
+ * no call anywhere in the project resolves to is almost always a binding that points at the wrong
+ * thing (an interface where the code calls a class, a value the code receives as `any`), and
+ * then everything tsverify says about its calls ("never calls …") is wrong too. Each one gets an
+ * `unanalyzable` warning, `unanalyzable:<behavior>:binding:<client | storage.<symbol>>`.
+ * Returns the uncalled clients' names, with their finding ids, for the code model
+ * (`BehaviorModel.uncalledClients`).
+ */
+function reportUncalled(
+  spec: BehaviorModel,
+  ctx: ProjectContext,
+  calls: ClientCalls,
+  clientSyms: ReadonlyMap<TS.Symbol, string>,
+  storage: StorageFunctions | undefined,
+  findings: Finding[],
+): Record<string, string> {
+  const files = ctx.analyzedFiles();
+  const behavior = spec.name;
+  const uncalled: Record<string, string> = {};
+  const clients = new Set(clientSyms.values());
+  const called = calls.calledClients(files, clients);
+  for (const [name, binding] of sortedEntries(spec.bindings.clients)) {
+    if (!clients.has(name) || called.has(name)) continue;
+    const finding: Finding = {
+      ...unanalyzable(
+        behavior,
+        "binding",
+        name,
+        `client "${name}" (${binding.module}#${binding.export}) is bound but never called: no call in the project resolves to it, so tsverify sees none of its calls`,
+        {
+          hint: `Check \`module\` and \`export\`: tsverify matches calls on the exported value itself, and on variables, parameters and fields typed as it (for a class, as its instances), so a client the code holds as another type (an interface, \`any\`) is never matched. Bind what the code calls, or remove the binding.`,
+        },
+      ),
+      ...(binding.at ? { specAt: binding.at } : {}),
+    };
+    findings.push(finding);
+    uncalled[name] = finding.id;
+  }
+  const binding = spec.bindings.storage;
+  if (storage && binding) {
+    const calledFns = storage.called(files);
+    for (const { kind, fn } of storageFunctions(binding)) {
+      if (storage.path(fn.ref.symbol) === undefined || calledFns.has(fn.ref.symbol)) continue;
+      const at = fn.at ?? binding.at;
+      findings.push({
+        ...unanalyzable(
+          behavior,
+          "binding",
+          `${STORAGE_CLIENT}.${fn.ref.symbol}`,
+          `storage ${kind} function ${formatSymbolRef(fn.ref)} is bound but never called: no call in the project resolves to it`,
+          {
+            hint: `Check the path and symbol: tsverify matches a call by the function it resolves to, so a method called through an interface (\`store: Store\`) resolves to the interface's method, not to a class that implements it. Bind the one the code calls, or remove the binding.`,
+          },
+        ),
+        ...(at ? { specAt: at } : {}),
+      });
+    }
+  }
+  return uncalled;
+}
+
+/**
+ * A spec transition whose impl reaches no readable write of its `to`, but a write tsverify
+ * couldn't read that may be it (`unreadWrites`: its value is not a literal, or is `to`), is
+ * unconfirmed: conformance says so (`unanalyzable`), and the code model takes it as specified,
+ * like a transition without `impl`: copied unchanged and without `sites`. Leaving it out would
+ * make the code model lose behavior the code may well have, and the checker report stuck states
+ * and `eventually` violations that only come from what tsverify couldn't read.
+ */
+function assumeUnconfirmed(spec: BehaviorModel, model: BehaviorModel): void {
+  let added = false;
+  for (const t of spec.transitions) {
+    const unread = model.unreadWrites?.[t.name] ?? [];
+    if (!unread.some((u) => u.value === undefined || u.value === t.to)) continue;
+    const written = model.transitions.some(
+      (c) => c.sites?.specTransition === t.name && c.to === t.to,
+    );
+    if (written || model.transitions.some((c) => c.name === t.name)) continue;
+    model.transitions.push(structuredClone(t));
+    model.concurrency[t.name] = spec.concurrency[t.name] ?? 2;
+    added = true;
+  }
+  if (!added) return;
+  model.transitions.sort((a, b) => compareStrings(a.name, b.name));
+  model.concurrency = Object.fromEntries(
+    model.transitions.map((t) => [t.name, model.concurrency[t.name] as number]),
+  );
 }

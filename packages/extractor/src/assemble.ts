@@ -8,7 +8,9 @@
  *   entry, and the write; scope `synchronous`). When the adapter can't decide it (the write is
  *   saved outside the named storage, or no read was found: an `unanalyzable` finding), a linked
  *   write keeps the spec transition's `atomic`, with the reason in `sites.atomicUnknown`
- * - effect multiplicity from the spec's declaration of that effect (`at-least-once` if undeclared)
+ * - effect multiplicity from the spec's declaration of that effect (`at-least-once` if undeclared);
+ *   a linked write also has the spec transition's effects on a client no call resolves to
+ *   (`uncalledClients`), as specified, since their calls can't be seen
  * - `concurrency` copies the linked spec transition's bound (2 when unlinked)
  * - name, entity, actors, rules, bindings and file are copied from the spec; transitions sorted
  *   by name; `at` = the write.
@@ -78,6 +80,14 @@ export interface AssembleEnv {
   findings: Finding[];
   /** Declaration location of each resolved spec `impl`, by transition name (sorted). */
   implAt: Record<string, SourceLocation>;
+  /** Bound clients no call in the project resolves to (`BehaviorModel.uncalledClients`). */
+  uncalledClients: ReadonlySet<string>;
+}
+
+/** The client an effect gate calls: `queue` for `queue.acknowledgeMessage`, `notify` for `notify`. */
+export function clientOfGate(gate: string): string {
+  const dot = gate.indexOf(".");
+  return dot < 0 ? gate : gate.slice(0, dot);
 }
 
 function compareLoc(a: SourceLocation, b: SourceLocation): number {
@@ -242,7 +252,14 @@ function buildTransition(
   const effects: (CallSite & { effect: string })[] = attributed
     .map((cc) => ({ ...callSite(ctx, calls, cc, d.reach), effect: effectNameOf(cc.gate, spec, t) }))
     .sort((a, b) => compareLoc(a.at, b.at));
-  const effectNames = [...new Set(effects.map((e) => e.effect))].sort(compareStrings);
+  // The linked transition's effects on a client no call resolves to can't be seen: they are
+  // taken as specified, like the transition itself when its write can't be read.
+  const assumed = (t?.effects ?? [])
+    .map((e) => e.name)
+    .filter((e) => env.uncalledClients.has(clientOfGate(spec.bindings.effects[e] ?? e)));
+  const effectNames = [...new Set([...effects.map((e) => e.effect), ...assumed])].sort(
+    compareStrings,
+  );
   const effectDecls: EffectDecl[] = effectNames.map((e) => ({
     name: e,
     multiplicity: multiplicityOf(e, spec, t),

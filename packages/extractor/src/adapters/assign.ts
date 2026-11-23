@@ -9,6 +9,8 @@
  *   await tx.orders.save(order);                 // commit: next client call taking the reference
  * });
  * await db.orders.save({ ...order, status: "refunded" }); // spread write: the call is the commit
+ * const next = { ...order, status: "refunded" };          // also held in a `const` first,
+ * await db.orders.save(next);                              // when only this call takes it
  * ```
  *
  * **Read through a helper.** When the reference's initializer is a call to a project function
@@ -169,7 +171,8 @@ function findCommit(
 ): ClientCall | undefined {
   const { write, calls, checker } = input;
   if (write.kind === "spread") {
-    const parent = parentSkippingWrappers(write.expr);
+    // Passed straight to the call, or held in a `const` the call takes (`writes.ts`).
+    const parent = write.call ?? parentSkippingWrappers(write.expr);
     return parent && ts.isCallExpression(parent) ? calls.classify(parent) : undefined;
   }
   if (!refSym) return undefined;

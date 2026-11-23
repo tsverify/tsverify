@@ -17,7 +17,7 @@ import type {
 import { defaultStorageArgs, parseSymbolRef } from "@tsverify/ir";
 import { afterAll, describe, expect, it } from "vitest";
 import { type ExtractResult, extractAll } from "../src/index";
-import { orderSpec, type TransitionSpec, transitionOf } from "./helpers";
+import { orderSpec, type TransitionSpec, transitionOf, withoutBindingWarnings } from "./helpers";
 import { installTypeScript } from "./typescript";
 
 const TSCONFIG = JSON.stringify({
@@ -68,6 +68,8 @@ export async function cancelOrThrow(id: string): Promise<void> {
   if (!(await setStatusIf(id, "pending_payment", "cancelled"))) throw new Error("changed");
 }
 export const repo = { get: getOrder, save: saveOrder };
+/** A storage interface the app injects (\`deps.orders.get(id)\`). */
+export interface OrderStore { get(id: string): Promise<Order | undefined> }
 `;
 const DB = `
 let tail: Promise<unknown> = Promise.resolve();
@@ -164,6 +166,7 @@ function extract(
   impl: string,
   transitions: TransitionSpec[],
   storage?: StorageBinding,
+  bindingWarnings = false,
 ): ExtractResult {
   const root = mkdtempSync(join(tmpdir(), "tsverify-storage-"));
   roots.push(root);
@@ -181,7 +184,9 @@ function extract(
   }
   const spec = orderSpec(transitions, bindings(storage));
   const { results } = extractAll([spec], { projectRoot: root, typescript: installTypeScript() });
-  return results[0] as ExtractResult;
+  const result = results[0] as ExtractResult;
+  // Each test calls a few of the many bound functions: "bound but never called" is tested apart.
+  return bindingWarnings ? result : withoutBindingWarnings(result);
 }
 
 const IMPORTS = `
@@ -522,10 +527,16 @@ export async function reply(id: string) {
     expect(finding("unanalyzable:Fixture orders:write-shape:heldLet")?.hint).toContain(
       "Restructuring unanalyzable code",
     );
-    const names = result.model?.transitions.map((x) => x.name) ?? [];
+    // Not extracted: the code model has each unconfirmed transition as specified, without sites
+    // (like a transition without `impl`), so it doesn't lose behavior the code may have.
     for (const n of ["heldValue", "heldLater", "heldLet", "builderNoRead"]) {
-      expect(names).not.toContain(n);
+      const copies = result.model?.transitions.filter((x) => x.name === n) ?? [];
+      expect(copies.every((c) => c.sites === undefined)).toBe(true);
     }
+    expect(result.model?.transitions.find((x) => x.name === "heldLater")).toMatchObject({
+      to: "cancelled",
+      impl: { symbol: "heldLater" },
+    });
   });
 
   it("records the unread writes each impl reaches, for conformance", () => {
@@ -708,6 +719,61 @@ export async function refundViaQuietHelper(id: string) {
     }
   });
 
+  it("an unconditional update (`from` every state) never fails, so no effect escapes it", () => {
+    const all = ["draft", "pending_payment", "paid", "shipped", "refunded", "cancelled"];
+    const blind = extract(
+      `${IMPORTS}
+export async function shipBlind(id: string) {
+  await email.send(id, "shipping");
+  await markShipped(id);
+}
+`,
+      [t("shipBlind", "shipped", { from: ["paid"] })],
+      storageOf({
+        read: ["src/repo.ts#getOrder"],
+        update: [{ fn: "src/repo.ts#markShipped", from: all, to: "shipped", returns: "throws" }],
+      }),
+    );
+    const s = transitionOf(blind, "shipBlind");
+    expect(s.atomic).toBe(true);
+    expect(s.sites?.atomicNote).toBeUndefined();
+    expect(s.sites?.effects.map((e) => e.gate)).toEqual(["email.send"]);
+    expect(s.from).toEqual(all);
+  });
+
+  it("`returns: count` also reads a count object (`r.count === 0`)", () => {
+    const counted = extract(
+      `${IMPORTS}
+/** A conditional save that returns a count object, like Prisma's \`updateMany\`. */
+export async function shipMany(id: string): Promise<{ count: number }> {
+  return { count: (await markShipped(id)) ? 1 : 0 };
+}
+export async function shipChecked(id: string) {
+  const r = await shipMany(id);
+  if (r.count === 0) return;
+  await email.send(id, "shipped");
+}
+export async function shipUnchecked(id: string) {
+  const r = await shipMany(id);
+  await email.send(id, "shipped");
+  if (r.count < 1) return;
+}
+`,
+      [t("shipChecked", "shipped"), t("shipUnchecked", "shipped")],
+      storageOf({
+        update: [{ fn: "src/impl.ts#shipMany", from: ["paid"], to: "shipped", returns: "count" }],
+      }),
+    );
+    const checked = transitionOf(counted, "shipChecked");
+    expect(checked.atomic).toBe(true);
+    expect(checked.sites?.effects.map((e) => e.gate)).toEqual(["email.send"]);
+    const unchecked = transitionOf(counted, "shipUnchecked");
+    expect(unchecked.atomic).toBe(false);
+    expect(unchecked.sites?.atomicNote?.message).toContain(
+      "is not behind a check of the save's result",
+    );
+  });
+
   it("fixed from / to, and each `returns` kind's failure test", () => {
     const ship = transitionOf(result, "ship");
     expect(ship.from).toEqual(["paid"]);
@@ -814,5 +880,56 @@ export async function ship(id: string) {
       "refundIf",
       "ship",
     ]);
+  });
+
+  it("tells `tsverify test` it can't fake a method of an interface", () => {
+    const result = extract(
+      `${IMPORTS}
+import type { OrderStore } from "./repo";
+export async function ship(deps: { orders: OrderStore }, id: string) {
+  const order = await deps.orders.get(id);
+  if (order?.status !== "paid") throw new Error("not paid");
+  if (!(await setStatusIf(id, "paid", "shipped"))) throw new Error("changed");
+}
+`,
+      [t("ship", "shipped")],
+      storageOf({ read: ["src/repo.ts#OrderStore.get"], update: ["src/repo.ts#setStatusIf"] }),
+    );
+    expect(transitionOf(result, "ship").sites?.read?.gate).toBe("storage.OrderStore.get");
+    expect(result.model?.unfakeable).toEqual([
+      {
+        binding: "storage.OrderStore.get",
+        reason: "OrderStore.get is a method of OrderStore, a type, which has no value to replace",
+      },
+    ]);
+  });
+
+  it("warns about a bound function (any kind) that no call resolves to", () => {
+    const result = extract(
+      `${IMPORTS}
+export async function ship(id: string) {
+  if (!(await setStatusIf(id, "paid", "shipped"))) throw new Error("changed");
+}
+`,
+      [t("ship", "shipped")],
+      storageOf({
+        read: ["src/repo.ts#getOrder"],
+        update: ["src/repo.ts#setStatusIf"],
+        atomic: ["src/db.ts#withTransaction"],
+      }),
+      true,
+    );
+    // getOrder is called inside repo.ts (findOrder), setStatusIf by the impl: only the atomic
+    // function is never called. (So are the bound clients, `stripe` …: a warning each.)
+    const storage = result.findings.filter((f) => f.id.includes(":binding:storage."));
+    expect(storage.map((f) => [f.id, f.severity, f.message])).toEqual([
+      [
+        "unanalyzable:Fixture orders:binding:storage.withTransaction",
+        "warning",
+        "storage atomic function src/db.ts#withTransaction is bound but never called: no call in the project resolves to it",
+      ],
+    ]);
+    // Storage functions are not effect clients: only clients go into `uncalledClients`.
+    expect(Object.keys(result.model?.uncalledClients ?? {})).toEqual(["email", "legacy", "stripe"]);
   });
 });

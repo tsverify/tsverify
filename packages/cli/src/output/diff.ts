@@ -27,9 +27,19 @@ export interface DiffPair {
   head?: BehaviorModel;
 }
 
+/**
+ * The ref as given (`--base`) and the commit it resolved to. When the paths are in several git
+ * repositories, `commit` is the first one's and `commits` has each (repository root relative to
+ * the cwd → commit).
+ */
+export interface DiffBase {
+  ref: string;
+  commit: string;
+  commits?: Record<string, string>;
+}
+
 export interface DiffRun {
-  /** The ref as given (`--base`) and the commit it resolved to. */
-  base: { ref: string; commit: string };
+  base: DiffBase;
   /** Sorted by file. */
   pairs: DiffPair[];
   /** `--enforced-only`: how many paired files were left out. */
@@ -42,7 +52,7 @@ export interface DiffRun {
  */
 export interface JsonDiffReport {
   version: 1;
-  base: { ref: string; commit: string };
+  base: DiffBase;
   /** The head side is always the working tree. */
   head: "working tree";
   specs: JsonDiffSpec[];

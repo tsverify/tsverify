@@ -7,6 +7,7 @@ import { lint } from "./properties/lint";
 import { liveness } from "./properties/liveness";
 import { reachability } from "./properties/reachability";
 import { buildActions } from "./semantics";
+import { stateLimitHint } from "./state-limit";
 import { buildTrace } from "./trace";
 
 export { toItf } from "./itf";
@@ -77,7 +78,7 @@ export function check(model: BehaviorModel, options: CheckOptions = {}): CheckRe
       severity: "warning",
       message: `State limit reached: explored ${result.store.size} states (maxStates: ${maxStates}) without finishing; results are incomplete.`,
       behavior: model.name,
-      hint: "raise maxStates, or lower concurrency for transitions that don't race",
+      hint: stateLimitHint(layout, maxStates),
     });
   }
 

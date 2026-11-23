@@ -138,6 +138,28 @@ describe("transitions", () => {
     ]);
   });
 
+  it("skips the unconfirmed transition's copy in the code model (taken as specified)", () => {
+    const spec = specModel();
+    const code = buildCodeModel(
+      spec,
+      cleanWrites().filter((w) => w.name !== "refund"),
+    );
+    const copy = structuredClone(spec.transitions.find((t) => t.name === "refund"));
+    if (copy === undefined) throw new Error("no refund");
+    const unread = {
+      at: { file: "src/orders/refund.ts", line: 14, column: 5 },
+      function: "setOrderStatus",
+      reason: "the value `next` is not a single literal",
+      finding: "unanalyzable:Order lifecycle:write-value:setOrderStatus",
+    };
+    const withCopy = { ...code, transitions: [...code.transitions, copy] };
+    expect(
+      compare(spec, { ...withCopy, unreadWrites: { refund: [unread] } }).map((f) => f.id),
+    ).toEqual(["unanalyzable:Order lifecycle:refund:unconfirmed"]);
+    // Without unread writes, a sites-less copy of a transition with `impl` is a programmer error.
+    expect(() => compare(spec, withCopy)).toThrow(/has no sites/);
+  });
+
   it("still reports a missing transition when the unread writes are known to write another state", () => {
     const spec = specModel();
     const code = buildCodeModel(

@@ -5,7 +5,7 @@ import { type ExitCode, exitCodeFor, UsageError } from "../exit-codes";
 import { type LoadedSpec, loadSpecs, resolveSpecFiles, selectEnforced } from "../inputs";
 import type { Io } from "../io";
 import { formatReport, parseFormat } from "../output/format";
-import { resolveProjectDir } from "../project-root";
+import { type ProjectRef, resolveProject } from "../project-root";
 import { allFindings, applyStrict, dedupeFindings, type Report, type SpecReport } from "../report";
 
 export interface CheckCommandOptions {
@@ -113,13 +113,19 @@ function parseMaxStates(value: unknown): number | undefined {
   return n;
 }
 
-/** `--project <dir>` → an absolute directory. Resolved against the cwd; it must exist. */
-export async function parseProject(value: unknown, cwd: string): Promise<string | undefined> {
+/**
+ * `--project <dir | tsconfig>` → the project: a directory (with its `tsconfig.json`), or a
+ * tsconfig file (`packages/x/tsconfig.src.json`, its directory being the root). Resolved against
+ * the cwd; it must exist.
+ */
+export async function parseProject(value: unknown, cwd: string): Promise<ProjectRef | undefined> {
   if (value === undefined) return undefined;
   if ((typeof value !== "string" && typeof value !== "number") || value === "") {
-    throw new UsageError(`--project takes one directory (got ${String(value)})`);
+    throw new UsageError(`--project takes one directory or tsconfig file (got ${String(value)})`);
   }
-  const dir = await resolveProjectDir(String(value), cwd);
-  if (dir === undefined) throw new UsageError(`--project: no such directory: ${value}`);
-  return dir;
+  const project = await resolveProject(String(value), cwd);
+  if (project === undefined) {
+    throw new UsageError(`--project: no such directory or tsconfig file: ${value}`);
+  }
+  return project;
 }

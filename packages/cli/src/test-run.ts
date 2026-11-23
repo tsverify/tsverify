@@ -11,7 +11,10 @@
  *   itself);
  * - no reporters and `silent`, so nothing reaches stdout/stderr: results are read from the
  *   returned test modules, including each test's `task.meta`;
- * - vite's and vitest's caches go to `.tsverify/cache/`, not into the project's `node_modules`.
+ * - vite's and vitest's caches go to `.tsverify/cache/`, not into the project's `node_modules`;
+ * - the project tsconfig's `customConditions` (`conditions`) are added to vite's resolve
+ *   conditions, so a workspace package that the project resolves to its sources (an `exports`
+ *   entry such as `"@org/source": "./src/index.ts"`) resolves the same way in the tests.
  */
 import { join, relative, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -20,6 +23,13 @@ import type { ResolvedVitest } from "./vitest-resolve";
 /** Caches of the vitest run, relative to the project root (next to `.tsverify/generated`). */
 export const CACHE_DIR = ".tsverify/cache";
 
+/**
+ * vite's own resolve conditions (vite 6 and later), kept when custom ones are set: setting
+ * `resolve.conditions` replaces vite's defaults there, while vite 5 adds to them (and ignores
+ * names no package uses, such as `development|production`).
+ */
+const VITE_CONDITIONS = ["module", "node", "development|production"];
+
 export interface TestOutcome {
   /** Test file relative to the project root, `/`-separated. */
   file: string;
@@ -27,7 +37,17 @@ export interface TestOutcome {
   state: "passed" | "failed" | "skipped" | "pending";
   /** Failure messages (the test's errors, or the file's collection errors). */
   errors: string[];
+  /**
+   * The test failed before it ran: its file could not be loaded (an import that doesn't resolve,
+   * a module mock that can't be built, an error at the top level), so `errors` are the file's.
+   */
+  setup?: true;
   meta: Record<string, unknown>;
+}
+
+export interface TestRunOptions {
+  /** Extra package `exports` conditions to resolve with (the tsconfig's `customConditions`). */
+  conditions?: readonly string[];
 }
 
 export interface TestRunResult {
@@ -50,7 +70,12 @@ export async function runGeneratedTests(
   root: string,
   include: string[],
   runner: ResolvedVitest,
+  options: TestRunOptions = {},
 ): Promise<TestRunResult> {
+  const conditions =
+    options.conditions && options.conditions.length > 0
+      ? [...options.conditions, ...VITE_CONDITIONS]
+      : undefined;
   const { createVitest } = (await import(
     pathToFileURL(runner.nodeEntry).href
   )) as typeof import("vitest/node");
@@ -70,7 +95,11 @@ export async function runGeneratedTests(
     },
     {
       cacheDir: join(root, CACHE_DIR, "vite"),
-      resolve: { alias: { "@tsverify/runtime": runtimeEntry() } },
+      resolve: {
+        alias: { "@tsverify/runtime": runtimeEntry() },
+        ...(conditions ? { conditions } : {}),
+      },
+      ...(conditions ? { ssr: { resolve: { conditions } } } : {}),
     },
   );
   try {
@@ -82,16 +111,25 @@ export async function runGeneratedTests(
       for (const test of module.children.allTests()) {
         const r = test.result();
         const errors = (r.errors ?? []).map((e) => e.message);
+        const own = errors.length > 0 || r.state === "passed";
         outcomes.push({
           file,
           name: test.name,
           state: r.state,
-          errors: errors.length > 0 || r.state === "passed" ? errors : moduleErrors,
+          errors: own ? errors : moduleErrors,
           meta: { ...test.meta() },
+          ...(own || moduleErrors.length === 0 ? {} : { setup: true as const }),
         });
       }
       if (moduleErrors.length > 0 && module.children.size === 0) {
-        outcomes.push({ file, name: "", state: "failed", errors: moduleErrors, meta: {} });
+        outcomes.push({
+          file,
+          name: "",
+          state: "failed",
+          errors: moduleErrors,
+          meta: {},
+          setup: true,
+        });
       }
     }
     return {

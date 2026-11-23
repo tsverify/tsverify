@@ -408,6 +408,25 @@ describe("state limit", () => {
     // An incomplete search can't prove a state unreachable.
     expect(byProperty(findings, "reachable")).toEqual([]);
   });
+
+  it("says what makes this model's search large, with the spec syntax to shrink it", () => {
+    const m = orderModel();
+    transition(m, "checkout").atomic = false;
+    m.concurrency.refund = 3;
+    const [limit] = check(m, { maxStates: 10 }).findings.filter(
+      (f) => f.category === "unanalyzable",
+    );
+    expect(limit?.hint).toBe(
+      [
+        "The explored states multiply: 6 states × 5 transitions at concurrency 2–3 (11 invocations that can each run at any point; 1 non-atomic, checkout, also pause between read and write) × 2 effect counters (0–2 each).",
+        "Lower the concurrency where invocations don't race, for every transition and then back up for the ones that do:",
+        "  concurrency:",
+        "    default: 1",
+        "    max_parallel: { checkout: 2 }",
+        "or raise the state limit (--max-states, now 10).",
+      ].join("\n"),
+    );
+  });
 });
 
 describe("rule metadata", () => {

@@ -105,6 +105,56 @@ describe("tsverify diff", () => {
     ]);
   });
 
+  describe("the git repository of each spec, not the cwd's", () => {
+    const changed = async () =>
+      repo(
+        { "specs/order.behavior.yaml": canonical },
+        {
+          "specs/order.behavior.yaml": await b6VariantText(),
+        },
+      );
+
+    it("reads a spec from its own repository when run outside any", async () => {
+      const specs = await changed();
+      const cwd = await tempSpecDir({});
+      const file = join(specs, "specs/order.behavior.yaml");
+      const r = await tsverify(["diff", "--base", "HEAD", "--format", "json", file], { cwd });
+      expect(r.stderr).toBe("");
+      expect(r.code).toBe(0);
+      const doc = parse(r.stdout);
+      expect(doc.base).toEqual({
+        ref: "HEAD",
+        commit: (await git(specs, "rev-parse", "HEAD")).trim(),
+      });
+      expect(doc.specs.map((s) => s.diff.kind)).toEqual(["changed"]);
+    });
+
+    it("reads a spec from its own repository when the cwd is in another one", async () => {
+      const specs = await changed();
+      const cwd = await repo({ "README.md": "another repository\n" });
+      const r = await tsverify(
+        ["diff", "--base", "HEAD", "--format", "json", join(specs, "specs")],
+        { cwd },
+      );
+      expect(r.stderr).toBe("");
+      expect(parse(r.stdout).specs.map((s) => s.diff.kind)).toEqual(["changed"]);
+    });
+
+    it("reads paths in several repositories each from its own, and lists the commits", async () => {
+      const one = await changed();
+      const two = await repo({ "a.behavior.yaml": named("Two") });
+      const cwd = await tempSpecDir({});
+      const r = await tsverify(["diff", "--base", "HEAD", "--format", "json", one, two], { cwd });
+      expect(r.stderr).toBe("");
+      const doc = parse(r.stdout);
+      expect(doc.specs.map((s) => s.diff.kind).sort()).toEqual(["changed", "unchanged"]);
+      expect(Object.values(doc.base.commits ?? {})).toEqual([
+        (await git(one, "rev-parse", "HEAD")).trim(),
+        (await git(two, "rev-parse", "HEAD")).trim(),
+      ]);
+    });
+  });
+
   it("--enforced-only keeps specs enforced on either side", async () => {
     const cwd = await repo(
       {

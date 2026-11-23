@@ -27,6 +27,13 @@ export interface LoadedProject {
    */
   files: TS.SourceFile[];
   facts: ProgramTypeFacts;
+  /**
+   * The project's own files (`isOwnFile`): its tsconfig's `files` / `include`, absolute and
+   * `/`-separated. Every other analyzed file is under `root` or was pulled in by an import.
+   */
+  ownFiles: ReadonlySet<string>;
+  /** The tsconfig's `customConditions` (module resolution), when it sets any. */
+  customConditions?: string[];
   /** Ends the compiler process. Safe to call more than once. */
   close(): void;
 }
@@ -112,10 +119,16 @@ export function loadProject(projectRoot: string, tsconfig?: string): LoadedProje
       if (sf && !sf.isDeclarationFile) files.push(sf);
     }
     files.sort((a, b) => (a.fileName < b.fileName ? -1 : a.fileName > b.fileName ? 1 : 0));
+    const config = session.config();
+    const conditions = config.options.customConditions;
     return {
       root,
       files,
       facts: new ProgramTypeFacts(session, base),
+      ownFiles: new Set(config.fileNames.map(toPosix)),
+      ...(Array.isArray(conditions) && conditions.length > 0
+        ? { customConditions: conditions.filter((c): c is string => typeof c === "string") }
+        : {}),
       close: () => session.close(),
     };
   } catch (error) {
@@ -131,9 +144,11 @@ export class ProjectContext {
   readonly root: string;
   readonly facts: ProgramTypeFacts;
   private readonly originals: Map<string, TS.SourceFile>;
+  private readonly ownFiles: ReadonlySet<string>;
 
   constructor(loaded: LoadedProject) {
     this.root = loaded.root;
+    this.ownFiles = loaded.ownFiles;
     this.facts = loaded.facts;
     this.originals = new Map(loaded.files.map((sf) => [sf.fileName, sf]));
     this.program = loaded.facts.program;
@@ -157,6 +172,17 @@ export class ProjectContext {
 
   isAnalyzed(sf: TS.SourceFile): boolean {
     return this.originals.has(sf.fileName);
+  }
+
+  /**
+   * Whether `sf` is one of the project's own files: under the project root (the tsconfig's
+   * directory), or named by the tsconfig's own `files` / `include`. The others are files of
+   * other packages that imports pulled into the program (a workspace package resolved to its
+   * sources, through `paths` or `customConditions`): they are analyzed only where an `impl`
+   * reaches them, never for findings of their own (`extract.ts`).
+   */
+  isOwnFile(sf: TS.SourceFile): boolean {
+    return sf.fileName.startsWith(`${this.root}/`) || this.ownFiles.has(sf.fileName);
   }
 
   /** Project-root-relative, `/`-separated path. */

@@ -255,6 +255,31 @@ describe("check: code conformance", () => {
     ]);
   });
 
+  it("--project takes a tsconfig file: its directory is the root, the file is the project", async () => {
+    // tsconfig.json includes nothing; tsconfig.src.json includes src/.
+    const cwd = await tempSpecDir({
+      ...lightProject("app/", UNGUARDED_CODE),
+      "app/tsconfig.json": JSON.stringify({ files: [] }),
+      "app/tsconfig.src.json": TSCONFIG,
+    });
+    const r = await tsverify(
+      ["check", "app", "--project", "app/tsconfig.src.json", "--format", "json"],
+      { cwd },
+    );
+    expect(r.stderr).toBe("");
+    expect(r.code).toBe(1);
+    const doc = parse(r.stdout);
+    expect(doc.specs[0]).toMatchObject({ project: "app" });
+    expect(doc.findings.find((f) => f.category === "from-state-unconstrained")).toMatchObject({
+      codeAt: { file: "app/src/light.ts" },
+    });
+    // With the directory, tsconfig.json (which includes nothing) is the project.
+    const dirOnly = await tsverify(["check", "app", "--project", "app", "--format", "json"], {
+      cwd,
+    });
+    expect(parse(dirOnly.stdout).findings.map((f) => f.category)).toContain("broken-link");
+  });
+
   it("--project lets a spec live outside its project", async () => {
     const cwd = await tempSpecDir({
       "app/tsconfig.json": TSCONFIG,
@@ -294,7 +319,7 @@ describe("check: code conformance", () => {
     const r = await tsverify(["check", "--project", "nope"], { cwd });
     expect(r.code).toBe(2);
     expect(r.stdout).toBe("");
-    expect(r.stderr).toContain("error: --project: no such directory: nope");
+    expect(r.stderr).toContain("error: --project: no such directory or tsconfig file: nope");
     expect(r.stderr).toContain("$ tsverify check [...paths] [options]");
   });
 
@@ -316,7 +341,7 @@ describe("check: code conformance", () => {
           "no tsconfig.json in the current directory or any directory above it, so the code behind `impl` and `bindings` can't be located",
         behavior: "Order lifecycle",
         specAt: { file: "order.behavior.yaml", line: 1, column: 1 },
-        hint: "Pass --project <dir> to name the TypeScript project root, or --spec-only to check the spec alone.",
+        hint: "Pass --project <dir> (or --project <dir>/tsconfig.<name>.json) to name the TypeScript project, or --spec-only to check the spec alone.",
       },
     ]);
 
@@ -559,22 +584,47 @@ export async function mitigateInline(input: { id: number }) {
     expect(unconfirmed[0]?.message).toBe(
       "mitigate: couldn't confirm that setStatus writes status = mitigated: it changes status at verbs.ts:6 in a form tsverify can't read (the value `input.status` is not a single literal).",
     );
-    // The code model is stuck in `open`: a consequence of the unconfirmed transitions.
-    const stuck = findings.find((f) => f.property === "no-stuck-states");
-    expect(stuck?.causedBy).toEqual([
-      "unanalyzable:Incidents:mitigate:unconfirmed",
-      "unanalyzable:Incidents:resolve:unconfirmed",
-    ]);
+    // Unconfirmed transitions are taken as specified in the code model, like ones without
+    // `impl`: no stuck state or other artifact of what tsverify couldn't read. Only warnings.
+    expect(findings.filter((f) => f.category === "implementation-property")).toEqual([]);
+    expect(findings.filter((f) => f.severity === "error")).toEqual([]);
+    expect(r.code).toBe(0);
 
     const pretty = await tsverify(["check"], { cwd });
     expect(pretty.stdout).toContain(
       "    ↳ consequence: ⚠ unanalyzable  src/incident.behavior.yaml:11:3 · src/verbs.ts:6:21",
     );
-    expect(pretty.stdout).toContain("      ↳ consequence: ✗ implementation-property");
 
     const strict = await tsverify(["check", "--strict"], { cwd });
     expect(strict.code).toBe(1);
     expect(strict.stdout).toContain("--strict: 3 unanalyzable findings reported as errors.");
+  });
+
+  it("a transition whose impl writes nothing at all is still missing, with its consequences", async () => {
+    // `reply` writes no Incident status: `mitigate` is missing, and with `resolve` only from
+    // `mitigated` (unconfirmed, so taken as specified), nothing leaves `open` any more.
+    const cwd = await tempSpecDir({
+      "tsconfig.json": TSCONFIG,
+      "src/repo.ts": REPO,
+      "src/verbs.ts": VERBS,
+      "src/incident.behavior.yaml": SPEC.replace(
+        "verbs.ts#IMPL_MITIGATE",
+        "verbs.ts#reply",
+      ).replace("from: [open, mitigated]", "from: mitigated"),
+    });
+    const r = await tsverify(["check", "--format", "json"], { cwd });
+    expect(r.code).toBe(1);
+    const findings = parse(r.stdout).findings;
+    const missing = findings.find((f) => f.id === "missing-transition:Incidents:mitigate");
+    expect(missing).toMatchObject({ severity: "error" });
+    expect(findings.some((f) => f.id === "unanalyzable:Incidents:mitigate:unconfirmed")).toBe(
+      false,
+    );
+    expect(
+      findings.find((f) => f.id === "unanalyzable:Incidents:resolve:unconfirmed"),
+    ).toBeDefined();
+    const stuck = findings.find((f) => f.property === "no-stuck-states");
+    expect(stuck?.causedBy).toEqual([missing?.id]);
   });
 
   it("an unbound write gets only its unanalyzable finding, no non-atomic", async () => {

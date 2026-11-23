@@ -211,8 +211,16 @@ function entityNoun(name: string): string {
   return words.length === 0 ? "entity" : md(words.join(" ").toLowerCase());
 }
 
+/**
+ * `a` or `an`, by how `word` sounds: `a user`, `a one-time job`, `an hour`, `an SMS`, `a URL`.
+ * Initialisms (two or more capitals) go by the name of their first letter.
+ */
 function article(word: string): string {
-  return /^[aeiou]/i.test(word) ? "an" : "a";
+  const w = word.replace(/^[^A-Za-z0-9]+/, "");
+  if (/^[A-Z]{2,}(?![a-z])/.test(w)) return /^[AEFHILMNORSX]/.test(w) ? "an" : "a";
+  if (/^(uni|use|usa|usu|ute|uti|uri|ure|eu|ewe|one\b|once)/i.test(w)) return "a";
+  if (/^(hour|honest|honou?r|heir)/i.test(w)) return "an";
+  return /^[aeiou8]|^(11|18)(\D|$)/i.test(w) ? "an" : "a";
 }
 
 function capitalize(s: string): string {

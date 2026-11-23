@@ -97,8 +97,8 @@ function program(io: Io): CAC {
     .option("--enforced-only", ENFORCED_ONLY_HELP)
     .option("--strict", STRICT_HELP)
     .option(
-      "--project <dir>",
-      "TypeScript project root for all specs (default: per spec, the nearest tsconfig.json dir)",
+      "--project <path>",
+      "TypeScript project for all specs: its root directory, or its tsconfig file (default: per spec, the nearest tsconfig.json dir)",
     )
     .action((paths: string[], options: CheckCommandOptions) => checkCommand(io, paths, options));
 
@@ -109,8 +109,8 @@ function program(io: Io): CAC {
     )
     .option("--format <format>", FORMAT_HELP, { default: "pretty" })
     .option(
-      "--project <dir>",
-      "TypeScript project root for all specs (default: per spec, the nearest tsconfig.json dir)",
+      "--project <path>",
+      "TypeScript project for all specs: its root directory, or its tsconfig file (default: per spec, the nearest tsconfig.json dir)",
     )
     .option("--enforced-only", ENFORCED_ONLY_HELP)
     .option("--strict", STRICT_HELP)
@@ -144,8 +144,8 @@ function program(io: Io): CAC {
     .option("--spec-only", "Check the specs only: skip code extraction and conformance")
     .option("--enforced-only", ENFORCED_ONLY_HELP)
     .option(
-      "--project <dir>",
-      "TypeScript project root for all specs (default: per spec, the nearest tsconfig.json dir)",
+      "--project <path>",
+      "TypeScript project for all specs: its root directory, or its tsconfig file (default: per spec, the nearest tsconfig.json dir)",
     )
     .action((paths: string[], options: ViewCommandOptions) => viewCommand(io, paths, options));
 

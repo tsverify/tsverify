@@ -149,10 +149,12 @@ export async function testCommand(
 
     const runnable = jobs.filter((j) => j.tests.length > 0);
     if (runnable.length === 0) continue;
+    const conditions = members.map((i) => outcomes[i]?.customConditions).find((c) => c);
     const run = await runGeneratedTests(
       root,
       runnable.map((j) => `${j.outDir}/**/*.test.ts`),
       runners.get(root) as ResolvedVitest,
+      conditions === undefined ? {} : { conditions },
     );
     for (const job of runnable) {
       const mapped = testFindings({

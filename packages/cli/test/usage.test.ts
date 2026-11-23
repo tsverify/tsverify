@@ -22,7 +22,9 @@ describe("usage", () => {
     expect(r.code).toBe(0);
     expect(r.stdout).toContain("then check that the code conforms to them");
     expect(r.stdout).toMatch(/--spec-only +Check the specs only: skip code extraction/);
-    expect(r.stdout).toMatch(/--project <dir> +TypeScript project root for all specs/);
+    expect(r.stdout).toMatch(
+      /--project <path> +TypeScript project for all specs: its root directory, or its tsconfig file/,
+    );
   });
 
   it("prints the version", async () => {

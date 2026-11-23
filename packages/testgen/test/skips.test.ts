@@ -53,6 +53,41 @@ describe("skipped", () => {
     expect(result.tests.some((t) => t.transition === "refund")).toBe(true);
   });
 
+  it("a transition whose impl is an instance method, instead of calling it as a static one", () => {
+    const model = code();
+    model.instanceImpls = ["ship"];
+    const result = run(orderModel(), model);
+    expect(result.skipped).toContainEqual(
+      expect.objectContaining({
+        id: "not-generated:Order lifecycle:testgen:ship",
+        transition: "ship",
+        message:
+          "tsverify test generated no tests for `ship`: its impl src/admin/orders.ts#shipOrder is an instance method, and a generated test can't build an object of its class to call it on yet",
+        hint: "Test it with your own tests, or point `impl` at a function or static method that does the work.",
+      }),
+    );
+    expect(result.tests.some((t) => t.transition === "ship")).toBe(false);
+    expect(result.files.some((f) => f.content.includes("shipOrder("))).toBe(false);
+    expect(result.tests.some((t) => t.transition === "refund")).toBe(true);
+  });
+
+  it("everything when a bound export can't be replaced by a fake", () => {
+    const model = code();
+    model.unfakeable = [
+      { binding: "clients.stripe", reason: "client stripe is the class Stripe, …" },
+      { binding: "storage.Store.get", reason: "Store.get is a method of Store, a type, …" },
+    ];
+    const result = run(orderModel(), model);
+    expect(result.files).toEqual([]);
+    expect(result.skipped).toEqual([
+      expect.objectContaining({
+        id: "not-generated:Order lifecycle:testgen:fakes",
+        message:
+          "tsverify test generated no tests: the generated tests replace every export the spec binds with a fake, and can't replace these: client stripe is the class Stripe, …; Store.get is a method of Store, a type, …",
+      }),
+    ]);
+  });
+
   it("a transition without an invocation shape", () => {
     const model = code();
     for (const t of model.transitions)

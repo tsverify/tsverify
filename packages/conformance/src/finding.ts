@@ -19,6 +19,8 @@ export interface Pairing {
   t: Transition;
   code: Transition;
   sites: CodeSites;
+  /** The code model's `uncalledClients`: bound clients no call resolves to, with finding ids. */
+  uncalledClients?: Record<string, string>;
 }
 
 export interface FindingInput {
