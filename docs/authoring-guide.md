@@ -157,8 +157,10 @@ rules:
 
 The grammar is `status == S`, `status != S`, `status in [S, …]`, `count(effect E) <op> N`, `true`, `false`,
 `and`, `or`, `not`, `implies` and parentheses ([format reference](behavior-format.md#rules)). `always` and `never`
-are checked in every reachable state. `eventually` is checked in every **end state**, where no transition can
-fire any more: "the entity can't come to rest while this is false". A rule that only restates an `exactly-once`
+are checked in every reachable state. `eventually` means "from anywhere, a state where it holds can still be
+reached" (AG EF); with no cycles in the explored states, that is the same as holding in every **end state**,
+where no transition can fire any more: "the entity can't come to rest while this is false"
+([format reference](behavior-format.md#rules)). A rule that only restates an `exactly-once`
 effect (`count(effect E) <= 1`) adds nothing; the built-in check already covers it.
 
 ---

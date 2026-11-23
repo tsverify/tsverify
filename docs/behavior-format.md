@@ -126,8 +126,12 @@ STATE   := identifier (must be a declared state)
 EFFECT  := dotted identifier (must be an effect declared on some transition)
 ```
 
-Semantics: `always` holds in every reachable state; `never` holds in none; `eventually` means from every reachable
-state a satisfying state is reachable (AG EF — weaker than LTL with fairness).
+Semantics: `always` holds in every reachable state; `never` holds in none; `eventually` means that from every
+reachable state, a state where it holds can still be reached (AG EF: it need not happen on every run, only stay
+possible). The explored states have no cycles (each invocation runs at most once, up to `concurrency`), so every
+run ends in an **end state**, where no transition can fire any more, and AG EF comes down to: the expression holds
+in every end state. That is how it is checked and reported ("can end in status `x` where it never holds"). End
+states that exist only because the invocation bound ran out (one more invocation could still move) are skipped.
 
 ## `concurrency`
 
@@ -145,8 +149,11 @@ state a satisfying state is reachable (AG EF — weaker than LTL with fairness).
 | `guards` | map canonical guard → `path#symbol` or `path#symbol(args)`. Each argument is a string (`"admin"` or `'admin'`), a bare word or number, `true`/`false`, or a list of those (`["owner", "admin"]`); anything else (an object, a call) is a spec error, since it could never match a call |
 | `effects` | map effect name → code call path (`client.member.path`); omitted → name is the path |
 
-`persistence: assign | prisma | drizzle | memory` is still accepted as an alias of the preset form, so existing
-specs keep working. It can't be combined with `storage`.
+`persistence: assign | prisma | memory` is still accepted as an alias of the preset form, so existing specs keep
+working. It can't be combined with `storage`. `drizzle` (in either form) is a reserved name: the spec is valid,
+but there is no Drizzle preset yet, so `tsverify check` reports one `unanalyzable` warning and extracts no code
+model. A project that imports `drizzle-orm` without `bindings.storage` is treated the same way. Name the app's
+own storage functions instead (the named-function form below), which works whatever the database.
 
 ### `bindings.storage`
 
