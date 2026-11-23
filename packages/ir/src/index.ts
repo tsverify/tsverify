@@ -14,6 +14,7 @@ export type {
   BehaviorModel,
   Bindings,
   CallSite,
+  CallStep,
   ClientBinding,
   CodeSites,
   EffectDecl,
@@ -37,6 +38,12 @@ export type {
   UnreadWrite,
 } from "./model";
 export {
+  isNumberedWrite,
+  shortLocation,
+  specTransitionName,
+  transitionLabel,
+} from "./names";
+export {
   formatGuardArgList,
   formatGuardRef,
   formatSymbolRef,
@@ -47,6 +54,7 @@ export {
 } from "./refs";
 export type { StorageKind, StorageRoleAt } from "./storage";
 export {
+  coversAll,
   defaultStorageArgs,
   formatStorageArg,
   formatStorageFunction,

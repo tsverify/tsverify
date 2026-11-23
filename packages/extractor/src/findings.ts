@@ -7,7 +7,7 @@
  * share an id, `uniqueIds` suffixes the later ones (by code location) with `~2`, `~3`, …
  */
 import type { Finding, SourceLocation } from "@tsverify/ir";
-import { compareStrings } from "@tsverify/ir";
+import { compareStrings, isNumberedWrite, specTransitionName } from "@tsverify/ir";
 
 export type LinkKind = "impl" | "client" | "guard" | "storage" | "tsconfig";
 
@@ -102,16 +102,35 @@ export function mergeSharedWrites(findings: Finding[]): Finding[] {
     if (group.length < 2) continue;
     group.sort((a, b) => compareStrings(a.transition ?? "", b.transition ?? ""));
     const first = group[0] as Finding;
-    const names = group.map((f) => f.transition as string);
+    const names = [...new Set(group.map((f) => specTransitionName(f.transition as string)))];
     const rest = first.message.slice(`${first.transition}: `.length);
     const merged = {
       ...first,
-      message: `${names.slice(0, -1).join(", ")} and ${names.at(-1)}: ${rest}`,
+      message:
+        names.length === 1
+          ? `${names[0]}: ${rest}`
+          : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}: ${rest}`,
     };
     const original = group.find((f) => out.includes(f)) as Finding;
     out[out.indexOf(original)] = merged;
   }
   return out;
+}
+
+/**
+ * A message that starts with its code transition's name (`expire~2: …`) starts with the spec
+ * transition's instead (`expire: …`): `t~2` is the code model's internal name for a second write
+ * of `t`, and the finding's `codeAt` already says which write it is. Ids keep the internal name.
+ */
+export function spokenNames(findings: Finding[]): Finding[] {
+  for (const f of findings) {
+    const name = f.transition;
+    if (name === undefined || !isNumberedWrite(name) || !f.message.startsWith(`${name}: `))
+      continue;
+    // In place, like `uniqueIds`: callers hold on to some of these objects.
+    f.message = `${specTransitionName(name)}${f.message.slice(name.length)}`;
+  }
+  return findings;
 }
 
 /** Makes ids unique: colliding findings, ordered by code location then message, get `~2`, `~3`, … */

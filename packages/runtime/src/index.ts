@@ -34,6 +34,7 @@ export {
 } from "./instrument/prisma.js";
 export {
   STORAGE_CLIENT,
+  StandInTransactionError,
   type StorageArgInput,
   type StorageBindingInput,
   StorageConditionError,
@@ -42,6 +43,7 @@ export {
   type StorageFunctionImpl,
   type StorageFunctionInput,
   type StorageRoleInput,
+  standInTransaction,
 } from "./instrument/storage.js";
 export type {
   CollectionConfig,

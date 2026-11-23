@@ -1,0 +1,41 @@
+# Storage functions in modules that open a connection as they load (src/db.ts), and an atomic
+# function whose callback gets a transaction: cancel uses it in code the spec doesn't bind.
+behavior: Order shipping
+
+entity:
+  name: Order
+  state: status
+  states: [paid, shipped, canceled]
+  initial: paid
+  terminal: [shipped, canceled]
+
+actors:
+  clerk: { trust: authenticated }
+
+transitions:
+  ship:
+    from: paid
+    to: shipped
+    by: clerk
+    atomic: true
+    impl: src/ship.ts#shipOrder
+  cancel:
+    from: paid
+    to: canceled
+    by: clerk
+    atomic: true
+    impl: src/ship.ts#cancelOrder
+
+bindings:
+  storage:
+    read: { fn: src/repo.ts#findOrder, args: [_, key] }
+    update: { fn: src/repo.ts#setOrderStatusIf, args: [_, key, from, to] }
+    atomic: { fn: src/db.ts#withTransaction, args: [_, callback] }
+
+fixtures:
+  entity: { id: o1 }
+  actors:
+    clerk: { actor: clerk }
+  args:
+    ship: [$actor, $id]
+    cancel: [$actor, $id]

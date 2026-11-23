@@ -55,6 +55,12 @@ export interface Finding {
   trace?: Trace;
   hint?: string;
   /**
+   * The full error behind the message, when there is one: e.g. why a generated test failed or
+   * could not start (each stack, then each cause's). Pretty output prints its first lines; JSON
+   * keeps it whole.
+   */
+  detail?: string;
+  /**
    * Ids of findings this one is a consequence of (same run). E.g. B3's implementation-property
    * double refund is caused by the `non-atomic` conformance finding on `refund`.
    */

@@ -33,6 +33,26 @@ describe("declared atomicity", () => {
     ]);
   });
 
+  it("lists a transition only when every one of its writes is atomic as declared", () => {
+    const model = codeModel();
+    const ship = model.transitions.find((t) => t.name === "ship") as Transition;
+    const second = structuredClone(ship);
+    second.name = "ship~2";
+    second.atomic = false;
+    if (second.sites) {
+      second.sites.write = { ...AT, line: 20 };
+      delete second.sites.atomic;
+    }
+    model.transitions.push(second);
+    expect(declaredAtomicTransitions(model)).toEqual([]);
+    if (second.sites) second.sites.atomic = { kind: "declared", at: AT, gate: "storage.lock" };
+    second.atomic = true;
+    expect(declaredAtomicTransitions(model)).toEqual([
+      { transition: "ship", by: "lock" },
+      { transition: "ship", by: "withTransaction" },
+    ]);
+  });
+
   it("is not claimed for proven scopes or spec models", () => {
     const model = codeModel();
     const ship = model.transitions.find((t) => t.name === "ship") as Transition;

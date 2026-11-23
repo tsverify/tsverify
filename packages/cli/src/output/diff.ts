@@ -3,6 +3,7 @@ import { compareStrings, diffModels } from "@tsverify/ir";
 import { type DiffEntry, renderDiffMarkdown, renderDiffText } from "@tsverify/render";
 import { UsageError } from "../exit-codes";
 import type { Io } from "../io";
+import { displayPath } from "../locations";
 import { terminalFormatter } from "./pretty";
 
 export const DIFF_FORMATS = ["markdown", "json", "pretty"] as const;
@@ -94,10 +95,15 @@ export function isEnforced(pair: DiffPair): boolean {
   return pair.base?.enforced === true || pair.head?.enforced === true;
 }
 
-/** The whole stdout of `tsverify diff`. */
+/**
+ * The whole stdout of `tsverify diff`. Markdown and pretty output show a file outside the cwd
+ * absolute, as `check` does (`displayPath`); JSON keeps cwd-relative paths.
+ */
 export function formatDiff(run: DiffRun, format: DiffFormat, io: Io): string {
   if (format === "json") return `${JSON.stringify(toJsonDiffReport(run), null, 2)}\n`;
-  const entries: DiffEntry[] = [...run.pairs].sort((a, b) => compareStrings(a.file, b.file));
+  const entries: DiffEntry[] = [...run.pairs]
+    .sort((a, b) => compareStrings(a.file, b.file))
+    .map((pair) => ({ ...pair, file: displayPath(pair.file, io.cwd) }));
   const options = { base: run.base.ref, ...noteOption(run) };
   return format === "markdown"
     ? renderDiffMarkdown(entries, options)

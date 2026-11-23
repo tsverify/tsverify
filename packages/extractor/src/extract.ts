@@ -26,7 +26,13 @@ import type {
   StorageRole,
   UnreadWrite,
 } from "@tsverify/ir";
-import { compareStrings, formatStorageArg, formatSymbolRef, storageFunctions } from "@tsverify/ir";
+import {
+  compareStrings,
+  formatStorageArg,
+  formatSymbolRef,
+  shortLocation,
+  storageFunctions,
+} from "@tsverify/ir";
 import { assignAdapter } from "./adapters/assign";
 import {
   type BoundFunction,
@@ -45,7 +51,14 @@ import { ClientCalls } from "./client-calls";
 import { primaryDeclarationOf } from "./declarations";
 import { Dominance, type GuardMiss } from "./dominance";
 import { matchesEntity, writtenValue } from "./entity";
-import { brokenLink, mergeSharedWrites, sortFindings, unanalyzable, uniqueIds } from "./findings";
+import {
+  brokenLink,
+  mergeSharedWrites,
+  sortFindings,
+  spokenNames,
+  unanalyzable,
+  uniqueIds,
+} from "./findings";
 import { guardArgs } from "./guard-args";
 import { loadTypeScript, TypeScriptSetupError } from "./load-typescript";
 import { type LoadedProject, loadProject, ProjectContext } from "./project";
@@ -54,6 +67,7 @@ import {
   isExportedPath,
   isInstanceMember,
   pathHeadKind,
+  pathHeadMembers,
   resolveClient,
   resolveGuard,
   resolveImpl,
@@ -356,6 +370,37 @@ function extractLoaded(
   };
 }
 
+/** How many unbound methods the `storage.unbound-methods` finding names before "and N more". */
+const MAX_LISTED = 12;
+
+/**
+ * Calls the impls make (anywhere in their reach) to a method in `siblings`, one per method, at its
+ * first call (in impl order, then reach and source order), sorted by name.
+ */
+function unboundSiblingCalls(
+  ctx: ProjectContext,
+  siblings: ReadonlyMap<TS.Symbol, string>,
+  impls: readonly { reach: Reach }[],
+): { name: string; at: SourceLocation }[] {
+  if (siblings.size === 0) return [];
+  const first = new Map<string, SourceLocation>();
+  const seen = new Set<FunctionLike>();
+  for (const { reach } of impls) {
+    for (const frame of reach.frames) {
+      if (seen.has(frame)) continue;
+      seen.add(frame);
+      for (const call of frameCalls(frame)) {
+        const sym = symbolOf(call.expression, ctx.checker);
+        const name = sym && siblings.get(sym);
+        if (name !== undefined && !first.has(name)) first.set(name, ctx.loc(call));
+      }
+    }
+  }
+  return [...first]
+    .map(([name, at]) => ({ name, at }))
+    .sort((a, b) => compareStrings(a.name, b.name));
+}
+
 /** A file's name without directory and extension: the subject of findings outside any function. */
 function moduleName(ctx: ProjectContext, node: TS.Node): string {
   const rel = ctx.rel(node.getSourceFile().fileName);
@@ -380,8 +425,15 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
   let storage: StorageFunctions | undefined;
   // Bindings `tsverify test` can't replace with a fake (`BehaviorModel.unfakeable`).
   const unfakeable: { binding: string; reason: string }[] = [];
+  // Methods of the interfaces, classes and objects some `bindings.storage` functions belong to
+  // (`OrderStore` of `OrderStore.findOrder`), with their names, minus the bound ones (below).
+  const siblings = new Map<TS.Symbol, string>();
   if (storageBinding) {
     const bound = new Map<TS.Symbol, BoundFunction>();
+    for (const { fn } of storageFunctions(storageBinding)) {
+      const owner = pathHeadMembers(ctx, fn.ref);
+      for (const [sym, name] of owner?.members ?? []) siblings.set(sym, `${owner?.head}.${name}`);
+    }
     for (const { kind: fnKind, fn } of storageFunctions(storageBinding)) {
       const r = resolveStorageFunction(ctx, fn);
       const head = fn.ref.symbol.split(".")[0] as string;
@@ -397,6 +449,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
       }
       if (r.ok) {
         bound.set(r.value, { kind: fnKind, fn, path: fn.ref.symbol });
+        siblings.delete(r.value);
         const issue = roleArgumentIssue(ctx, r.value, fn, storageBinding.key);
         if (issue) {
           const at = fn.at ?? storageBinding.at;
@@ -411,21 +464,13 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
             ...(at ? { specAt: at } : {}),
           });
         }
-        // Still read as bound, so the rest of the check stays accurate; but generated tests
+        // Read as bound by `check`, like a private impl (`hiddenImpls`); but generated tests
         // replace storage functions by mocking the module that exports them.
         if (!isExportedPath(ctx, fn.ref)) {
-          findings.push(
-            brokenLink(
-              behavior,
-              "storage",
-              fn.ref.symbol,
-              `storage ${fnKind} function ${formatSymbolRef(fn.ref)} is not exported: \`tsverify test\` replaces storage functions by mocking the module that exports them, so it can't replace this one`,
-              fn.at ?? storageBinding.at,
-              {
-                hint: `Export ${head} from ${fn.ref.file} (and keep the impls that call it in another module, so the mock reaches their calls), or bind the exported function that calls it.`,
-              },
-            ),
-          );
+          unfakeable.push({
+            binding: `storage.${fn.ref.symbol}`,
+            reason: `storage ${fnKind} function ${formatSymbolRef(fn.ref)} is not exported, and the tests replace a storage function by mocking the module that exports it (export ${head} from ${fn.ref.file} and keep the impls that call it in another module, or bind the exported function that calls it)`,
+          });
         }
       } else {
         findings.push(
@@ -482,9 +527,10 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
           reason: `client ${name} is the class ${binding.export}, and a fake object in its place would break \`new ${binding.export}(…)\``,
         });
       } else if (!(r.value.flags & ts.SymbolFlags.Value)) {
+        const what = r.value.flags & ts.SymbolFlags.Interface ? "the interface" : "the type";
         unfakeable.push({
           binding: `clients.${name}`,
-          reason: `client ${name} is the interface ${binding.export}, a type: there is no module export to replace with a fake, and the code gets its instances from elsewhere`,
+          reason: `client ${name} is ${what} ${binding.export}, a type: there is no module export to replace with a fake, and the code gets its instances from elsewhere`,
         });
       }
     } else {
@@ -610,6 +656,30 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
         ),
       );
     }
+  }
+
+  const unboundSiblings = unboundSiblingCalls(ctx, siblings, impls);
+  if (unboundSiblings.length > 0 && storageBinding) {
+    const owners = [...new Set(unboundSiblings.map((u) => u.name.split(".")[0]))];
+    const shown = unboundSiblings.slice(0, MAX_LISTED);
+    const more = unboundSiblings.length - shown.length;
+    const list =
+      shown.map((u) => `${u.name} (${shortLocation(u.at)})`).join(", ") +
+      (more > 0 ? ` and ${more} more` : "");
+    findings.push({
+      ...unanalyzable(
+        behavior,
+        "binding",
+        "storage.unbound-methods",
+        `the impls call methods of ${owners.join(", ")} that \`bindings.storage\` doesn't bind: ${list}. tsverify doesn't look inside them, so a change of ${spec.entity.name}.${spec.entity.stateField} they make is not seen`,
+        {
+          codeAt: (unboundSiblings[0] as { at: SourceLocation }).at,
+          hint: `If one of them changes ${spec.entity.stateField}, bind it under \`bindings.storage\` (an \`update\` with its \`from\` and \`to\`, or a \`save\`), so tsverify reads it as a write; one that only reads can be bound under \`read\` or left as it is.`,
+        },
+      ),
+      severity: "info",
+      ...(storageBinding.at ? { specAt: storageBinding.at } : {}),
+    });
   }
 
   // Writes of this spec's entity.
@@ -776,7 +846,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
   if (instanceImpls.length > 0) model.instanceImpls = instanceImpls;
   if (Object.keys(hiddenImpls).length > 0) model.hiddenImpls = hiddenImpls;
   if (unfakeable.length > 0) model.unfakeable = unfakeable;
-  const sorted = sortFindings(uniqueIds(mergeSharedWrites(findings)));
+  const sorted = sortFindings(uniqueIds(spokenNames(mergeSharedWrites(findings))));
   // After `uniqueIds`: each unread write names its finding by its final id.
   const unreadWrites: Record<string, UnreadWrite[]> = {};
   for (const impl of impls) {

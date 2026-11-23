@@ -1,5 +1,6 @@
 import { type Formatter, formatFindings, plainFormatter } from "@tsverify/render";
 import { describe, expect, it } from "vitest";
+import { DETAIL_LINES, detailLines } from "../src/findings";
 import { causedFindings, SAMPLE_CWD, sampleFindings } from "./sample-findings";
 
 /** Wraps each styled span in `<name>…</name>`, so goldens show exactly what gets colored. */
@@ -124,5 +125,54 @@ describe("formatFindings with groupCauses", () => {
     const out = formatFindings(cyclic, { groupCauses: true, countLine: false });
     expect(out.split("\n").filter((l) => /^ +(↳ consequence: )?✗/.test(l))).toHaveLength(2);
     expect(out.split("↳").length - 1).toBe(1);
+  });
+});
+
+describe("a finding's detail", () => {
+  const detail = [
+    "StandInTransactionError: `tx.insert` was used",
+    "    at used (/app/node_modules/@tsverify/runtime/dist/instrument/storage.js:122:11)",
+    "    at writeAudit (src/audit.ts:5:12)",
+    "    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)",
+    "Caused by: Error: inner",
+    "    at cancelOrder (src/ship.ts:16:3)",
+  ].join("\n");
+
+  it("is printed under the hint, without what the message says and without library frames", () => {
+    const out = formatFindings(
+      [
+        {
+          id: "generated-test-failed:Order shipping:path:cancel:paid",
+          category: "generated-test-failed",
+          severity: "error",
+          message: "The test failed: `tx.insert` was used",
+          behavior: "Order shipping",
+          hint: "Bind it.",
+          detail,
+        },
+      ],
+      { countLine: false },
+    );
+    expect(out).toBe(
+      [
+        "Order shipping",
+        "  ✗ generated-test-failed",
+        "    The test failed: `tx.insert` was used",
+        "    hint: Bind it.",
+        "    detail:",
+        "      at writeAudit (src/audit.ts:5:12)",
+        "      Caused by: Error: inner",
+        "      at cancelOrder (src/ship.ts:16:3)",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it(`keeps at most ${DETAIL_LINES} lines and says how many more there are`, () => {
+    const long = Array.from({ length: 20 }, (_, i) => `    at f${i} (src/f.ts:${i + 1}:1)`);
+    const lines = detailLines(["Error: deep", ...long].join("\n"));
+    expect(lines).toHaveLength(DETAIL_LINES);
+    expect(lines[0]).toBe("Error: deep");
+    expect(lines.at(-1)).toBe("… 14 more lines (the JSON output has them all)");
   });
 });

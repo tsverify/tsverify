@@ -13,7 +13,7 @@
  * | `read`   | returns a copy of the entity with that key, or what `missing` says                |
  * | `save`   | stores a copy of `entity` (under `key` when given, else its key field), or merges `patch` into the entity with that `key` |
  * | `update` | when the stored state is one of the from-states (the `from` argument, or the fixed `from`), sets `to` (the argument or the fixed state) and merges `patch`; returns per `returns` |
- * | `atomic` | runs `callback` (with no arguments) under one lock shared by every atomic function |
+ * | `atomic` | runs `callback` under one lock shared by every atomic function, passing it one argument: a stand-in transaction (`standInTransaction`) |
  *
  * `update` returns, on success / when the state check fails (or the key is missing):
  * `changed` (default) `true` / `false`; `count` `1` / `0`; `entity` a copy of the updated entity /
@@ -28,6 +28,13 @@
  *   becomes `waiting`), and inside the callback reads see the callback's own staged writes, which
  *   are applied when it resolves and dropped when it throws. A nested atomic call runs inline,
  *   inside the outer one.
+ *
+ * The callback's argument: the real function passes its callback a transaction (or a lock
+ * handle), which the code under test hands on to the storage functions and clients it calls
+ * (`withTransaction(ctx, async (tx) => { await findOrder(tx, id); … })`). Those are faked and
+ * ignore it (a `_` argument), so the fake passes a stand-in: any use of the stand-in itself (a
+ * property read, a call) throws a `StandInTransactionError` naming what was used, since only code
+ * the spec doesn't bind uses it, and that code would otherwise reach the real database.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { preview } from "../preview.js";
@@ -91,6 +98,57 @@ export interface StorageFake<E extends string = string> {
 /** Thrown by an `update` with `returns: throws` when the stored state is not a from-state. */
 export class StorageConditionError extends Error {
   override readonly name = "StorageConditionError";
+}
+
+/**
+ * Thrown when code uses the stand-in transaction an `atomic` fake passes its callback: the code
+ * that used it is not replaced by a fake, so the spec doesn't bind it.
+ */
+export class StandInTransactionError extends Error {
+  override readonly name = "StandInTransactionError";
+}
+
+/** Properties read by `await`, JSON, test matchers and printers: harmless, answered `undefined`. */
+const PASSIVE = new Set([
+  "then",
+  "toJSON",
+  "constructor",
+  "asymmetricMatch",
+  "$$typeof",
+  "nodeType",
+]);
+
+/**
+ * What an `atomic` fake (`label`, e.g. `storage.withTransaction`) passes its callback in place of
+ * the real transaction or lock handle. Passing it on is harmless (a bound storage function or
+ * client takes it as a `_` argument and never looks at it); reading a property of it, setting one
+ * or calling it throws a `StandInTransactionError` that names the property, e.g. `tx.insert`.
+ */
+export function standInTransaction(label: string): unknown {
+  const used = (what: string): never => {
+    throw new StandInTransactionError(
+      `tsverify's stand-in transaction: \`${what}\` was used by code the spec doesn't bind. ${label} passes its callback this stand-in in place of the real transaction (or lock handle), and only the functions the spec binds are replaced by fakes; bind the function that uses it (a storage function under \`bindings.storage\`, or a client under \`bindings.clients\`), so the test replaces it.`,
+    );
+  };
+  const text = () => `[tsverify stand-in transaction for ${label}]`;
+  return new Proxy(function transaction() {}, {
+    get(_target, property) {
+      if (typeof property === "symbol" || PASSIVE.has(property) || property.startsWith("@@")) {
+        return undefined;
+      }
+      if (property === "toString") return text;
+      return used(`tx.${property}`);
+    },
+    set(_target, property) {
+      return used(`tx.${String(property)} = …`);
+    },
+    apply() {
+      return used("tx(…)");
+    },
+    construct() {
+      return used("new tx(…)");
+    },
+  });
 }
 
 /** The gate prefix of every storage function (`CallSite.client`). */
@@ -257,7 +315,8 @@ export function storage<const E extends string>(
                 : true;
         };
         break;
-      case "atomic":
+      case "atomic": {
+        const tx = standInTransaction(label);
         functions[fn.ref.symbol] = async (...args) => {
           const callback = pick(args, "callback");
           if (typeof callback !== "function") {
@@ -266,12 +325,12 @@ export function storage<const E extends string>(
             );
           }
           await s.gate(label, []);
-          if (scope() !== undefined) return await callback(); // nested: part of the outer step
+          if (scope() !== undefined) return await callback(tx); // nested: part of the outer step
           const lock = s.lock(lockName);
           await lock.acquire();
           try {
             const staged = new Map<string, Row>();
-            const result: unknown = await scopes.run({ owner: self, staged }, () => callback());
+            const result: unknown = await scopes.run({ owner: self, staged }, () => callback(tx));
             for (const [key, row] of staged) table.set(key, row);
             return result;
           } finally {
@@ -279,6 +338,7 @@ export function storage<const E extends string>(
           }
         };
         break;
+      }
     }
   }
 

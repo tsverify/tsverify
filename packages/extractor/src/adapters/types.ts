@@ -54,6 +54,12 @@ export interface PersistenceFacts {
    */
   entityKey?: TS.Expression;
   /**
+   * A conditional update whose key is not the one the code read the entity with (the read row's
+   * own key, or the read's key): its from-state is the update's own, but tsverify can't tell it
+   * writes the entity the code read and checked. Reported as an `unanalyzable` warning.
+   */
+  keyWarning?: { message: string; hint: string };
+  /**
    * Why atomicity could not be determined. Each becomes an `unanalyzable` warning when the linked
    * spec transition is `atomic: true` (otherwise the answer does not matter).
    */
@@ -110,7 +116,9 @@ export interface LinkAtomicity {
    * Facts that depend on the call path too (a read or commit in the impl, for a write in a
    * helper that takes the entity as a parameter): they replace `analyzeWrite`'s for this link.
    */
-  facts?: Partial<Pick<PersistenceFacts, "read" | "commit" | "entityKey" | "problems" | "unbound">>;
+  facts?: Partial<
+    Pick<PersistenceFacts, "read" | "commit" | "entityKey" | "problems" | "unbound" | "keyWarning">
+  >;
 }
 
 /** An effect call attributed to a write, as `effectCalls` found it. */

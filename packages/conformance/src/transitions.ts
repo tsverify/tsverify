@@ -81,7 +81,7 @@ export function checkUnlinked(spec: BehaviorModel, c: Transition): Finding {
     behavior: spec.name,
     transition: c.name,
     message:
-      `${sites.function.name} writes ${formatStates(c.from)} → ${c.to}, which no spec transition ` +
+      `${sites.function.name} writes ${formatStates(c.from, spec.entity.states)} → ${c.to}, which no spec transition ` +
       `declares${stateNote(spec, c.to)}.`,
     hint: `Declare this transition in the spec with impl: ${sites.function.file}#${sites.function.name}, or remove the write.`,
     codeAt: sites.write,
@@ -133,7 +133,7 @@ export function checkLinked(
         transition: t.name,
         subject: c.name,
         message:
-          `${t.name}: ${sites.function.name} also writes ${formatStates(c.from)} → ${c.to}, but ` +
+          `${t.name}: ${sites.function.name} also writes ${formatStates(c.from, spec.entity.states)} → ${c.to}, but ` +
           `${t.name} only goes to ${t.to}${stateNote(spec, c.to)}.`,
         hint: `Remove the write to ${c.to}, or declare it as its own transition in the spec.`,
         ...specAt,

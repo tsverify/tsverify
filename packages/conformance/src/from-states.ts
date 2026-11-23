@@ -39,7 +39,12 @@ export function checkFromStates(p: Pairing): Finding[] {
   const codeFrom = code.from;
   if (codeFrom === "*" || sites.fromState.unconstrained) {
     if (specAllowsAny) return [];
-    const reason = sites.fromState.reason ?? `${field} is not checked before the write`;
+    const other = sites.fromState.otherCheck;
+    const reason =
+      (sites.fromState.reason ?? `${field} is not checked before the write`) +
+      (other === undefined
+        ? ""
+        : `; the code checks \`${other}\` instead, which this spec doesn't model`);
     const specAt = fromItemAt(t);
     return [
       pairingFinding(p, {
@@ -48,7 +53,11 @@ export function checkFromStates(p: Pairing): Finding[] {
         message:
           `${t.name}: ${sites.function.name} writes ${t.to} from any state (${reason}); ` +
           `the spec allows only ${formatStates(specFrom)}.`,
-        hint: `Check that ${field} ${isIn(specFrom)} before the write, inside the same atomic scope.`,
+        hint:
+          `Check that ${field} ${isIn(specFrom)} before the write, inside the same atomic scope.` +
+          (other === undefined
+            ? ""
+            : ` If the check of \`${other}\` is what keeps this write safe, the spec models another state than the one the code guards with: give that entity a spec of its own (docs/authoring-guide.md §7.7).`),
         ...(specAt === undefined ? {} : { specAt }),
         codeAt: sites.write,
       }),
@@ -148,7 +157,7 @@ export function checkMissingFromStates(pairings: readonly Pairing[]): Finding[] 
   if (missing.length === 0) return [];
   const codeFrom = specFrom.filter((s) => accepted.has(s));
   const extraFrom = [...accepted].filter((s) => !specFrom.includes(s));
-  const from = formatStates([...codeFrom, ...extraFrom]);
+  const from = formatStates([...codeFrom, ...extraFrom], spec.entity.states);
   const functions = [...new Set(pairings.map((p) => p.sites.function.name))];
   const who =
     pairings.length === 1

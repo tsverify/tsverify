@@ -86,8 +86,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   `prices.*`): they are not effects, so no `undeclared-effect` for a flag check on a client bound to a class.
 - `impl` may name a private method: `file.ts#Class.#method`.
 - `tsverify test --max-states`, like `check`.
+- **Call chains** for `undeclared-effect` and `missing-effect` reached through helpers: "Call chain:
+  refundOrder → notifyRefund (refund.ts:30) → email.send (receipts.ts:9)" (`CallSite.via`, `CodeSites.via`).
+- `from-state-unconstrained` says when the code checks another state-like field instead (`the code checks
+  \`shipment.phase\` instead, which this spec doesn't model`), with a hint towards a spec for that
+  entity (`FromState.otherCheck`; authoring guide §7.7, coupled state fields).
+- One `info` finding per spec lists the methods of a bound storage interface, class or object that the impls
+  call but the spec doesn't bind (`OrderStore.holdOrder`), each at one call site: a write in one of them is not seen.
+- `Finding.detail`: the full error behind a failed or unstartable generated test (each stack and cause). JSON
+  has it whole; pretty output prints its first lines under `detail:`.
 
 ### Fixed
+- **`tsverify test` sets `NODE_ENV=test`** (unless set), `VITEST` and `TEST`, as the `vitest` command does, and
+  restores them. Without it vite set `development`, so a module that opens a connection as it loads, with a
+  fallback only under test, failed inside every module mock; vitest reported that as its generic "error when
+  mocking a module". A setup failure now names the underlying error (a mocked module's cause, not the wrapper).
+- **The atomic fake passes its callback a stand-in transaction.** Code using `tx` crashed on `undefined`; now
+  bound functions take the stand-in as `_`, and any other use (`tx.insert(…)`) fails with "tsverify's stand-in
+  transaction: `tx.insert` was used by code the spec doesn't bind", saying to bind it.
+- `tsverify test` generates no tests while a link is broken (`not-generated`, naming the links), and says it
+  "couldn't confirm" a transition's write it can't read, as `check` does, instead of "found no write".
+- A `bindings.storage` function that isn't exported no longer makes `check` exit 2: `check` reads it as usual,
+  and `tsverify test` reports it among the bindings it can't fake (`not-generated`).
+- A write whose key isn't the key the checked entity was read with (the same variable, a `const` copy, or the
+  read row's own key field) has an unknown from-state, with a warning, instead of the read's; a conditional
+  update keeps its own from-state, with a warning.
+- The "atomic, as declared by …" line names a transition only when every one of its writes is.
+- An effect-multiplicity hint is about the transitions in its trace, not another emitter of the effect.
+- `t~2`, the code model's internal name for a second write of `t`, no longer appears in messages, hints or
+  traces: they name `t` and the write's location (`refund#1 (write at refund.ts:15)`).
+- A list of every state (a blind update's `from`) reads "any state" in messages, `tsverify diff` rows
+  (`from any state`) and render summaries.
+- `tsverify diff` (markdown, pretty) shows a spec outside the cwd by its absolute path, as `check` does.
+- A client bound to a type alias is "the type X", not "the interface X".
+- The render summary calls an internal actor "the expiry actor", not "the expiry".
 - **A check before an unconditional update counts.** An update bound with every `from` state, after a bound
   read of the same key and a check of its state, writes from the checked states. It is atomic when the read and
   the update run inside one bound `atomic` function (as declared), else `non-atomic`: "the check of status on
@@ -150,8 +182,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   with other literal arguments, instead of "never called".
 - A patch's from-state is read after a bound read whose type lost the entity's name (`z.infer<…>`,
   `$inferSelect`), instead of "no read … precedes"; the from-state finding's hint follows its cause.
-- A `bindings.storage` function that isn't exported is a `broken-link` error (generated tests mock it by its
-  module); `check` still reads its calls.
 - More writes that were missed silently are read or reported: a bulk update with no read of one entity before it
   (`tx.update(table).set({ status: "resolved" }).where(…)`), an update's whole argument held in a `const`
   (`prisma.order.update(args)`), an empty update object or patch filled in afterwards, the state set on a copy

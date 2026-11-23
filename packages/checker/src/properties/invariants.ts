@@ -4,6 +4,7 @@ import {
   ruleProperty,
   type SourceLocation,
   type Trace,
+  transitionLabel,
 } from "@tsverify/ir";
 import { type EffectCode, encodedAccess } from "../encode";
 import { type CompiledExpr, compileExpr } from "../eval";
@@ -31,7 +32,8 @@ function code(name: string): string {
  * for a code model the spec already says what it wants and the fix is in the code.
  */
 function atomicHint(ctx: CheckContext, names: readonly string[]): string {
-  const list = names.map(code);
+  // A code model's `t~2` is named by its spec transition and where the write is.
+  const list = [...new Set(names.map((n) => code(transitionLabel(ctx.model, n))))];
   if (ctx.model.origin === "code") {
     return list.length === 1
       ? `make ${list[0]}'s state check and write atomic in the code (one transaction or a conditional update)`
@@ -58,14 +60,34 @@ export function staleWriters(trace: Trace): string[] {
   return [...out].sort();
 }
 
+/** The transitions that take a step in `trace`. */
+function actingIn(trace: Trace): Set<string> {
+  const out = new Set<string>();
+  for (const step of trace.steps) if (step.action) out.add(step.action.transition);
+  return out;
+}
+
+/**
+ * The transitions that fire `effect`, those taking a step in `trace` first: the hint and the
+ * location are about the counterexample, not about another emitter that is not in it.
+ */
+function emittersOf(ctx: CheckContext, effect: EffectCode, trace: Trace) {
+  const all = ctx.model.transitions.filter((t) => effect.emitters.includes(t.name));
+  const acting = actingIn(trace);
+  const inTrace = all.filter((t) => acting.has(t.name));
+  return inTrace.length > 0 ? inTrace : all;
+}
+
 function effectHint(ctx: CheckContext, effect: EffectCode, trace: Trace): string {
-  const emitters = ctx.model.transitions.filter((t) => effect.emitters.includes(t.name));
+  const emitters = emittersOf(ctx, effect, trace);
   const nonAtomic = emitters.filter((t) => !t.atomic).map((t) => t.name);
   if (nonAtomic.length > 0) return atomicHint(ctx, nonAtomic);
   // The emitters are atomic, so something else re-enabled them: a stale write, if there is one.
   const stale = staleWriters(trace);
   if (stale.length > 0) return atomicHint(ctx, stale);
-  const names = emitters.map((t) => code(t.name)).join(", ");
+  const names = [...new Set(emitters.map((t) => code(transitionLabel(ctx.model, t.name))))].join(
+    ", ",
+  );
   return `narrow the \`from\` states of ${names} so a repeated invocation is rejected, or deduplicate ${code(effect.name)}`;
 }
 
@@ -79,14 +101,21 @@ function effectAt(ctx: CheckContext, effect: EffectCode): SourceLocation | undef
   return ctx.model.origin === "code" ? declared : (declared ?? t?.at);
 }
 
-/** In a code model: the effect's call site, else the first emitter's write. */
-function effectCodeAt(ctx: CheckContext, effect: EffectCode): SourceLocation | undefined {
-  for (const t of ctx.model.transitions) {
-    if (!effect.emitters.includes(t.name)) continue;
+/**
+ * In a code model: the effect's call site, else the write, of the first emitter that takes a step
+ * in `trace` (of the first emitter when none does).
+ */
+function effectCodeAt(
+  ctx: CheckContext,
+  effect: EffectCode,
+  trace: Trace,
+): SourceLocation | undefined {
+  const emitters = emittersOf(ctx, effect, trace);
+  for (const t of emitters) {
     const site = t.sites?.effects?.find((e) => e.effect === effect.name);
     if (site) return site.at;
   }
-  return ctx.model.transitions.find((t) => t.name === effect.emitters[0])?.at;
+  return emitters[0]?.at;
 }
 
 /** `always` / `never` rules and the `effect-multiplicity` built-in, checked on every state. */
@@ -154,8 +183,8 @@ export function invariants(ctx: CheckContext): PropertyChecker {
         if (first === -1) continue;
         const property = "effect-multiplicity";
         const at = effectAt(ctx, effect);
-        const codeAt = ctx.model.origin === "code" ? effectCodeAt(ctx, effect) : undefined;
         const t = trace(first, property, "invariant");
+        const codeAt = ctx.model.origin === "code" ? effectCodeAt(ctx, effect, t) : undefined;
         const fired = t.steps[t.steps.length - 1]?.state.effects[effect.name] ?? 2;
         out.push(
           propertyFinding(ctx, property, effect.name, {

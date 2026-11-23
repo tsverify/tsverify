@@ -8,7 +8,7 @@ import type {
   Rule,
   Transition,
 } from "@tsverify/ir";
-import { compareStrings } from "@tsverify/ir";
+import { compareStrings, coversAll } from "@tsverify/ir";
 import { declaredAtomicBy, declaredAtomicText } from "./atomicity";
 import { isNonAtomicOnce } from "./mermaid";
 
@@ -70,7 +70,8 @@ function transitionSentence(model: BehaviorModel, t: Transition, noun: string): 
     "or",
   );
   let source: string;
-  if (t.from === "*") {
+  // A list of every state (a blind update's `from`) says what it means.
+  if (t.from === "*" || coversAll(t.from, model.entity.states)) {
     source = `${article(noun)} ${noun} in any state`;
   } else {
     const order = new Map(model.entity.states.map((s, i) => [s, i]));
@@ -121,7 +122,9 @@ function actorPhrase(
   let phrase: string;
   switch (actor?.trust) {
     case "internal":
-      phrase = `the ${md(name)}`;
+      // `the expiry actor`: an internal actor's name is often a job or a component, not a
+      // noun that reads on its own (`the expiry can move …`).
+      phrase = `the ${md(name)} actor`;
       break;
     case "signed-webhook":
       phrase = `${article(name)} ${md(name)} webhook`;

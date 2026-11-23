@@ -3,7 +3,7 @@ import type { GeneratedTest } from "@tsverify/testgen";
 import { describe, expect, it } from "vitest";
 import { outDirs, specSlug } from "./generated-dir";
 import { testFindings } from "./test-findings";
-import type { TestOutcome } from "./test-run";
+import { describeError, type TestOutcome } from "./test-run";
 
 const OUT = ".tsverify/generated/order-lifecycle";
 const write = { file: "src/jobs/expire-orders.ts", line: 13, column: 5 };
@@ -87,6 +87,59 @@ describe("testFindings", () => {
         },
       ]);
       expect(findings[0]?.hint).not.toContain("The real code");
+    });
+
+    it("names the cause of a module mock that failed to load, and keeps the stacks", () => {
+      const wrapped = describeError({
+        name: "Error",
+        message:
+          '[vitest] There was an error when mocking a module. If you are using "vi.mock" factory, make sure there are no top level variables inside, since this call is hoisted to top of the file.',
+        stack: "Error: [vitest] There was an error when mocking a module.\n    at src/audit.ts:4:1",
+        cause: {
+          name: "ConnectionError",
+          message: "DATABASE_URL is not set",
+          stack: "ConnectionError: DATABASE_URL is not set\n    at connect (src/db.ts:10:9)",
+        },
+      });
+      expect(wrapped).toEqual({
+        message:
+          "a module the tests mock (vi.mock) failed to load: ConnectionError: DATABASE_URL is not set",
+        detail: [
+          "Error: [vitest] There was an error when mocking a module.",
+          "    at src/audit.ts:4:1",
+          "Caused by: ConnectionError: DATABASE_URL is not set",
+          "    at connect (src/db.ts:10:9)",
+        ].join("\n"),
+      });
+      const { findings } = map(
+        [path, forbidden],
+        [
+          outcome(path, {
+            state: "failed",
+            errors: [wrapped.message],
+            details: [wrapped.detail],
+            setup: true,
+          }),
+          outcome(forbidden, {
+            state: "failed",
+            errors: [wrapped.message],
+            details: [wrapped.detail],
+            setup: true,
+          }),
+        ],
+      );
+      expect(findings).toEqual([
+        expect.objectContaining({
+          message: `The generated tests in paths.test.ts and forbidden.test.ts could not start (2 tests), before any of the code under test ran: ${wrapped.message}`,
+          detail: wrapped.detail,
+        }),
+      ]);
+      expect(findings[0]?.hint).toContain("no `setupFiles`, `env` or plugins");
+      // Any other error with a cause keeps its message and names the cause.
+      expect(
+        describeError({ message: "boom", cause: { name: "TypeError", message: "x is undefined" } })
+          .message,
+      ).toBe("boom (caused by TypeError: x is undefined)");
     });
 
     it("also knows a setup error by its message", () => {

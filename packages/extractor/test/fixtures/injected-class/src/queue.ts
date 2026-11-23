@@ -13,6 +13,9 @@ export interface Notifier {
   notify(orderId: string): Promise<void>;
 }
 
+/** The same client, as a type alias: it can be bound by that name too. */
+export type NotifierType = { notify(orderId: string): Promise<void> };
+
 /** Bound, but nothing ever calls it. */
 export const audit = {
   log(_what: string): void {},

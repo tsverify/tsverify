@@ -476,6 +476,44 @@ describe("state limit", () => {
   });
 });
 
+describe("effect hints on a code model", () => {
+  const RECEIPT_ID = "implementation-property:Order lifecycle:effect-multiplicity:email.receipt";
+
+  it("are about the transitions in the trace, not another emitter of the effect", () => {
+    const m = orderModel();
+    m.origin = "code";
+    const ps = transition(m, "payment_succeeded");
+    ps.from = "*";
+    // A second, non-atomic write that fires the receipt too, but from no state: never in a trace.
+    m.transitions.push({ ...ps, name: "payment_succeeded~2", from: [], atomic: false });
+    m.concurrency["payment_succeeded~2"] = 2;
+    const f = check(m).findings.find((x) => x.id === RECEIPT_ID);
+    expect(f?.trace?.steps.some((st) => st.action?.transition === "payment_succeeded~2")).toBe(
+      false,
+    );
+    expect(f?.hint).toBe(
+      "narrow the `from` states of `payment_succeeded` so a repeated invocation is rejected, or deduplicate `email.receipt`",
+    );
+  });
+
+  it("name a code write by its spec transition and where it is, never `t~2`", () => {
+    const m = orderModel();
+    m.origin = "code";
+    const refund = transition(m, "refund");
+    const write = { file: "src/orders/refund.ts", line: 15, column: 3 };
+    refund.name = "refund~2";
+    refund.atomic = false;
+    refund.at = write;
+    m.concurrency["refund~2"] = m.concurrency.refund ?? 2;
+    const f = check(m).findings.find(
+      (x) => x.id === "implementation-property:Order lifecycle:effect-multiplicity:stripe.refund",
+    );
+    expect(f?.hint).toBe(
+      "make `refund (its write at refund.ts:15)`'s state check and write atomic in the code (one transaction or a conditional update)",
+    );
+  });
+});
+
 describe("state-limit hint on a code model", () => {
   it("names the spec's transitions, never a code write's name", () => {
     const m = orderModel();

@@ -25,6 +25,7 @@ import type {
   ArgPath,
   BehaviorModel,
   CallSite,
+  CallStep,
   CodeSites,
   EffectDecl,
   Finding,
@@ -38,7 +39,7 @@ import type {
 } from "@tsverify/ir";
 import { compareStrings, parseGuardRef } from "@tsverify/ir";
 import type { AtomicityNote, PersistenceAdapter, PersistenceFacts } from "./adapters/types";
-import { frameNaming, frameOf, type Reach } from "./callgraph";
+import { chainTo, frameNaming, frameOf, type Reach } from "./callgraph";
 import type { FunctionLike } from "./cfg";
 import type { ClientCall, ClientCalls } from "./client-calls";
 import type { Dominance } from "./dominance";
@@ -49,8 +50,8 @@ import { traceToRoot } from "./invocation";
 import { occurrenceOf } from "./occurrence";
 import type { ProjectContext } from "./project";
 import type * as TS from "./ts-types";
-import type { Narrowed } from "./type-facts";
-import { unreadCheckOf } from "./unread-check";
+import { type Narrowed, typeNames } from "./type-facts";
+import { otherFieldCheckOf, unreadCheckOf } from "./unread-check";
 import { referenceText, type WriteNode } from "./writes";
 
 export interface MatchedWrite {
@@ -155,13 +156,22 @@ function callSite(
   reachOf: Reach,
 ): CallSite {
   const frame = frameOf(cc.call);
+  const via = frame && viaOf(ctx, reachOf, frame);
   return {
     at: ctx.loc(cc.call),
     client: cc.client,
     path: cc.path,
     gate: cc.gate,
     occurrence: frame ? occurrenceOf(cc.call, frame, cc.gate, reachOf, calls) : 0,
+    ...(via ? { via } : {}),
   };
+}
+
+/** The calls from the reach's root to `frame` (`CallSite.via`); undefined for the root itself. */
+function viaOf(ctx: ProjectContext, reachOf: Reach, frame: FunctionLike): CallStep[] | undefined {
+  const chain = chainTo(reachOf, frame);
+  if (chain === undefined || chain.length === 0) return undefined;
+  return chain.map((e) => ({ name: frameNaming(e.callee).name, at: ctx.loc(e.call) }));
 }
 
 function implRefOf(ctx: ProjectContext, d: Draft): SymbolRef | undefined {
@@ -216,8 +226,11 @@ function buildTransition(
     checker: ctx.checker,
     facts: m.persistence,
   });
+  // The impl's call paths decide what the write's own frame couldn't (a key that is a helper's
+  // parameter): its key warning, if any, replaces the frame's.
+  const { keyWarning: _, ...frameFacts } = m.persistence;
   const p: PersistenceFacts = linkAtomicity?.facts
-    ? { ...m.persistence, ...linkAtomicity.facts }
+    ? { ...frameFacts, ...linkAtomicity.facts }
     : m.persistence;
   let atomicScope: CodeSites["atomic"];
   if (linkAtomicity) {
@@ -323,7 +336,7 @@ function buildTransition(
         )
       : undefined;
   const unreadAt = unread && ctx.loc(unread.at);
-  const { hint: fromStateHint, ...fromState } =
+  const { hint: fromStateHint, ...decidedState } =
     unread && unreadAt
       ? {
           values: "*" as const,
@@ -332,6 +345,17 @@ function buildTransition(
           hint: UNREAD_CHECK_HINT,
         }
       : decided;
+  // Nothing checks the state, but the code may check another state-like field instead: a state
+  // the spec doesn't model, which the `from-state-unconstrained` message names.
+  const otherCheck = decidedState.unconstrained
+    ? otherFieldCheckOf(m.write, m.frame, ctx.checker, (access) => {
+        if (access.name.text !== spec.entity.stateField) return false;
+        const names = typeNames(ctx.checker.getTypeAtLocation(access.expression), ctx.checker);
+        return names.length === 0 || names.includes(spec.entity.name);
+      })
+    : undefined;
+  const fromState: FromState =
+    otherCheck === undefined ? decidedState : { ...decidedState, otherCheck };
   const from =
     fromState.values === "*"
       ? "*"
@@ -369,6 +393,16 @@ function buildTransition(
       }),
     );
   }
+  // A conditional update of another key than the entity the code read and checked.
+  if (p.keyWarning) {
+    env.findings.push(
+      unanalyzable(spec.name, "key", name, `${name}: ${p.keyWarning.message}`, {
+        transition: name,
+        codeAt: m.at,
+        hint: p.keyWarning.hint,
+      }),
+    );
+  }
   // A write that bypasses the storage the spec names: tsverify cannot tell how it is stored.
   if (p.unbound) {
     env.findings.push(
@@ -398,6 +432,7 @@ function buildTransition(
   const note = atomic ? undefined : (escaped ?? p.notes?.[0]);
 
   const invocation = invocationOf(env, d, p, guardCalls);
+  const writeVia = viaOf(ctx, d.reach, m.frame);
   const sites: CodeSites = {
     persistence: env.persistence,
     write: m.at,
@@ -406,6 +441,7 @@ function buildTransition(
       name: naming.name,
       at: ctx.loc(naming.node),
     },
+    ...(writeVia ? { via: writeVia } : {}),
     ...(t ? { specTransition: t.name } : {}),
     fromState,
     ...(p.read ? { read: callSite(ctx, calls, p.read, d.reach) } : {}),

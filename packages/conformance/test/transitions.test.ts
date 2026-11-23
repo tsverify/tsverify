@@ -35,6 +35,15 @@ describe("transitions", () => {
     ]);
   });
 
+  it("says `any state` for a write from every state, not the whole list", () => {
+    const { spec, code } = VARIANT_CASES["b1-reopen"]();
+    for (const t of code.transitions)
+      if (t.name === "reopenOrder") t.from = [...spec.entity.states];
+    expect(compare(spec, code)[0]?.message).toBe(
+      "reopenOrder writes any state → pending_payment, which no spec transition declares.",
+    );
+  });
+
   it("reports a linked write to another state as undeclared, and keeps checking the primary", () => {
     const findings = run([...cleanWrites(), extraRefundWrite("cancelled")]);
     expect(findings).toEqual([

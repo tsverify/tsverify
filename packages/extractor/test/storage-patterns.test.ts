@@ -1064,7 +1064,7 @@ export async function expireUnlocked(id: string) {
 export async function expireBlind(id: string) {
   await expireOrder(id);
 }
-/** A check of another order says nothing about this one. */
+/** A check of an order read with another key: tsverify can't tell it is this one. */
 export async function expireOther(id: string, otherId: string) {
   const other = await getOrder(otherId);
   if (other?.status !== "pending_payment") return;
@@ -1126,17 +1126,27 @@ export async function expireMany(ids: string[]) {
     }
   });
 
-  it("with no check, or a check of another key, the update writes from every state", () => {
-    for (const name of ["expireBlind", "expireOther"]) {
-      const s = transitionOf(result, name);
-      expect({ name, from: s.from, unconstrained: s.sites?.fromState.unconstrained }).toEqual({
-        name,
-        from: ALL,
-        unconstrained: true,
-      });
-      // The update itself is one step: nothing to race with.
-      expect(s.atomic).toBe(true);
-    }
+  it("with no check, the update writes from every state", () => {
+    const s = transitionOf(result, "expireBlind");
+    expect({ from: s.from, unconstrained: s.sites?.fromState.unconstrained }).toEqual({
+      from: ALL,
+      unconstrained: true,
+    });
+    // The update itself is one step: nothing to race with.
+    expect(s.atomic).toBe(true);
+  });
+
+  it("with a check of an order read with another key, the from-state is unknown (a warning)", () => {
+    const s = transitionOf(result, "expireOther");
+    expect(s.from).toBe("*");
+    expect(s.sites?.fromState.reason).toBe(
+      "status is checked on the Order that storage.getOrder reads with key `otherId`, but the write's key is `id`, so tsverify can't tell it is the same Order",
+    );
+    const f = result.findings.find((x) => x.id.endsWith(":from-state:expireOther"));
+    expect(f).toMatchObject({
+      severity: "warning",
+      hint: "Write the Order with the key it was read with, or with the read row's own `id` (`row.id`), so tsverify can tell it is the one the code checked.",
+    });
   });
 
   it("a lock method of a class, called through an injected field, is the atomic scope", () => {
@@ -1193,6 +1203,7 @@ export class Expiry {
     // (`setStatusIf`'s own write is reported too: it isn't bound here.)
     expect(result.findings.filter((x) => x.id.includes("expire")).map((x) => x.id)).toEqual([
       f?.id,
+      "unanalyzable:Fixture orders:from-state:expireOther",
     ]);
   });
 });
@@ -1421,7 +1432,7 @@ export async function ship(deps: { orders: OrderStore }, id: string) {
     ]);
   });
 
-  it("a function that isn't exported is a broken link, but still read as bound", () => {
+  it("a function that isn't exported is read as bound; only `tsverify test` can't replace it", () => {
     const result = extract(
       `${IMPORTS}
 async function findLocal(_db: unknown, id: string) {
@@ -1439,11 +1450,14 @@ export async function cancel(id: string) {
         save: [{ fn: "src/repo.ts#patchOrder", args: ["key", "patch"] }],
       }),
     );
-    const f = result.findings.find((x) => x.id === "broken-link:Fixture orders:storage:findLocal");
-    expect(f).toMatchObject({ severity: "error" });
-    expect(f?.message).toBe(
-      "storage read function src/impl.ts#findLocal is not exported: `tsverify test` replaces storage functions by mocking the module that exports them, so it can't replace this one",
-    );
+    expect(result.findings.filter((x) => x.category === "broken-link")).toEqual([]);
+    expect(result.model?.unfakeable).toEqual([
+      {
+        binding: "storage.findLocal",
+        reason:
+          "storage read function src/impl.ts#findLocal is not exported, and the tests replace a storage function by mocking the module that exports it (export findLocal from src/impl.ts and keep the impls that call it in another module, or bind the exported function that calls it)",
+      },
+    ]);
     const s = transitionOf(result, "cancel");
     expect(s.from).toEqual(["pending_payment"]);
     expect(s.sites?.read?.gate).toBe("storage.findLocal");
@@ -1505,5 +1519,232 @@ export async function ship(id: string) {
     ]);
     // Storage functions are not effect clients: only clients go into `uncalledClients`.
     expect(Object.keys(result.model?.uncalledClients ?? {})).toEqual(["email", "legacy", "stripe"]);
+  });
+});
+
+describe("a second write of a transition", () => {
+  it("is named in messages by its spec transition, never `t~2` (the id keeps it)", () => {
+    const result = extract(
+      `${IMPORTS}
+export async function cancel(id: string, from: Parameters<typeof setStatusIf>[1] & string) {
+  if (await setStatusIf(id, "pending_payment", "cancelled")) return;
+  if (!(await setStatusIf(id, from, "cancelled"))) throw new Error("changed");
+}
+`,
+      [t("cancel", "cancelled", { from: ["pending_payment"] })],
+    );
+    expect(result.model?.transitions.map((x) => x.name)).toContain("cancel~2");
+    const f = result.findings.find(
+      (x) => x.id === "unanalyzable:Fixture orders:from-state:cancel~2",
+    );
+    expect(f?.message).toBe(
+      "cancel: the from-state of this write is unknown: the `from` argument of storage.setStatusIf (from) is not a literal state or a list of them",
+    );
+    expect(result.findings.some((x) => x.message.includes("~2"))).toBe(false);
+  });
+});
+
+describe("call chains", () => {
+  it("record how the impl reaches a write and an effect call in helpers, shortest first", () => {
+    const result = extract(
+      `${IMPORTS}
+async function notify(id: string) {
+  await email.send(id, "refunded");
+}
+async function doRefund(id: string) {
+  if (!(await setStatusIf(id, "paid", "refunded"))) throw new Error("changed");
+  await notify(id);
+}
+export async function refund(id: string) {
+  await doRefund(id);
+}
+`,
+      [t("refund", "refunded", { from: ["paid"] })],
+    );
+    const sites = transitionOf(result, "refund").sites;
+    const doRefund = { name: "doRefund", at: { file: "src/impl.ts", line: 15, column: 9 } };
+    expect(sites?.via).toMatchObject([doRefund]);
+    expect(sites?.effects.find((e) => e.gate === "email.send")?.via).toMatchObject([
+      doRefund,
+      { name: "notify", at: { file: "src/impl.ts", line: 12, column: 9 } },
+    ]);
+    expect(sites?.commit?.via).toMatchObject([doRefund]);
+  });
+});
+
+describe("a check on another field", () => {
+  const impl = (check: string) => `${IMPORTS}
+interface Shipment { id: string; phase: "packing" | "sent"; status: "open" | "closed" }
+declare function shipmentOf(id: string): Promise<Shipment>;
+declare function isSent(phase: Shipment["phase"]): boolean;
+export async function ship(id: string) {
+  const shipment = await shipmentOf(id);
+  ${check}
+  await patchOrder(id, { status: "shipped" });
+}
+`;
+
+  it("is named when nothing checks the state: another entity's state guards the write", () => {
+    for (const [check, text] of [
+      ['if (shipment.phase === "sent") throw new Error("sent");', "shipment.phase"],
+      ["if (isSent(shipment.phase)) return;", "shipment.phase"],
+      // Same name as the state field, on another entity: still another state.
+      ['if (shipment.status !== "open") return;', "shipment.status"],
+    ] as const) {
+      const sites = transitionOf(extract(impl(check), [t("ship", "shipped")]), "ship").sites;
+      expect(sites?.fromState).toMatchObject({ unconstrained: true, otherCheck: text });
+    }
+  });
+
+  it("is not named when the code checks nothing, or checks the state itself", () => {
+    const none = transitionOf(extract(impl(""), [t("ship", "shipped")]), "ship").sites;
+    expect(none?.fromState.otherCheck).toBeUndefined();
+    const own = transitionOf(
+      extract(impl('const order = await getOrder(id); if (order?.status !== "paid") return;'), [
+        t("ship", "shipped"),
+      ]),
+      "ship",
+    ).sites;
+    expect(own?.fromState.otherCheck).toBeUndefined();
+  });
+});
+
+describe("methods of a bound storage interface that the spec doesn't bind", () => {
+  it("are listed once per spec, each at its first call, as info", () => {
+    const result = extract(
+      `${IMPORTS}
+import type { Order } from "./repo";
+export interface Ledger {
+  get(id: string): Promise<Order | undefined>;
+  archive(id: string): Promise<void>;
+  touch(id: string): Promise<void>;
+  unused(): void;
+}
+async function tidy(ledger: Ledger, id: string) {
+  await ledger.touch(id);
+}
+export async function ship(ledger: Ledger, id: string) {
+  const order = await ledger.get(id);
+  if (order?.status !== "paid") throw new Error("not paid");
+  await ledger.archive(id);
+  await patchOrder(id, { status: "shipped" });
+  await ledger.archive(id);
+  await tidy(ledger, id);
+}
+`,
+      [t("ship", "shipped")],
+      storageOf({
+        read: ["src/impl.ts#Ledger.get"],
+        save: [{ fn: "src/repo.ts#patchOrder", args: ["key", "patch"] }],
+      }),
+      true,
+    );
+    const listed = result.findings.filter((f) => f.id.endsWith(":storage.unbound-methods"));
+    expect(listed).toEqual([
+      expect.objectContaining({
+        id: "unanalyzable:Fixture orders:binding:storage.unbound-methods",
+        category: "unanalyzable",
+        severity: "info",
+        message:
+          "the impls call methods of Ledger that `bindings.storage` doesn't bind: Ledger.archive (impl.ts:20), Ledger.touch (impl.ts:15). tsverify doesn't look inside them, so a change of Order.status they make is not seen",
+        codeAt: expect.objectContaining({ file: "src/impl.ts", line: 20 }),
+      }),
+    ]);
+  });
+
+  it("are not reported when the impls call only bound ones", () => {
+    const result = extract(
+      `${IMPORTS}
+import type { Order } from "./repo";
+export interface Ledger {
+  get(id: string): Promise<Order | undefined>;
+  archive(id: string): Promise<void>;
+}
+export async function ship(ledger: Ledger, id: string) {
+  const order = await ledger.get(id);
+  if (order?.status !== "paid") throw new Error("not paid");
+  await patchOrder(id, { status: "shipped" });
+}
+`,
+      [t("ship", "shipped")],
+      storageOf({
+        read: ["src/impl.ts#Ledger.get"],
+        save: [{ fn: "src/repo.ts#patchOrder", args: ["key", "patch"] }],
+      }),
+      true,
+    );
+    expect(result.findings.filter((f) => f.id.endsWith(":storage.unbound-methods"))).toEqual([]);
+  });
+});
+
+describe("the key a write uses and the key the checked entity was read with", () => {
+  const result = extract(
+    `${IMPORTS}
+/** Read by one key, saved by another: which order is written? */
+export async function shipOther(id: string, otherId: string) {
+  const order = await getOrder(otherId);
+  if (order?.status !== "paid") throw new Error("not paid");
+  await patchOrder(id, { status: "shipped" });
+}
+/** Read by one key, saved by the read row's own key: the same order. */
+export async function shipRow(orderId: string) {
+  const order = await findOrder("t1", orderId);
+  if (order?.status !== "paid") throw new Error("not paid");
+  await patchOrder(order.id, { status: "shipped" });
+}
+/** A conditional update of another key than the order read and checked. */
+export async function cancelOther(id: string, otherId: string) {
+  const order = await getOrder(otherId);
+  if (order?.status !== "pending_payment") throw new Error("not pending");
+  if (!(await setStatusIf(id, "pending_payment", "cancelled"))) throw new Error("changed");
+}
+/** A conditional update of the read row's own key. */
+export async function cancelRow(orderId: string) {
+  const order = await getOrder(orderId);
+  if (order?.status !== "pending_payment") throw new Error("not pending");
+  if (!(await setStatusIf(order.id, "pending_payment", "cancelled"))) throw new Error("changed");
+}
+/** The same key through a const copy. */
+export async function shipCopy(input: { id: string }) {
+  const id = input.id;
+  const order = await getOrder(input.id);
+  if (order?.status !== "paid") throw new Error("not paid");
+  await patchOrder(id, { status: "shipped" });
+}
+`,
+    [
+      t("shipOther", "shipped", { from: ["paid"] }),
+      t("shipRow", "shipped", { from: ["paid"] }),
+      t("shipCopy", "shipped", { from: ["paid"] }),
+      t("cancelOther", "cancelled", { from: ["pending_payment"] }),
+      t("cancelRow", "cancelled", { from: ["pending_payment"] }),
+    ],
+  );
+
+  it("differ: the from-state is unknown, with a warning that says so", () => {
+    const s = transitionOf(result, "shipOther");
+    expect(s.from).toBe("*");
+    const f = result.findings.find((x) => x.id.endsWith(":from-state:shipOther"));
+    expect(f?.message).toBe(
+      "shipOther: the from-state of this write is unknown: status is checked on the Order that storage.getOrder reads with key `otherId`, but the write's key is `id`, so tsverify can't tell it is the same Order",
+    );
+  });
+
+  it("differ for a conditional update: its from-state stands, with a warning about the key", () => {
+    expect(transitionOf(result, "cancelOther").from).toEqual(["pending_payment"]);
+    const f = result.findings.find((x) => x.id === "unanalyzable:Fixture orders:key:cancelOther");
+    expect(f).toMatchObject({
+      severity: "warning",
+      message:
+        "cancelOther: status is checked on the Order that storage.getOrder reads with key `otherId`, but the write's key is `id`, so tsverify can't tell it is the same Order: storage.setStatusIf sets status on whichever Order has that key",
+    });
+    expect(result.findings.some((x) => x.id.endsWith(":key:cancelRow"))).toBe(false);
+  });
+
+  it("are the same: the read row's own key field, or a const copy of the read's key", () => {
+    for (const name of ["shipRow", "shipCopy"]) {
+      expect({ name, from: transitionOf(result, name).from }).toEqual({ name, from: ["paid"] });
+      expect(result.findings.some((x) => x.id.endsWith(`:from-state:${name}`))).toBe(false);
+    }
   });
 });

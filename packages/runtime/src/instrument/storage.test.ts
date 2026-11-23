@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { type Schedule, scheduler } from "../scheduler";
 import { effects } from "./effects";
 import {
+  StandInTransactionError,
   type StorageArgInput,
   StorageConditionError,
   type StorageFunctionInput,
@@ -200,6 +201,34 @@ describe("instrument.storage", () => {
         }),
       ).rejects.toThrow("boom");
       expect(fake.rows("Order")).toEqual([paid()]);
+    });
+
+    test("the callback gets a stand-in transaction: passing it on is fine, using it throws", async () => {
+      const binding = {
+        ...REPO,
+        read: [fn("findOrder", ["_", "key"])],
+        atomic: [fn("withTransaction", ["_", "callback"])],
+      };
+      const { f } = setup(binding);
+      const status = await f.withTransaction({ db: true }, async (tx: unknown) => {
+        // A bound storage function takes it as `_`; await, JSON and printing don't use it.
+        const order = await f.findOrder(tx, "o1");
+        expect(JSON.stringify({ tx })).toBe("{}");
+        expect(`${tx}`).toBe("[tsverify stand-in transaction for storage.withTransaction]");
+        return order.status;
+      });
+      expect(status).toBe("paid");
+      // Code the spec doesn't bind (`tx.insert(…)`) is told what it used and what to bind.
+      const unbound = f.withTransaction({}, async (tx: { insert(t: string): unknown }) =>
+        tx.insert("audit"),
+      );
+      await expect(unbound).rejects.toThrow(StandInTransactionError);
+      await expect(unbound).rejects.toThrow(
+        "tsverify's stand-in transaction: `tx.insert` was used by code the spec doesn't bind. storage.withTransaction passes its callback this stand-in",
+      );
+      await expect(f.withTransaction({}, async (tx: () => void) => tx())).rejects.toThrow(
+        "`tx(…)` was used",
+      );
     });
 
     test("one at a time, also outside workers; a nested call runs inside the outer one", async () => {

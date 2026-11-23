@@ -32,7 +32,8 @@ Invalid input (2) takes precedence over violations (1).
 
 - **JSON** (`check`, `test`, `validate`): `{ version: 1, findings, specs, summary }`. Every finding has a stable `id`,
   `category`, `severity`, `message`, and `specAt` / `codeAt` locations relative to the cwd (also when they are
-  outside it: `../…`; only the pretty output shows those as absolute paths); a consequence has `causedBy`, the ids
+  outside it: `../…`; only the pretty output, and `diff`'s markdown and pretty output, show those as absolute
+  paths); a consequence has `causedBy`, the ids
   of the findings that explain it. `specs[].enforced` is present (and `true`) for specs marked `enforced: true`;
   `strict: true` is present for a `--strict` run. Bumping `version` is a breaking change. Per spec:
   - `stats` (the spec's model) and `codeStats` (the model extracted from the code), from the model checker:

@@ -17,7 +17,7 @@
 import { type FunctionLike, inlineCallbackCall, isFunctionLike } from "./cfg";
 import { symbolOf } from "./resolve";
 import type * as TS from "./ts-types";
-import { constInitializer, stripExpr } from "./type-facts";
+import { constInitializer, literalsOf, stripExpr } from "./type-facts";
 import { ts } from "./typescript";
 import { oneLine, referenceText, type WriteNode } from "./writes";
 
@@ -167,4 +167,57 @@ export function unreadCheckOf(
   if (!found) return undefined;
   const at = enclosingExpression(found);
   return { at: found, text: shortened(at) };
+}
+
+/**
+ * A check on another state-like field before a write whose own state nothing checks: a comparison
+ * of a field with a string literal (`shipment.phase === "sent"`), a `switch` on it, `.includes` /
+ * `.has` of it, or the field passed to a function (`isSent(shipment.phase)`),
+ * where the field's type is a union of two or more string literals and it is not the write's own
+ * state field (`isOwnState`). Searched like `unreadCheckOf`: the write's function with its inline
+ * callbacks, before the write. Of several, the first whose name says state (`…status`, `…state`)
+ * wins, else the first. The code then guards the write with a state the spec doesn't model
+ * (another entity's, or a second field of this one): a modelling question, which the
+ * `from-state-unconstrained` message names.
+ */
+export function otherFieldCheckOf(
+  write: WriteNode,
+  frame: FunctionLike,
+  checker: TS.Checker,
+  isOwnState: (access: TS.PropertyAccessExpression) => boolean,
+): string | undefined {
+  const limit = write.site.getStart();
+  const stateLike = (e: TS.Expression): TS.PropertyAccessExpression | undefined => {
+    const x = stripExpr(e);
+    if (!ts.isPropertyAccessExpression(x) || isOwnState(x)) return undefined;
+    const type = checker.getTypeAtLocation(x);
+    const lits = literalsOf(type, checker);
+    if (lits === "*" || lits.length < 2) return undefined;
+    const parts = type?.isUnionType() ? type.getTypes() : [];
+    return parts.some((p) => p.isStringLiteralType()) ? x : undefined;
+  };
+  const isText = (e: TS.Expression) => {
+    const x = stripExpr(e);
+    return ts.isStringLiteral(x) || ts.isNoSubstitutionTemplateLiteral(x);
+  };
+  const found: TS.PropertyAccessExpression[] = [];
+  const add = (x: TS.PropertyAccessExpression | undefined) => {
+    if (x) found.push(x);
+  };
+  const visit = (n: TS.Node): void => {
+    if (n.getStart() >= limit) return;
+    if ((isFunctionLike(n) && !inlineCallbackCall(n)) || ts.isClassLike(n)) return;
+    if (ts.isBinaryExpression(n) && isComparison(n.operatorToken.kind)) {
+      if (isText(n.right)) add(stateLike(n.left));
+      else if (isText(n.left)) add(stateLike(n.right));
+    } else if (ts.isSwitchStatement(n)) {
+      add(stateLike(n.expression));
+    } else if (ts.isCallExpression(n)) {
+      for (const a of n.arguments) if (!ts.isSpreadElement(a)) add(stateLike(a));
+    }
+    n.forEachChild(visit);
+  };
+  if (frame.body) visit(frame.body);
+  const best = found.find((x) => /status|state/i.test(x.name.text)) ?? found[0];
+  return best && shortened(best);
 }

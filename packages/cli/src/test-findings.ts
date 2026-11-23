@@ -9,7 +9,7 @@
  * | replay verdict `replay-disagrees`       | `replay-disagrees` (warning)              |
  * | replay verdict `inconclusive`           | `unanalyzable` (info)                     |
  * | replay test fails without a verdict     | `generated-test-failed` (error): it could not run |
- * | test files fail before their tests run  | one `generated-test-failed` (error) per distinct error, `…:setup:<first file>`, with a setup hint and the original error |
+ * | test files fail before their tests run  | one `generated-test-failed` (error) per distinct error, `…:setup:<first file>`, with a setup hint and the original error (its innermost cause), in full in `detail` |
  *
  * A test fails "before it runs" (a setup failure, not a behavior one) when vitest could not load
  * its file (`TestOutcome.setup`: an import that doesn't resolve, a module mock that can't be
@@ -57,20 +57,29 @@ export function testFindings(input: MapInput): { findings: Finding[]; counts: Te
   const counts: TestCounts = { total: tests.length, passed: 0, failed: 0, missing: 0 };
   const findings: Finding[] = [];
   // Setup failures, by their first error: usually one cause fails every file the same way.
-  const setup = new Map<string, { files: string[]; tests: number; error: string }>();
+  const setup = new Map<
+    string,
+    { files: string[]; tests: number; error: string; detail?: string }
+  >();
   for (const test of tests) {
     const file = `${outDir}/${test.file}`;
     const outcome = byKey.get(`${file}\n${test.name}`) ?? byKey.get(`${file}\n`);
     if (outcome === undefined) {
       counts.missing++;
-      findings.push(failed(behavior, file, test, ["vitest did not run this test"]));
+      findings.push(failed(behavior, file, test, { errors: ["vitest did not run this test"] }));
       continue;
     }
     if (outcome.state === "passed") counts.passed++;
     else counts.failed++;
     if (outcome.state !== "passed" && isSetupFailure(outcome)) {
       const error = firstError(outcome.errors);
-      const seen = setup.get(error) ?? { files: [], tests: 0, error };
+      const detail = outcome.details?.[0];
+      const seen = setup.get(error) ?? {
+        files: [],
+        tests: 0,
+        error,
+        ...(detail === undefined ? {} : { detail }),
+      };
       if (!seen.files.includes(file)) seen.files.push(file);
       seen.tests++;
       setup.set(error, seen);
@@ -78,13 +87,13 @@ export function testFindings(input: MapInput): { findings: Finding[]; counts: Te
     }
 
     if (test.kind !== "replay") {
-      if (outcome.state !== "passed") findings.push(failed(behavior, file, test, outcome.errors));
+      if (outcome.state !== "passed") findings.push(failed(behavior, file, test, outcome));
       continue;
     }
     const meta = outcome.meta.tsverifyReplay as ReplayMeta | undefined;
     const source = test.finding === undefined ? undefined : sources.get(test.finding);
     if (meta === undefined) {
-      if (outcome.state !== "passed") findings.push(failed(behavior, file, test, outcome.errors));
+      if (outcome.state !== "passed") findings.push(failed(behavior, file, test, outcome));
       continue;
     }
     findings.push(replayFinding(behavior, file, test, meta, source));
@@ -98,7 +107,7 @@ export function testFindings(input: MapInput): { findings: Finding[]; counts: Te
  * load, or a mock vitest couldn't build.
  */
 const SETUP_ERROR =
-  /Failed to resolve (entry for package|import)|Cannot find (module|package)|Failed to load url|does not provide an export named|error when mocking a module|ERR_MODULE_NOT_FOUND/;
+  /Failed to resolve (entry for package|import)|Cannot find (module|package)|Failed to load url|does not provide an export named|error when mocking a module|module the tests mock \(vi\.mock\) failed to load|ERR_MODULE_NOT_FOUND/;
 
 function isSetupFailure(outcome: TestOutcome): boolean {
   return outcome.setup === true || outcome.errors.some((e) => SETUP_ERROR.test(e));
@@ -107,7 +116,12 @@ function isSetupFailure(outcome: TestOutcome): boolean {
 /** One finding for the tests in `files` that failed before they ran, with the same `error`. */
 function setupFailed(
   behavior: string,
-  { files, tests, error }: { files: string[]; tests: number; error: string },
+  {
+    files,
+    tests,
+    error,
+    detail,
+  }: { files: string[]; tests: number; error: string; detail?: string },
 ): Finding {
   const names = files.map((f) => f.slice(f.lastIndexOf("/") + 1));
   const dir = (files[0] ?? "").slice(0, (files[0] ?? "").lastIndexOf("/"));
@@ -121,7 +135,8 @@ function setupFailed(
     severity: "error",
     message: `The generated tests in ${list} could not start (${tests === 1 ? "1 test" : `${tests} tests`}), before any of the code under test ran: ${error}`,
     behavior,
-    hint: `A setup problem, not a behavior the spec forbids. Check that every module the tests import resolves under vitest as it does in the project (package \`exports\` conditions, tsconfig \`paths\` and \`customConditions\`, a workspace package that must be built first), and that the exports \`bindings\` names can be replaced by fakes. The tests are kept in ${dir}/.`,
+    hint: `A setup problem, not a behavior the spec forbids. Check that every module the tests import resolves under vitest as it does in the project (package \`exports\` conditions, tsconfig \`paths\` and \`customConditions\`, a workspace package that must be built first), that it loads without what the project's own vitest config sets up (tsverify doesn't load it: no \`setupFiles\`, \`env\` or plugins; a module that needs an environment variable or a service as it loads fails), and that the exports \`bindings\` names can be replaced by fakes. The tests are kept in ${dir}/.`,
+    ...(detail === undefined ? {} : { detail }),
   };
 }
 
@@ -129,7 +144,7 @@ function failed(
   behavior: string,
   file: string,
   test: GeneratedTest,
-  errors: readonly string[],
+  { errors, details }: Pick<TestOutcome, "errors" | "details">,
 ): Finding {
   const subject =
     test.kind === "replay"
@@ -147,14 +162,22 @@ function failed(
     severity: "error",
     message: `${what}: ${firstError(errors)}`,
     behavior,
-    hint: `${HINTS[test.kind]} The test is kept in ${file}.`,
+    hint: `${STAND_IN.test(firstError(errors)) ? STAND_IN_HINT : HINTS[test.kind]} The test is kept in ${file}.`,
   };
   if (test.transition !== undefined) finding.transition = test.transition;
   if (test.property !== undefined) finding.property = test.property;
   if (test.specAt) finding.specAt = test.specAt;
   if (test.codeAt) finding.codeAt = test.codeAt;
+  const detail = details?.[0];
+  if (detail !== undefined) finding.detail = detail;
   return finding;
 }
+
+/** The error the atomic fake's stand-in transaction throws when code the spec doesn't bind uses it. */
+const STAND_IN = /^tsverify's stand-in transaction: /;
+
+const STAND_IN_HINT =
+  "A gap in the bindings, not necessarily a bug in the code: code the spec doesn't bind used the transaction the atomic function passes its callback (the stack under detail shows which). Bind that function under `bindings.storage` or `bindings.clients`, so the test replaces it.";
 
 const HINTS: Record<GeneratedTest["kind"], string> = {
   path: "The real code does not perform this allowed transition as the spec declares it (target state and effects).",
