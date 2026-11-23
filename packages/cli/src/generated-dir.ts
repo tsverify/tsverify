@@ -31,6 +31,11 @@ export function outDirs(behaviors: readonly string[]): string[] {
   });
 }
 
+/** Deletes `<root>/<outDir>`, if it exists: a spec with no test gets no directory. */
+export async function removeGenerated(root: string, outDir: string): Promise<void> {
+  await rm(join(root, outDir), { recursive: true, force: true });
+}
+
 /** Deletes `<root>/<outDir>` and writes `files` into it. */
 export async function writeGenerated(
   root: string,

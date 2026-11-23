@@ -81,11 +81,16 @@ function enforcedOnlyNote(report: Report, f: Formatter): string {
   return `${f.dim(`--enforced-only: skipped ${plural(skipped, "spec")} without \`enforced: true\`.`)}\n`;
 }
 
-/** How many `unanalyzable` warnings `--strict` turned into errors. */
+/** How many `unanalyzable` (and `not-generated`) findings `--strict` turned into errors. */
 function strictNote(report: Report, f: Formatter): string {
-  const promoted = report.strict?.promoted ?? 0;
-  if (promoted === 0) return "";
-  return `${f.dim(`--strict: ${plural(promoted, "unanalyzable finding")} reported as ${promoted === 1 ? "an error" : "errors"}.`)}\n`;
+  const line = (n: number, what: string) =>
+    n === 0
+      ? ""
+      : `${f.dim(`--strict: ${plural(n, what)} reported as ${n === 1 ? "an error" : "errors"}.`)}\n`;
+  return (
+    line(report.strict?.promoted ?? 0, "unanalyzable finding") +
+    line(report.strict?.untested ?? 0, "not-generated finding")
+  );
 }
 
 function projectLabel(spec: SpecReport, report: Report): string {
@@ -93,7 +98,8 @@ function projectLabel(spec: SpecReport, report: Report): string {
   if (report.specOnly) return `spec only${enforced}`;
   const project = (spec.project ? `project: ${spec.project}` : "no project") + enforced;
   const g = spec.generated;
-  if (g === undefined) return project;
+  if (g === undefined)
+    return report.command === "test" ? `${project} · no tests generated` : project;
   return `${project} · ${g.dir}: ${testCountText(g.tests)}`;
 }
 

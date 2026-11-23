@@ -25,7 +25,10 @@ export interface SpecReport {
   codeStats?: CheckStats;
   /** Present when the spec's project was extracted. Shared by every spec of that project. */
   extract?: ExtractStats;
-  /** `test` only: where the spec's tests were generated (relative to the cwd) and how they ran. */
+  /**
+   * `test` only: where the spec's tests were generated (relative to the cwd) and how they ran.
+   * Absent when no test was generated (no directory is written).
+   */
   generated?: { dir: string; tests: TestCounts };
   /**
    * `check` only: transitions that are atomic only because the spec declares a function atomic
@@ -44,8 +47,11 @@ export interface Report {
   command?: "test";
   /** `--enforced-only`: how many specs were left out because they are not `enforced: true`. */
   enforcedOnly?: { skipped: number };
-  /** `--strict`: how many `unanalyzable` warnings were reported as errors (`applyStrict`). */
-  strict?: { promoted: number };
+  /**
+   * `--strict`: how many `unanalyzable` warnings were reported as errors (`applyStrict`), and
+   * (`test`) how many `not-generated` findings were (`strictUntested`).
+   */
+  strict?: { promoted: number; untested?: number };
 }
 
 export function allFindings(report: Report): Finding[] {
@@ -74,9 +80,10 @@ export function isStrictPromoted(f: Finding): boolean {
 /**
  * `--strict`: every `unanalyzable` warning (code or a model tsverify could not fully analyze, so a
  * finding may be hiding there) becomes an error, so the run exits 1. `unanalyzable` infos (a
- * transition without `impl`, a choice the spec states) stay infos. Sets `report.strict`.
+ * transition without `impl`, a choice the spec states) stay infos. Sets `report.strict`, with
+ * `untested`: the `not-generated` findings `tsverify test --strict` already raised.
  */
-export function applyStrict(report: Report): void {
+export function applyStrict(report: Report, untested = 0): void {
   let promoted = 0;
   for (const spec of report.specs) {
     spec.findings = spec.findings.map((f) => {
@@ -85,5 +92,5 @@ export function applyStrict(report: Report): void {
       return { ...f, severity: "error" };
     });
   }
-  report.strict = { promoted };
+  report.strict = { promoted, ...(untested > 0 ? { untested } : {}) };
 }

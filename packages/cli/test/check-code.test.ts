@@ -211,7 +211,12 @@ describe("check: code conformance", () => {
       expect(doc.strict).toBe(true);
       expect(
         doc.findings.filter((f) => f.severity !== "info").map((f) => [f.id, f.severity]),
-      ).toEqual([["unanalyzable:Light:from-state:switch_on", "error"]]);
+      ).toEqual([
+        ["unanalyzable:Light:from-state:switch_on", "error"],
+        // No test was generated (no fixtures): under --strict, that is an error too.
+        ["not-generated:Light:testgen:fixtures", "error"],
+        ["not-generated:Light:strict:switch_on", "error"],
+      ]);
     });
   });
 
