@@ -57,6 +57,33 @@ export function checkFromStates(p: Pairing): Finding[] {
 
   const findings: Finding[] = [];
   const extra = codeFrom.filter((s) => !specFrom.includes(s));
+  const shared = sharedWith(p, extra);
+  if (extra.length > 0 && shared.length > 0) {
+    // The write serves several transitions with this impl and `to`: each sees all its
+    // from-states. Widening one would only hide the split; the spec should say it once.
+    const specAt = fromItemAt(t);
+    const names = [t.name, ...shared.map((o) => o.name)];
+    const all = spec.entity.states.filter(
+      (s) => specFrom.includes(s) || shared.some((o) => o.from === "*" || o.from.includes(s)),
+    );
+    findings.push(
+      pairingFinding(p, {
+        category: "from-state-mismatch",
+        severity: "error",
+        subject: extra.join(","),
+        message:
+          `${t.name}: ${sites.function.name} also writes ${t.to} from ${formatStates(extra)}, ` +
+          `which ${t.name} does not allow (from: ${formatStates(specFrom)}) but ` +
+          `${shared.map((o) => o.name).join(", ")} does: ${names.join(" and ")} share the impl ` +
+          `${t.impl?.symbol ?? ""} and \`to: ${t.to}\`, so tsverify can't tell which of the write's ` +
+          `from-states is whose.`,
+        hint: `Merge ${names.join(" and ")} into one transition (from: ${formatStates(all)}), or give each its own impl (one function per from-state, each checking only its own).`,
+        ...(specAt === undefined ? {} : { specAt }),
+        codeAt: sites.write,
+      }),
+    );
+    return findings;
+  }
   if (extra.length > 0) {
     const specAt = fromItemAt(t);
     findings.push(
@@ -74,6 +101,27 @@ export function checkFromStates(p: Pairing): Finding[] {
     );
   }
   return findings;
+}
+
+/**
+ * The other spec transitions with `t`'s impl and `to` whose `from` covers every state in `extra`
+ * (the write `p` is linked to each of them: same impl, exact `to`).
+ */
+function sharedWith(p: Pairing, extra: readonly string[]): Transition[] {
+  const { spec, t } = p;
+  if (extra.length === 0 || t.impl === undefined) return [];
+  const impl = t.impl;
+  const others = spec.transitions.filter(
+    (o) =>
+      o !== t &&
+      o.to === t.to &&
+      o.impl !== undefined &&
+      o.impl.file === impl.file &&
+      o.impl.symbol === impl.symbol,
+  );
+  const allows = (o: Transition, s: string) => o.from === "*" || o.from.includes(s);
+  if (!extra.every((s) => others.some((o) => allows(o, s)))) return [];
+  return others.filter((o) => extra.some((s) => allows(o, s)));
 }
 
 /**

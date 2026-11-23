@@ -492,8 +492,10 @@ transitions' impls reach it, the ones whose `to` is the written state win. Trans
 *and* a `to` are each compared with every write of that state the impl reaches: each gets all of them. Their
 from-states are checked together (a `from-state-mismatch` warning only for a state none of the writes accepts),
 but the transitions themselves can't be told apart, so a write meant for one is checked against the other's
-`from`, `requires` and `effects` too. Declare them as one transition with the union of their `from` (comment
-which code path covers which state), or point each at the function that only does its part.
+`from`, `requires` and `effects` too: `regress` (mitigated → open) and `reopen` (resolved → open) with one impl
+each get a `from-state-mismatch` error for the other's state, which says that they share the impl and `to`.
+Declare them as one transition with the union of their `from` (comment which code path covers which state), or
+point each at the function that only does its part. Don't widen each one's `from` to the union.
 
 ### 7.2 `assign`: repository objects (the default)
 
