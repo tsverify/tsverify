@@ -9,6 +9,12 @@ executable source of truth; this page is its human reference. Canonical example:
 `impl`, `bindings.clients.*.module`, `bindings.guards` and `bindings.storage` paths are relative to the **project root**: the nearest
 directory at or above the behavior file that contains a `tsconfig.json` (overridable with `tsverify check --project`).
 
+A path may leave the project root (`../run-store/src/types.ts#RunStore.findRun`, for a storage interface in
+another package of a monorepo). It resolves like any other, as long as the file is part of the project's
+TypeScript program as source: the project imports it, and the import resolves to its `.ts` file (tsconfig `paths`,
+`customConditions`, or a workspace package whose `exports` point at its sources), not to a `.d.ts` or a file
+under `node_modules`. Otherwise it is a `broken-link` ("… is not part of the TypeScript project").
+
 ## Top level
 
 | Key | Required | Type | IR (`@tsverify/ir` `BehaviorModel`) |
@@ -145,7 +151,7 @@ states that exist only because the invocation bound ran out (one more invocation
 | Key | Notes |
 |---|---|
 | `storage` | how the entity is stored: a preset, or the app's own storage functions (see below); omitted → auto-detected |
-| `clients` | map name → `{ module, export, reads? }`. `export` is a value (an object, a function, an instance), or a class or interface: then every value typed as it is the client (no generated tests for such a spec). `reads`: call paths below the client that only read (`isEnabled`, or `prices` for every `prices.*` call); calls to them are not effects. An effect in `effects` mapped to one of them is an error |
+| `clients` | map name → `{ module, export, reads? }`. `export` is a value (an object, a function, an instance), or a class, an interface or a type alias (`export type Notifier = { … }`): then every value typed as it is the client (no generated tests for such a spec). `reads`: call paths below the client that only read (`isEnabled`, or `prices` for every `prices.*` call); calls to them are not effects. An effect in `effects` mapped to one of them is an error |
 | `guards` | map canonical guard → `path#symbol` or `path#symbol(args)`. Each argument is a string (`"admin"` or `'admin'`), a bare word or number, `true`/`false`, or a list of those (`["owner", "admin"]`); anything else (an object, a call) is a spec error, since it could never match a call |
 | `effects` | map effect name → code call path (`client.member.path`); omitted → name is the path |
 
@@ -223,7 +229,7 @@ Argument roles:
 | `patch` | some fields of an entity, merged into the stored one | save, update |
 | `from` | the state, or list of states, the conditional save requires | update |
 | `to` | the state the conditional save sets | update |
-| `callback` | the function the atomic function runs | atomic |
+| `callback` | the function the atomic function runs. In generated tests the fake calls it with one argument, a stand-in for the transaction (see below) | atomic |
 | `_` | anything tsverify should ignore | all |
 
 A role is one positional argument, or a field of one. For a function that takes one object of named arguments
@@ -262,7 +268,10 @@ How the code check and the generated tests see these functions:
   transition's, and an effect that can run before the update's result is checked makes it `non-atomic`
 - a write that no named function saves is `unanalyzable` (`--strict`: an error)
 - `tsverify test` replaces each named function with an in-memory version (`instrument.storage`) by mocking its
-  module; the module's other exports stay real. So each must be exported (or be a method of an export): `check`
+  module; the module's other exports stay real. The fake of an `atomic` function calls its callback with one
+  argument: a stand-in for the transaction (or lock handle) the real function passes. Passing it on to the bound
+  functions and clients is fine (they take it as a `_` argument); any other use of it (`tx.insert(…)`) throws an
+  error naming what was used, since only code the spec doesn't bind uses it. So each must be exported (or be a method of an export): `check`
   reads the calls of one that isn't as usual, and `test` generates no tests for the spec (`not-generated`, saying
   which function)
 
