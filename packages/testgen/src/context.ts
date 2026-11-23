@@ -3,8 +3,10 @@
  * transition with traced arguments (`CodeSites.invocation`) or `fixtures.args`, and storage, `assign`, `prisma` or `functions` persistence,
  * actor fixtures, an impl that is a function or a static method), the fake configurations derived
  * from every code transition's `CodeSites` (and, for `functions`, from the spec's
- * `bindings.storage`), and the fixtures. No test is generated when a bound export can't be
- * replaced by a fake (`BehaviorModel.unfakeable`: a class, a method of an interface).
+ * `bindings.storage`), and the fixtures. No test is generated when a binding is broken (a
+ * `broken-link` finding of `tsverify check`: a test would import or replace what it names) or a
+ * bound export can't be replaced by a fake (`BehaviorModel.unfakeable`: a class, a method of an
+ * interface, a function its module doesn't export).
  * Whatever cannot be generated is recorded as an `info` finding instead.
  */
 import {
@@ -120,6 +122,8 @@ export interface ContextInput {
   spec: BehaviorModel;
   code: BehaviorModel;
   outDir: string;
+  /** Findings of `tsverify check` for this spec: a `broken-link` among them stops generation. */
+  findings?: readonly Finding[];
 }
 
 export function buildContext(input: ContextInput): { ctx?: Context; skipped: Finding[] } {
@@ -137,6 +141,18 @@ export function buildContext(input: ContextInput): { ctx?: Context; skipped: Fin
     return skipAll(
       "persistence",
       "tsverify test generated no tests: `memory` persistence has no fakes or replay support yet",
+    );
+  }
+  // A broken binding names something the tests would import, call or replace: they'd fail to
+  // load (or test something else), so none is generated until it is fixed.
+  const broken = (input.findings ?? []).filter(
+    (f) => f.category === "broken-link" && (f.behavior === undefined || f.behavior === behavior),
+  );
+  if (broken.length > 0) {
+    return skipAll(
+      "bindings",
+      `tsverify test generated no tests: ${broken.length === 1 ? "a link in the spec is broken" : `${broken.length} links in the spec are broken`}, and the tests would import, call or replace what ${broken.length === 1 ? "it names" : "they name"}: ${broken.map((f) => f.message).join("; ")}`,
+      "Fix the broken-link findings (`tsverify check` reports them), then run `tsverify test` again.",
     );
   }
   const fixtures = spec.fixtures;
@@ -198,7 +214,20 @@ export function buildContext(input: ContextInput): { ctx?: Context; skipped: Fin
     const c = code.transitions.find((x) => x.name === t.name && x.sites?.specTransition === t.name);
     const sites = c?.sites;
     if (c === undefined || sites === undefined) {
-      skip(`the extractor found no write of \`${t.to}\` reached from ${formatSymbolRef(t.impl)}`);
+      // As `tsverify check` says it: a write it couldn't read is unconfirmed, not missing.
+      const unread = (code.unreadWrites?.[t.name] ?? []).filter(
+        (u) => u.value === undefined || u.value === t.to,
+      );
+      const [first] = unread;
+      if (first !== undefined) {
+        const where = `${first.at.file.slice(first.at.file.lastIndexOf("/") + 1)}:${first.at.line}`;
+        skip(
+          `tsverify couldn't confirm that ${formatSymbolRef(t.impl)} writes \`${t.to}\`: it changes ${spec.entity.stateField} at ${where} in a form tsverify can't read (${first.reason}), so it can't tell which test would reach that write`,
+          `Restructure the write so tsverify can read it: ${spec.entity.stateField} = '${t.to}' as a literal, through the storage the spec binds (docs/authoring-guide.md §7.5).`,
+        );
+      } else {
+        skip(`the extractor found no write of \`${t.to}\` reached from ${formatSymbolRef(t.impl)}`);
+      }
       continue;
     }
     if (!FAKED.has(sites.persistence)) {

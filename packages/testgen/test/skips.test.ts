@@ -26,6 +26,56 @@ describe("skipped", () => {
     ]);
   });
 
+  it("everything when a link in the spec is broken, naming it", () => {
+    const broken = {
+      id: "broken-link:Order lifecycle:client:mailer",
+      category: "broken-link" as const,
+      severity: "error" as const,
+      message:
+        'client "mailer" (src/mail.ts#mailer) does not resolve: src/mail.ts does not export "mailer"',
+      behavior: "Order lifecycle",
+    };
+    const other = { ...broken, id: "broken-link:Other:client:x", behavior: "Other" };
+    const result = generate({ spec: orderModel(), code: code(), findings: [broken], outDir: OUT });
+    expect(result.files).toEqual([]);
+    expect(result.tests).toEqual([]);
+    expect(result.skipped).toEqual([
+      {
+        id: "not-generated:Order lifecycle:testgen:bindings",
+        category: "not-generated",
+        severity: "info",
+        message: `tsverify test generated no tests: a link in the spec is broken, and the tests would import, call or replace what it names: ${broken.message}`,
+        behavior: "Order lifecycle",
+        hint: "Fix the broken-link findings (`tsverify check` reports them), then run `tsverify test` again.",
+      },
+    ]);
+    // Another spec's broken link doesn't stop this one.
+    const fine = generate({ spec: orderModel(), code: code(), findings: [other], outDir: OUT });
+    expect(fine.tests.length).toBeGreaterThan(0);
+  });
+
+  it("a transition whose write tsverify couldn't read: unconfirmed, as check says, not missing", () => {
+    const model = code();
+    model.transitions = model.transitions.filter((t) => t.name !== "ship");
+    model.unreadWrites = {
+      ship: [
+        {
+          at: { file: "src/admin/orders.ts", line: 12, column: 3 },
+          function: "shipOrder",
+          reason: "the value `next` is not a single literal",
+          finding: "unanalyzable:Order lifecycle:write:shipOrder",
+        },
+      ],
+    };
+    const result = run(orderModel(), model);
+    const ship = result.skipped.find((f) => f.id === "not-generated:Order lifecycle:testgen:ship");
+    expect(ship?.message).toBe(
+      "tsverify test generated no tests for `ship`: tsverify couldn't confirm that src/admin/orders.ts#shipOrder writes `shipped`: it changes status at orders.ts:12 in a form tsverify can't read (the value `next` is not a single literal), so it can't tell which test would reach that write",
+    );
+    expect(ship?.message).not.toContain("found no write");
+    expect(ship?.hint).toContain("status = 'shipped' as a literal");
+  });
+
   it("everything for memory persistence", () => {
     const spec = orderModel();
     spec.bindings.persistence = "memory";
