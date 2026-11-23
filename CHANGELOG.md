@@ -68,6 +68,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   named functions. New example: `examples/orders-functions` (B1–B7).
 
 ### Fixed
+- **No state write is missed silently** with `bindings.storage`. A patch object held in a variable
+  (`const patch = { status: input.status }; tx.update(incident).set(patch)`) is now read like a patch written
+  into the call, and one built up in a shape tsverify can't read (a `let`, `patch.status = …` afterwards) is an
+  `unanalyzable` warning. A patch passed to an unbound function counts as the entity's when its type names the
+  entity, or its state field allows exactly the spec's states after a bound read (Drizzle's `.set(…)`), so
+  `c.json({ status: "ok" })` stays silent.
+- `missing-transition` no longer says an impl "never writes" a state when it reaches a write tsverify can't
+  read: that transition is an `unanalyzable` warning, "couldn't confirm that … writes …", naming where and why.
+- A stuck state or a failed `eventually` rule in the code's model is linked (`causedBy`, `↳ consequence`) to the
+  missing, unconfirmed or narrower transition that would have left the state it ends in.
+- A write whose atomicity tsverify can't decide (saved outside `bindings.storage`, or no read found) gets only
+  its `unanalyzable` warning, no longer also a `non-atomic` error.
+- `tsverify test --strict` fails when a transition with an `impl` got no test at all, or a spec got none, instead
+  of passing with "0 generated tests". A spec with no test no longer leaves an empty `.tsverify/generated/<spec>/`.
+- Pretty output shows a path outside the current directory as an absolute path instead of a chain of `../`.
+- In a checkout, `pnpm exec tsverify …` keeps exit codes 2 and 3 (`pnpm tsverify …` goes through `pnpm run`,
+  which reports them as 1).
 - `tsverify test` mocked each client module wholesale, so a guard or helper exported beside a client vanished
   (`No "requireOwner" export is defined on the mock`). The mocks now replace only the bound exports.
 
