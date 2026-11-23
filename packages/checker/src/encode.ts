@@ -87,6 +87,8 @@ export function buildLayout(model: BehaviorModel): Layout {
   >();
   for (const t of model.transitions) {
     for (const e of t.effects) {
+      // A call no spec effect maps to: no rule names it, nothing checks it (`EffectDecl.unmapped`).
+      if (e.unmapped) continue;
       const entry = effectDecls.get(e.name);
       if (!entry) {
         effectDecls.set(e.name, { multiplicity: e.multiplicity, emitters: new Set([t.name]) });
@@ -144,7 +146,8 @@ export function buildLayout(model: BehaviorModel): Layout {
     const code = transitions[i] as TransitionCode;
     // Increment each distinct effect once per firing, in effect-name order.
     for (const name of [...new Set(t.effects.map((e) => e.name))].sort()) {
-      const e = effectIndex.get(name) as EffectCode;
+      const e = effectIndex.get(name);
+      if (!e) continue; // unmapped
       code.effectFields.push(e.field);
       code.effectCaps.push(Math.min(e.cap, FIELD_MAX));
     }

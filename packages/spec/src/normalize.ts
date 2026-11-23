@@ -196,10 +196,11 @@ class Normalizer {
   bindings(b: SpecInput["bindings"]): Bindings {
     const clients: Record<string, ClientBinding> = {};
     for (const name of Object.keys(b?.clients ?? {}).sort(compareStrings)) {
-      const c = b?.clients?.[name] as { module: string; export: string };
+      const c = b?.clients?.[name] as { module: string; export: string; reads?: string[] };
       clients[name] = {
         module: c.module,
         export: c.export,
+        ...(c.reads !== undefined ? { reads: [...c.reads] } : {}),
         at: this.locator.entry(["bindings", "clients", name]),
       };
     }

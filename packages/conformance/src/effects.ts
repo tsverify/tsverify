@@ -53,7 +53,7 @@ export function checkEffects(p: Pairing): Finding[] {
           ? `${t.name}: ${entry} calls ${name}, a gate no spec effect maps to (not in bindings.effects).`
           : `${t.name}: ${entry} calls ${name}${gate === name ? "" : ` (${gate})`}, which the spec does not declare for ${t.name}.`,
         hint: unmapped
-          ? `Declare the effect on ${t.name} and map it to ${name} in bindings.effects, or remove the call.`
+          ? `Declare the effect on ${t.name} and map it to ${name} in bindings.effects, list ${gate.slice(clientOfGate(gate).length + 1) || gate} under bindings.clients.${clientOfGate(gate)}.reads if it only reads, or remove the call.`
           : `Declare ${name} under ${t.name}.effects, or remove the call.`,
         codeAt: at ?? sites.write,
       }),

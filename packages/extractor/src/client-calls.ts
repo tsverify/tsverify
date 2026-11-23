@@ -24,6 +24,10 @@
  * resolved symbol (`storage`, from the `functions` adapter): client `storage`, path = the bound
  * symbol, gate `storage.<symbol>`.
  *
+ * A call on a path the client binding lists under `reads` (`isEnabled`, or `prices` for
+ * `prices.retrieve`) is a client call marked `read`: it only reads, so it is not an effect
+ * (`effects.ts`), but, like every client call, the call graph doesn't descend into it.
+ *
  * A bare call on a client that is an exported function (`sendMail(…)`, bound as
  * `email: { export: sendMail }`) has path `""` and gate `email`. Not recognized: element access
  * (`db["orders"]`), a destructured member (`const { orders } = db`), and a call's result as root.
@@ -52,6 +56,8 @@ export interface ClientCall {
   gate: string;
   /** Set when the root is a scope alias (`tx`): the scope the call runs in. */
   scope?: ScopeRef;
+  /** The path is one of the client's `reads` (`ClientBinding.reads`): not an effect. */
+  read?: boolean;
 }
 
 export interface ChainRoot {
@@ -104,6 +110,8 @@ export class ClientCalls {
     private readonly adapter: PersistenceAdapter,
     /** Named storage functions: a call to one, as a `storage.<symbol>` client call. */
     private readonly storage?: (call: TS.CallExpression) => ClientCall | undefined,
+    /** Each client's `reads` (`ClientBinding.reads`). */
+    private readonly reads: ReadonlyMap<string, readonly string[]> = new Map(),
   ) {}
 
   classify(call: TS.CallExpression): ClientCall | undefined {
@@ -170,7 +178,17 @@ export class ClientCalls {
     if (!root || (root.scope && root.segments.length === 0)) return undefined;
     const path = root.segments.join(".");
     const gate = path === "" ? root.client : `${root.client}.${path}`;
-    return { call, client: root.client, path, gate, ...(root.scope ? { scope: root.scope } : {}) };
+    const read = (this.reads.get(root.client) ?? []).some(
+      (r) => path === r || path.startsWith(`${r}.`),
+    );
+    return {
+      call,
+      client: root.client,
+      path,
+      gate,
+      ...(root.scope ? { scope: root.scope } : {}),
+      ...(read ? { read } : {}),
+    };
   }
 
   /** The client a property chain (`db.orders.get`, `this.prisma.order`) is rooted at. */

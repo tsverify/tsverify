@@ -230,6 +230,12 @@ const bindings = z
         z.strictObject({
           module: name.describe("Module path, e.g. `src/payments/stripe.ts`"),
           export: name.describe("Exported binding, e.g. `stripe`"),
+          reads: z
+            .array(name)
+            .optional()
+            .describe(
+              "Call paths below the client that only read (`isEnabled`, `prices.retrieve`, or `prices` for every `prices.*`): not effects",
+            ),
         }),
       )
       .optional(),

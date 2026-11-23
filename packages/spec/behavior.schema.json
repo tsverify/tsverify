@@ -618,6 +618,14 @@
                 "type": "string",
                 "minLength": 1,
                 "description": "Exported binding, e.g. `stripe`"
+              },
+              "reads": {
+                "description": "Call paths below the client that only read (`isEnabled`, `prices.retrieve`, or `prices` for every `prices.*`): not effects",
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
               }
             },
             "required": ["module", "export"],

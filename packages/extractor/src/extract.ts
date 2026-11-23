@@ -521,11 +521,16 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
       );
     }
   }
+  const reads = new Map<string, readonly string[]>();
+  for (const [name, binding] of Object.entries(spec.bindings.clients)) {
+    if (binding.reads && binding.reads.length > 0) reads.set(name, binding.reads);
+  }
   const calls = new ClientCalls(
     checker,
     clientSyms,
     adapter,
     storage && ((call) => storage.clientCall(call)),
+    reads,
   );
   const guardSyms = new Set(guards.map((g) => g.sym));
   const calleeSym = (call: TS.CallExpression) => symbolOf(call.expression, checker);

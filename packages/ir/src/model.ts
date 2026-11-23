@@ -33,6 +33,12 @@ export interface EffectDecl {
   /** Effect name as written in the spec, e.g. `stripe.refund`. See `Bindings.effects`. */
   name: string;
   multiplicity: EffectMultiplicity;
+  /**
+   * Code models only: no spec effect maps to this call's gate (conformance reports it as
+   * `undeclared-effect`). No rule can name it and it is `at-least-once`, so the checker does not
+   * count it: it adds no states and no trace counters.
+   */
+  unmapped?: boolean;
   at?: SourceLocation;
 }
 
@@ -210,6 +216,12 @@ export type PersistenceKind = "assign" | "prisma" | "drizzle" | "memory" | "func
 export interface ClientBinding {
   module: string;
   export: string;
+  /**
+   * Call paths below the client that only read (`isEnabled`, `prices.retrieve`): a path, or the
+   * start of one (`prices` covers `prices.retrieve`). Calls to them are not effects: no
+   * `undeclared-effect`, no effect counter, nothing in traces.
+   */
+  reads?: string[];
   at?: SourceLocation;
 }
 

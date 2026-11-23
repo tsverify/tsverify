@@ -383,6 +383,8 @@ export function buildContext(input: ContextInput): { ctx?: Context; skipped: Fin
         ...Object.values(spec.bindings.effects)
           .filter((gate) => gate === client || gate.startsWith(`${client}.`))
           .map((gate) => gate.slice(client.length + 1)),
+        // Read-only calls are no effects, but the code still makes them: the fake has them too.
+        ...(spec.bindings.clients[client]?.reads ?? []),
       ]),
     }));
 

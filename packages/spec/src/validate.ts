@@ -33,6 +33,11 @@ export function validate(
   new Validator(input, normalized, locator, out).run();
 }
 
+/** Whether a client's `reads` entry covers a call path: the path itself, or the start of it. */
+function readCovers(read: string, path: string): boolean {
+  return path === read || path.startsWith(`${read}.`);
+}
+
 /** The client name of every named storage function's call sites (`CallSite.client`). */
 const STORAGE_CLIENT = "storage";
 
@@ -504,6 +509,17 @@ class Validator {
         );
       }
       const client = target.split(".")[0] as string;
+      const callPath = target.slice(client.length + 1);
+      const read = this.model.bindings.clients[client]?.reads?.find((r) => readCovers(r, callPath));
+      if (read !== undefined) {
+        this.out.error(
+          this.locator.value(path),
+          `bindings.effects "${key}": ${target} is listed as a read of client "${client}" (reads: ${read}), so tsverify never counts it as an effect`,
+          {
+            hint: `remove "${read}" from bindings.clients.${client}.reads, or map ${key} to a call that changes something`,
+          },
+        );
+      }
       if (clients.length > 0 && !clients.includes(client)) {
         this.out.error(
           this.locator.value(path),

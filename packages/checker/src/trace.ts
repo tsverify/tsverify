@@ -58,7 +58,10 @@ export function buildTrace(
     } else {
       worker.phase = "done";
       state.status = layout.states[t.to] as string;
-      const fired = new Set(model.transitions[t.index]?.effects.map((e) => e.name));
+      // Counted effects only: a call no spec effect maps to (`EffectDecl.unmapped`) is not.
+      const fired = new Set(
+        model.transitions[t.index]?.effects.filter((e) => !e.unmapped).map((e) => e.name),
+      );
       for (const name of fired) state.effects[name] = (state.effects[name] ?? 0) + 1;
     }
     const traceAction: TraceAction = { worker: worker.id, transition: t.name, kind: action.kind };

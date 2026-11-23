@@ -1,7 +1,7 @@
 /**
  * Effect call discovery from `bindings.clients`: calls on a bound client in the frames an impl
  * reaches, except calls on persistence clients (the ones the adapter recognized as reads,
- * commits or scopes) and scope-opening calls. Bound calls are never descended into, so a fake
+ * commits or scopes), scope-opening calls, and calls on a path the client lists under `reads`. Bound calls are never descended into, so a fake
  * client's own implementation contributes nothing.
  *
  * **Attribution rule: effects on the write's path.** A call is attributed to the transition when
@@ -70,7 +70,7 @@ export function effectCalls(
       }
     }
     const cc = calls.classify(call);
-    if (!cc || seen.has(call) || persistenceClients.has(cc.client)) return;
+    if (!cc || cc.read || seen.has(call) || persistenceClients.has(cc.client)) return;
     if (calls.isScopeOpener(call)) return;
     seen.add(call);
     out.push(cc);

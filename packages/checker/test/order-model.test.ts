@@ -204,6 +204,20 @@ describe("code-origin duplicate webhook (B4 analogue)", () => {
     expectConsistent(trace);
   });
 
+  it("doesn't count a call no spec effect maps to: no states, no trace counter", () => {
+    const m = orderModel();
+    m.origin = "code";
+    transition(m, "payment_succeeded").from = "*";
+    const plain = check(m).stats.states;
+    for (const t of m.transitions) {
+      t.effects.push({ name: "flags.isEnabled", multiplicity: "at-least-once", unmapped: true });
+    }
+    const { findings, stats } = check(m);
+    expect(stats.states).toBe(plain);
+    const trace = findings.find((f) => f.id === RECEIPT_ID)?.trace;
+    expect(trace?.steps.some((s) => "flags.isEnabled" in s.state.effects)).toBe(false);
+  });
+
   it("points codeAt at the effect call site when the extractor recorded one", () => {
     const m = orderModel();
     m.origin = "code";

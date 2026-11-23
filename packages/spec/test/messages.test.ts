@@ -363,6 +363,23 @@ describe("semantic errors", () => {
       );
     });
 
+    it("reads a client's `reads`, and rejects an effect mapped to one of them", () => {
+      const ok = `${WITH_EFFECT}bindings:\n  clients:\n    stripe: { module: src/s.ts, export: stripe, reads: [prices, balance.get] }\n  effects:\n    stripe.refund: stripe.refunds.create\n`;
+      const parsed = parseSpec(ok, FILE);
+      expect(parsed.findings).toEqual([]);
+      expect(parsed.model?.bindings.clients.stripe?.reads).toEqual(["prices", "balance.get"]);
+      const text = ok.replace("stripe.refunds.create", "stripe.prices.retrieve");
+      const finding = expectFinding(
+        text,
+        'bindings.effects "stripe.refund": stripe.prices.retrieve is listed as a read of client "stripe" (reads: prices), so tsverify never counts it as an effect',
+        20,
+        20,
+      );
+      expect(finding.hint).toBe(
+        'remove "prices" from bindings.clients.stripe.reads, or map stripe.refund to a call that changes something',
+      );
+    });
+
     it("reports an effect binding when no transition declares effects", () => {
       const text = `${BASE}bindings:\n  effects:\n    stripe.refund: stripe.refunds.create\n`;
       const finding = expectFinding(

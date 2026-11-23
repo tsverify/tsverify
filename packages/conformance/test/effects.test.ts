@@ -50,7 +50,7 @@ describe("effects", () => {
         // No binding to point at: the transition.
         specAt: { file: "src/orders/order.behavior.yaml", line: 52, column: 3 },
         codeAt: { file: "src/orders/refund.ts", line: 20, column: 3 },
-        hint: "Declare the effect on refund and map it to stripe.charges.create in bindings.effects, or remove the call.",
+        hint: "Declare the effect on refund and map it to stripe.charges.create in bindings.effects, list charges.create under bindings.clients.stripe.reads if it only reads, or remove the call.",
       }),
     ]);
   });
