@@ -4,6 +4,11 @@ export class Queue {
   async nack(_orderId: string): Promise<void> {}
 }
 
+/** A client the app knows only by an interface: bound by the interface. */
+export interface Notifier {
+  notify(orderId: string): Promise<void>;
+}
+
 /** Bound, but nothing ever calls it. */
 export const audit = {
   log(_what: string): void {},

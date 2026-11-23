@@ -13,12 +13,12 @@
  *   destructured binding or variable whose declared type is the bound export's type (`typeof db`,
  *   or the class or interface the export is typed as): `constructor(private prisma: PrismaClient)`
  *   → `this.prisma.order.update(…)`; `(deps: { db: typeof db }) => deps.db.orders.get(id)`. A
- *   client bound to an exported **class** (`queue: { export: RunQueue }`) is any instance of it
- *   held that way: `this.$.runQueue.acknowledgeMessage(…)` with `runQueue: RunQueue` is a call on
- *   `queue`, path `acknowledgeMessage`. Types compare by identity, so an object of another type
- *   (a subclass, an interface the class implements) never matches; a type shared by several
- *   clients, or one that is not an object or function type (`any`, primitives, `{}`), matches
- *   none.
+ *   client bound to an exported **class** or **interface** (`queue: { export: RunQueue }`) is any
+ *   value of that type held that way: `this.$.runQueue.acknowledgeMessage(…)` with
+ *   `runQueue: RunQueue` is a call on `queue`, path `acknowledgeMessage`. Types compare by
+ *   identity, so an object of another type (a subclass, an interface the class implements, a
+ *   class implementing the interface) never matches; a type shared by several clients, or one
+ *   that is not an object or function type (`any`, primitives, `{}`), matches none.
  *
  * A call to a named storage function (`bindings.storage`) is classified first, by the callee's
  * resolved symbol (`storage`, from the `functions` adapter): client `storage`, path = the bound
@@ -233,10 +233,13 @@ export class ClientCalls {
     if (this.clientTypes) return this.clientTypes;
     const index = new Map<TS.Type, string[]>();
     for (const [sym, name] of this.clients) {
-      // A client bound to a class: its instances (`this.$.queue: RunQueue`) are the client.
+      // A client bound to a class or an interface: its instances (`this.$.queue: RunQueue`)
+      // are the client. An interface has no value type at all.
+      const instances =
+        sym.flags & (ts.SymbolFlags.Class | ts.SymbolFlags.Interface | ts.SymbolFlags.TypeAlias);
       const types = [
-        this.checker.getTypeOfSymbol(sym),
-        sym.flags & ts.SymbolFlags.Class ? this.checker.getDeclaredTypeOfSymbol(sym) : undefined,
+        sym.flags & ts.SymbolFlags.Value ? this.checker.getTypeOfSymbol(sym) : undefined,
+        instances ? this.checker.getDeclaredTypeOfSymbol(sym) : undefined,
       ];
       for (const type of types) {
         if (!type || !this.identifiesClient(type)) continue;

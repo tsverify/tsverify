@@ -141,7 +141,7 @@ state a satisfying state is reachable (AG EF — weaker than LTL with fairness).
 | Key | Notes |
 |---|---|
 | `storage` | how the entity is stored: a preset, or the app's own storage functions (see below); omitted → auto-detected |
-| `clients` | map name → `{ module, export }` |
+| `clients` | map name → `{ module, export }`. `export` is a value (an object, a function, an instance), or a class or interface: then every value typed as it is the client (no generated tests for such a spec) |
 | `guards` | map canonical guard → `path#symbol` or `path#symbol(args)`. Each argument is a string (`"admin"` or `'admin'`), a bare word or number, `true`/`false`, or a list of those (`["owner", "admin"]`); anything else (an object, a call) is a spec error, since it could never match a call |
 | `effects` | map effect name → code call path (`client.member.path`); omitted → name is the path |
 

@@ -1,5 +1,6 @@
 /**
- * Spec links → code: `impl` → function, `bindings.clients` → exported value, `bindings.guards` →
+ * Spec links → code: `impl` → function, `bindings.clients` → exported value, class or interface,
+ * `bindings.guards` →
  * function. Paths are project-root-relative (docs/behavior-format.md, "Paths"). A link that does
  * not resolve is reported by the caller as `broken-link`.
  */
@@ -174,7 +175,8 @@ export function resolveClient(ctx: ProjectContext, binding: ClientBinding): Reso
     moduleSym && checker.getExportsOfModule(moduleSym).find((s) => s.name === binding.export);
   if (!exp) return fail(`${binding.module} does not export "${binding.export}"`);
   const sym = resolveAlias(exp, checker);
-  if (!(sym.flags & ts.SymbolFlags.Value)) {
+  // An interface (or a type alias of one): its instances are the client (`client-calls.ts`).
+  if (!(sym.flags & (ts.SymbolFlags.Value | ts.SymbolFlags.Interface | ts.SymbolFlags.TypeAlias))) {
     return fail(`${binding.module}#${binding.export} is a type, not a value`);
   }
   return { ok: true, value: sym };

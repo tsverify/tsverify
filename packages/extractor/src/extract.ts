@@ -410,6 +410,11 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
           binding: `clients.${name}`,
           reason: `client ${name} is the class ${binding.export}, and a fake object in its place would break \`new ${binding.export}(…)\``,
         });
+      } else if (!(r.value.flags & ts.SymbolFlags.Value)) {
+        unfakeable.push({
+          binding: `clients.${name}`,
+          reason: `client ${name} is the interface ${binding.export}, a type: there is no module export to replace with a fake, and the code gets its instances from elsewhere`,
+        });
       }
     } else {
       findings.push(
@@ -765,7 +770,7 @@ function reportUncalled(
         name,
         `client "${name}" (${binding.module}#${binding.export}) is bound but never called: no call in the project resolves to it, so tsverify sees none of its calls`,
         {
-          hint: `Check \`module\` and \`export\`: tsverify matches calls on the exported value itself, and on variables, parameters and fields typed as it (for a class, as its instances), so a client the code holds as another type (an interface, \`any\`) is never matched. Bind what the code calls, or remove the binding.`,
+          hint: `Check \`module\` and \`export\`: tsverify matches calls on the exported value itself, and on variables, parameters and fields typed as it (for a class or an interface, as its instances), so a client the code holds as another type (an interface when the class is bound, \`any\`) is never matched. Bind the type the code holds it as, or remove the binding.`,
         },
       ),
       ...(binding.at ? { specAt: binding.at } : {}),

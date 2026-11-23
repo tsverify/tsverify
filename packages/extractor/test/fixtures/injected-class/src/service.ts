@@ -1,8 +1,9 @@
 import { db } from "../../_lib/db";
-import type { Queue } from "./queue";
+import type { Notifier, Queue } from "./queue";
 
 interface Resources {
   queue: Queue;
+  notifier: Notifier;
 }
 
 /** The queue arrives as an injected instance, `this.$.queue`, typed as the class. */
@@ -17,5 +18,6 @@ export class Service {
       await tx.orders.save(order);
     });
     await this.$.queue.ack(orderId);
+    await this.$.notifier.notify(orderId);
   }
 }
