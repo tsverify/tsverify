@@ -1014,7 +1014,11 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
   const effectOutcome = ({ call, write, frame, reach }: EffectInput): EffectOutcome => {
     if (write.kind !== "update") return "attributed";
     const save = write.call as TS.CallExpression;
-    const returns = (fns.of(save) as BoundFunction).fn.returns ?? "changed";
+    const bound = (fns.of(save) as BoundFunction).fn;
+    // An unconditional ("blind") update, `from` every state, never finds the state changed: no
+    // effect can run "although it saved nothing".
+    if (bound.from && entity.states.every((s) => bound.from?.includes(s))) return "attributed";
+    const returns = bound.returns ?? "changed";
     const leads = leadsTo(reach, frame, write.expr);
 
     const subjectOf =

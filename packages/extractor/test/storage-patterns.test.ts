@@ -719,6 +719,28 @@ export async function refundViaQuietHelper(id: string) {
     }
   });
 
+  it("an unconditional update (`from` every state) never fails, so no effect escapes it", () => {
+    const all = ["draft", "pending_payment", "paid", "shipped", "refunded", "cancelled"];
+    const blind = extract(
+      `${IMPORTS}
+export async function shipBlind(id: string) {
+  await email.send(id, "shipping");
+  await markShipped(id);
+}
+`,
+      [t("shipBlind", "shipped", { from: ["paid"] })],
+      storageOf({
+        read: ["src/repo.ts#getOrder"],
+        update: [{ fn: "src/repo.ts#markShipped", from: all, to: "shipped", returns: "throws" }],
+      }),
+    );
+    const s = transitionOf(blind, "shipBlind");
+    expect(s.atomic).toBe(true);
+    expect(s.sites?.atomicNote).toBeUndefined();
+    expect(s.sites?.effects.map((e) => e.gate)).toEqual(["email.send"]);
+    expect(s.from).toEqual(all);
+  });
+
   it("fixed from / to, and each `returns` kind's failure test", () => {
     const ship = transitionOf(result, "ship");
     expect(ship.from).toEqual(["paid"]);
