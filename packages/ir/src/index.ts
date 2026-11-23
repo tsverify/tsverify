@@ -32,6 +32,7 @@ export type {
   SymbolRef,
   Transition,
   Trust,
+  UnreadWrite,
 } from "./model";
 export {
   formatGuardRef,

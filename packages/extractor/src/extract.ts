@@ -9,7 +9,13 @@
  * 4. Type queries: entity matching, from-states, link resolution, call graph, guards, effects,
  *    persistence facts; then model assembly (`assemble.ts`).
  */
-import type { BehaviorModel, Finding, PersistenceKind, SourceLocation } from "@tsverify/ir";
+import type {
+  BehaviorModel,
+  Finding,
+  PersistenceKind,
+  SourceLocation,
+  UnreadWrite,
+} from "@tsverify/ir";
 import { compareStrings, formatSymbolRef, storageFunctions } from "@tsverify/ir";
 import { assignAdapter } from "./adapters/assign";
 import {
@@ -441,6 +447,9 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
 
   // Writes of this spec's entity.
   const matched: MatchedWrite[] = [];
+  // Writes of the entity's state that are reported as unanalyzable and not extracted.
+  const unread: { frame: FunctionLike; write: Omit<UnreadWrite, "finding">; finding: Finding }[] =
+    [];
   // Writes the adapter finds by symbol (conditional saves) need no probe.
   const extra = adapter.extraWrites?.(ctx.analyzedFiles(), spec.entity) ?? [];
   const writeTypes: WriteTypes[] = extra.map(() => ({
@@ -480,19 +489,36 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
     // The exact-union fallback needs a recognized read: DTOs and events share the union.
     if (match === "union" && (!frame || !analyze(frame).read)) return;
     const at = ctx.loc(write.site);
+    const subject = frame ? frameNaming(frame).name : moduleName(ctx, write.expr);
     const value = write.fixedValue ?? writtenValue(write.value, checker);
+    /** Reports a write tsverify sees but can't read as a transition; impls reaching it are unconfirmed. */
+    const notExtracted = (property: string, message: string, reason: string, hint: string) => {
+      const finding = unanalyzable(behavior, property, subject, message, { codeAt: at, hint });
+      findings.push(finding);
+      if (!frame) return;
+      const fn = frameNaming(frame).name;
+      unread.push({
+        frame,
+        write: { at, function: fn, reason, ...(value === undefined ? {} : { value }) },
+        finding,
+      });
+    };
+    const unreadable = frame && analyze(frame).unreadable;
+    if (unreadable) {
+      notExtracted(
+        "write-shape",
+        `${unreadable.message}; the write is not extracted`,
+        unreadable.reason,
+        unreadable.hint,
+      );
+      return;
+    }
     if (value === undefined) {
-      findings.push(
-        unanalyzable(
-          behavior,
-          "write-value",
-          frame ? frameNaming(frame).name : moduleName(ctx, write.expr),
-          `${spec.entity.name}.${write.field} is assigned a value that is not a single literal (${write.value.getText()}); the write is not extracted`,
-          {
-            codeAt: at,
-            hint: "Assign a string literal (or a constant with a literal type) so the target state is known.",
-          },
-        ),
+      notExtracted(
+        "write-value",
+        `${spec.entity.name}.${write.field} is assigned a value that is not a single literal (${write.value.getText()}); the write is not extracted`,
+        `the value \`${write.value.getText()}\` is not a single literal`,
+        "Assign a string literal (or a constant with a literal type) so the target state is known.",
       );
       return;
     }
@@ -554,5 +580,15 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
     findings,
     implAt,
   });
-  return { spec: behavior, model, findings: sortFindings(uniqueIds(findings)) };
+  const sorted = sortFindings(uniqueIds(findings));
+  // After `uniqueIds`: each unread write names its finding by its final id.
+  const unreadWrites: Record<string, UnreadWrite[]> = {};
+  for (const impl of impls) {
+    const reached = unread
+      .filter((u) => impl.reach.frames.includes(u.frame))
+      .map((u) => ({ ...u.write, finding: u.finding.id }));
+    if (reached.length > 0) unreadWrites[impl.name] = reached;
+  }
+  if (Object.keys(unreadWrites).length > 0) model.unreadWrites = unreadWrites;
+  return { spec: behavior, model, findings: sorted };
 }

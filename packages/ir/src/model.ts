@@ -346,4 +346,25 @@ export interface BehaviorModel {
   fixtures?: Fixtures;
   /** Code models only: declaration location of each linked spec transition's `impl`, keyed by transition name. */
   implAt?: Record<string, SourceLocation>;
+  /**
+   * Code models only: state writes the extractor saw but could not read as a transition (a value
+   * that is not a literal, a patch object built up before it is saved, …), reached from a spec
+   * transition's `impl`, keyed by transition name. Each is already an `unanalyzable` finding
+   * (`finding` is its id). Conformance reports a transition with no readable write but one of
+   * these as unconfirmed (`unanalyzable`) instead of `missing-transition`.
+   */
+  unreadWrites?: Record<string, UnreadWrite[]>;
+}
+
+/** A state write the extractor could not read as a transition (`BehaviorModel.unreadWrites`). */
+export interface UnreadWrite {
+  at: SourceLocation;
+  /** The function the write is in. */
+  function: string;
+  /** Why it can't be read, in a few words, e.g. "the value `input.status` is not a single literal". */
+  reason: string;
+  /** The written state, when it is a literal (the write is unreadable for another reason). */
+  value?: string;
+  /** Id of the extractor's `unanalyzable` finding for the write. */
+  finding: string;
 }

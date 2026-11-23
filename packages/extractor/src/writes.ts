@@ -21,6 +21,13 @@
  *   syntactically (`patchRefText`): the closest `const X = await? <read>(…)` declared before the
  *   call in an enclosing block of its function, where `<read>` is a name that may be a bound read
  *   function (its symbol, or a local import alias of it). Phase 2 checks the symbol.
+ * - (`held`, named storage functions only) the `<field>` property of an object literal that
+ *   initializes a local variable, `const patch = { status: input.status, updatedAt: now }`, which
+ *   the code passes to a call later (`tx.update(incident).set(patch)`). Its probe reference is
+ *   chosen like a `patch` write's, from the declaration. Phase 2 (`adapters/functions.ts`) follows
+ *   the variable to the call: a `const` used once, as that call's argument, is read like a `patch`
+ *   write passed there directly; anything else (an object built up before the call, a field set
+ *   on it afterwards: `patch.status = …`) is reported as `unanalyzable`.
  *
  * A conditional save (`setStatusIf(id, from, to)`, kind `update`) is a state write with no field
  * written in the code: the named-function adapter finds those in phase 2, by symbol, since they
@@ -34,7 +41,7 @@
 import type * as TS from "./ts-types";
 import { ts } from "./typescript";
 
-export type WriteKind = "assign" | "spread" | "data" | "patch" | "update";
+export type WriteKind = "assign" | "spread" | "data" | "patch" | "held" | "update";
 
 /**
  * Phase-1 options for `patch` candidates, set only when some spec names its own storage functions
@@ -75,7 +82,7 @@ export interface WriteNode {
    * object is passed to; `update` writes: the conditional save call itself.
    */
   call?: TS.CallExpression;
-  /** `data` / `patch` writes: whether `ref` is the probe's reference (else it is the object). */
+  /** `data` / `patch` / `held` writes: whether `ref` is the probe's reference (else the object). */
   probed?: boolean;
   /** `update` writes with a fixed target (`to:` in the binding): the written state. */
   fixedValue?: string;
@@ -328,21 +335,18 @@ function isInlineCallback(fn: TS.Node): boolean {
 }
 
 /**
- * Phase 1: a `patch` write's probe reference: the closest `const X = await? <read>(…)` before
- * the call in an enclosing block of its function (inline callbacks included), else the closest
+ * Phase 1: a `patch` (or `held`) write's probe reference: the closest `const X = await? <read>(…)`
+ * before the call (or the declaration) in an enclosing block of its function (inline callbacks included), else the closest
  * `const X = await? <any call>(…)` (a read under a name phase 1 cannot see, such as a renamed
  * re-export). Phase 2 uses the probe only when `X` is typed as the entity.
  */
-function patchRefText(call: TS.CallExpression, names: ReadonlySet<string>): string | undefined {
-  return closestConstCall(call, names) ?? closestConstCall(call, undefined);
+function patchRefText(at: TS.Node, names: ReadonlySet<string>): string | undefined {
+  return closestConstCall(at, names) ?? closestConstCall(at, undefined);
 }
 
-function closestConstCall(
-  call: TS.CallExpression,
-  names: ReadonlySet<string> | undefined,
-): string | undefined {
-  let child: TS.Node = call;
-  for (let p: TS.Node | undefined = call.parent; p; child = p, p = p.parent) {
+function closestConstCall(at: TS.Node, names: ReadonlySet<string> | undefined): string | undefined {
+  let child: TS.Node = at;
+  for (let p: TS.Node | undefined = at.parent; p; child = p, p = p.parent) {
     if (ts.isFunctionLike(p) && !isInlineCallback(p)) return undefined;
     if (!ts.isBlock(p) && !ts.isSourceFile(p) && !ts.isCaseClause(p) && !ts.isDefaultClause(p)) {
       continue;
@@ -417,6 +421,53 @@ function probeRefOf(n: TS.Expression): TS.Expression | undefined {
     : undefined;
 }
 
+/**
+ * The local variable an object literal initializes (`const patch = { … }`, also through `as`,
+ * `satisfies` and parentheses, and the probe's `(ref.<field>, { … })` comma), if any.
+ */
+export function heldDeclarationOf(
+  n: TS.ObjectLiteralExpression,
+): TS.VariableDeclaration | undefined {
+  let child: TS.Node = n;
+  let p: TS.Node | undefined = n.parent;
+  while (
+    p &&
+    (ts.isParenthesizedExpression(p) ||
+      isCommaRight(p, child) ||
+      ((ts.isAsExpression(p) || ts.isSatisfiesExpression(p)) && p.expression === child))
+  ) {
+    child = p;
+    p = p.parent;
+  }
+  return p && ts.isVariableDeclaration(p) && p.initializer === child && ts.isIdentifier(p.name)
+    ? p
+    : undefined;
+}
+
+/** A `held` write: the state-field property of an object literal held in a local variable. */
+function matchHeldWrite(
+  n: TS.ObjectLiteralExpression,
+  fields: ReadonlySet<string>,
+): WriteNode | undefined {
+  for (const p of n.properties) {
+    if (!ts.isPropertyAssignment(p) && !ts.isShorthandPropertyAssignment(p)) continue;
+    const name = propertyName(p);
+    if (name === undefined || !fields.has(name)) continue;
+    const value = ts.isPropertyAssignment(p) ? p.initializer : (p.name as TS.Identifier);
+    const probe = probeRefOf(n);
+    return {
+      kind: "held",
+      field: name,
+      expr: n,
+      site: p,
+      ref: probe ?? n,
+      value,
+      probed: probe !== undefined,
+    };
+  }
+  return undefined;
+}
+
 /** Matches one node; shared by both phases so they find identical writes in identical order. */
 function matchWrite(
   n: TS.Node,
@@ -443,6 +494,7 @@ function matchWrite(
   if (ts.isObjectLiteralExpression(n)) {
     const parent = parentSkippingWrappers(n);
     if (parent && ts.isPropertyAssignment(parent)) return matchDataWrite(n, fields);
+    if (patch && heldDeclarationOf(n)) return matchHeldWrite(n, patch.fields);
     if (!parent || !(ts.isCallExpression(parent) || ts.isNewExpression(parent))) return undefined;
     if (!parent.arguments?.some((a) => unwrapArgument(a) === n)) return undefined;
     let spread: TS.SpreadAssignment | undefined;
@@ -505,6 +557,10 @@ export function findCandidateWrites(
       if (w.kind === "patch" && w.call) {
         readNames ??= readNamesOf(sf, patch?.readSymbols ?? []);
         ref = patchRefText(w.call, readNames);
+      } else if (w.kind === "held") {
+        readNames ??= readNamesOf(sf, patch?.readSymbols ?? []);
+        const decl = heldDeclarationOf(w.expr as TS.ObjectLiteralExpression);
+        ref = decl && patchRefText(decl, readNames);
       } else ref = w.call ? dataRefText(w.call) : referenceText(w.ref);
       out.push({
         kind: w.kind,

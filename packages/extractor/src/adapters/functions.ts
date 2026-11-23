@@ -53,6 +53,21 @@
  * `&&` / `||` of them, on the call itself or on a `const` holding it, decide the branch. A helper
  * passes the outcome to its callers when it throws on failure, or returns the save's result.
  *
+ * **Patches held in a variable** (`held`, `writes.ts`): `const patch = { status: "paid" }`, later
+ * passed to a call. A `const` passed to exactly one call, and otherwise only used to set or read
+ * other fields, is read like a `patch` written straight into that call. Anything else (a `let`,
+ * several calls, the state field set afterwards: `patch.status = …`, which is also how an
+ * assignment on such an object is treated) is `PersistenceFacts.unreadable`: not extracted, and
+ * reported as `unanalyzable`.
+ *
+ * **Whose patch.** A patch passed to a bound save (`patch` or `entity` role) is the entity's. One
+ * passed to any other function is the entity's when its type says so, as for every other write
+ * (`entity.ts`): its type, or the parameter's, names the entity (`Partial<Order>`), or its state
+ * field's literal states are exactly the entity's states (ignoring `undefined` and non-literal
+ * members, such as a query builder's `SQL`) **and** a bound read of the entity comes before it in
+ * the same function. So `c.json({ status: "ok" })` is not a write, and Drizzle's
+ * `tx.update(incident).set({ status: "resolved" })` after `getIncident(…)` is.
+ *
  * **Anything else.** A write that no bound save commits (it goes to an unbound data layer), or
  * a patch passed to an unbound function, is `unanalyzable` (`PersistenceFacts.unbound`). A raw
  * query that sets the state without any field write is not seen at all (the spec transition is
@@ -83,7 +98,7 @@ import {
   typeNames,
 } from "../type-facts";
 import { ts } from "../typescript";
-import { referenceText, unwrapArgument, type WriteNode } from "../writes";
+import { heldDeclarationOf, referenceText, unwrapArgument, type WriteNode } from "../writes";
 import { returnedExpressions, throughLocal } from "./assign";
 import type {
   AdapterInput,
@@ -424,6 +439,37 @@ function branchOutcome(
 /** How a frame on the path to the save lets its callers know the save failed. */
 type Propagation = "throws" | "returns" | "none";
 
+/**
+ * The literal states a type allows, ignoring `undefined`, `null` and members that are not
+ * literals (a query builder's `SQL`); `string` and `any` allow none.
+ */
+function literalMembers(type: TS.Type | undefined, checker: TS.Checker): Set<string> {
+  const out = new Set<string>();
+  if (!type) return out;
+  for (const part of type.isUnionType() ? type.getTypes() : [type]) {
+    const lits = literalsOf(part, checker);
+    if (lits !== "*") for (const v of lits) out.add(v);
+  }
+  return out;
+}
+
+/** One use of a held patch variable as a call argument. */
+interface Sink {
+  call: TS.CallExpression;
+  /** The argument (the variable's identifier, unwrapped). */
+  arg: TS.Expression;
+}
+
+/** A local variable initialized with an object literal, and how its function uses it. */
+interface Held {
+  decl: TS.VariableDeclaration;
+  name: string;
+  /** Calls the variable is passed to as an argument, in source order. */
+  sinks: Sink[];
+  /** Why the state field can't be read off the literal alone; undefined when it can. */
+  complex?: string;
+}
+
 // --- the adapter -----------------------------------------------------------------------------
 
 export interface FunctionsAdapterInput {
@@ -446,6 +492,20 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
   const kinds = (b: BoundFunction | undefined) => b?.kind;
   const gateOf = (b: BoundFunction) => `${STORAGE_CLIENT}.${b.path}`;
   const kindList = "`bindings.storage` (`read`, `save`, `update` or `atomic`)";
+  const typeNamesEntity = (type: TS.Type | undefined) =>
+    typeNames(type, checker).includes(entity.name);
+  /** The declared type of `field` in `type`. */
+  const fieldType = (type: TS.Type | undefined): TS.Type | undefined => {
+    const present = type && checker.getNonNullableType(type);
+    const apparent = present && checker.getApparentType(present);
+    const prop = apparent && checker.getPropertyOfType(apparent, field);
+    return prop ? checker.getTypeOfSymbol(prop) : undefined;
+  };
+  /** `type`'s state field allows exactly the entity's states (see "Whose patch"). */
+  const exactStates = (type: TS.Type | undefined): boolean => {
+    const lits = literalMembers(fieldType(type), checker);
+    return lits.size === entity.states.length && entity.states.every((st) => lits.has(st));
+  };
 
   /** The bound read `call` performs: itself, or the read a helper it calls returns. */
   const readThrough = (call: TS.CallExpression, depth: number): ClientCall | undefined => {
@@ -599,6 +659,126 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
     return ok ? agreed : undefined;
   };
 
+  /** A bound read of the entity (directly or through a helper) before `pos` in `node`'s frame. */
+  const readBefore = (node: TS.Node, pos: number): boolean => {
+    const frame = frameOf(node);
+    return (
+      frame !== undefined &&
+      frameCalls(frame).some((c) => c.getEnd() <= pos && readThrough(c, 0) !== undefined)
+    );
+  };
+
+  const heldMemo = new Map<TS.VariableDeclaration, Held>();
+  /** How the function holding `decl` uses the variable (see "Patches held in a variable"). */
+  const heldOf = (decl: TS.VariableDeclaration): Held => {
+    const cached = heldMemo.get(decl);
+    if (cached) return cached;
+    const name = (decl.name as TS.Identifier).text;
+    const sym = symbolOf(decl.name as TS.Identifier, checker);
+    const sinks: Sink[] = [];
+    const reasons = new Set<string>();
+    if ((decl.parent.flags & ts.NodeFlags.Const) === 0)
+      reasons.add(`\`${name}\` is not a \`const\``);
+    const scope: TS.Node = frameOf(decl) ?? decl.getSourceFile();
+    forEachDescendant(scope, (n) => {
+      if (!ts.isIdentifier(n) || n === decl.name || symbolOf(n, checker) !== sym) return;
+      let use: TS.Node = n;
+      while (
+        ts.isParenthesizedExpression(use.parent) ||
+        ts.isNonNullExpression(use.parent) ||
+        ts.isAsExpression(use.parent) ||
+        ts.isSatisfiesExpression(use.parent)
+      ) {
+        use = use.parent;
+      }
+      const parent = use.parent;
+      if (ts.isCallExpression(parent) && parent.arguments.some((a) => unwrapArgument(a) === use)) {
+        sinks.push({ call: parent, arg: use as TS.Expression });
+        return;
+      }
+      if (ts.isPropertyAccessExpression(parent) && parent.expression === use) {
+        const target = parent.parent;
+        const assigned =
+          ts.isBinaryExpression(target) &&
+          target.left === parent &&
+          target.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+          target.operatorToken.kind <= ts.SyntaxKind.LastAssignment;
+        if (ts.isDeleteExpression(target) || (assigned && parent.name.text === field)) {
+          reasons.add(`\`${name}.${field}\` is set after the object is built`);
+        }
+        return; // reading a field, or setting another one
+      }
+      reasons.add(`\`${name}\` is also used in \`${parent.getText()}\``);
+    });
+    if (sinks.length > 1) reasons.add(`\`${name}\` is passed to ${sinks.length} calls`);
+    const held: Held = {
+      decl,
+      name,
+      sinks,
+      ...(reasons.size > 0 ? { complex: [...reasons].join(", ") } : {}),
+    };
+    heldMemo.set(decl, held);
+    return held;
+  };
+
+  /** The held patch an assignment's reference names (`patch` in `patch.status = …`), if any. */
+  const heldOfRef = (ref: TS.Expression): Held | undefined => {
+    const e = strip(ref);
+    if (!ts.isIdentifier(e)) return undefined;
+    const decl = valueDeclarationOf(symbolOf(e, checker));
+    if (!decl || !ts.isVariableDeclaration(decl) || !decl.initializer) return undefined;
+    const init = strip(decl.initializer);
+    return ts.isObjectLiteralExpression(init) && heldDeclarationOf(init) === decl
+      ? heldOf(decl)
+      : undefined;
+  };
+
+  /** Whether a held patch is the entity's (see "Whose patch"). */
+  const heldIsEntity = (h: Held): boolean => {
+    if (h.sinks.length === 0) return false;
+    const declared = checker.getTypeAtLocation(h.decl.name);
+    if (typeNamesEntity(declared)) return true;
+    let exact = exactStates(declared);
+    for (const { call, arg } of h.sinks) {
+      const b = fns.of(call);
+      const role = b?.fn.args[argIndexOf(call, arg)];
+      if (b?.kind === "save" && (role === "patch" || role === "entity")) return true;
+      if (b) continue;
+      const contextual = checker.getContextualType(arg);
+      if (typeNamesEntity(contextual)) return true;
+      exact ||= exactStates(contextual);
+    }
+    return exact && readBefore(h.decl, h.decl.getStart());
+  };
+
+  /** A patch passed straight to an unbound function is the entity's (see "Whose patch"). */
+  const unboundPatchIsEntity = (write: WriteNode, call: TS.CallExpression): boolean => {
+    const contextual = checker.getContextualType(write.expr);
+    if (typeNamesEntity(contextual)) return true;
+    const exact = exactStates(contextual) || exactStates(checker.getTypeAtLocation(write.expr));
+    return exact && readBefore(call, call.getStart());
+  };
+
+  const unreadableHint = `Save the ${entity.name}'s ${field} through a \`bindings.storage\` function, one call per target state, with the state as a literal: a conditional save (\`update\`), or a \`const\` patch passed straight to a bound \`save\` (docs/authoring-guide.md, "Restructuring unanalyzable code").`;
+
+  /** A held patch (or a field set on one) that can't be read as a patch write. */
+  const unreadableHeld = (write: WriteNode, h: Held): PersistenceFacts["unreadable"] => {
+    const target = h.sinks[0] && `\`${h.sinks[0].call.expression.getText()}\``;
+    const passed = target ? `, an object later passed to ${target}` : "";
+    if (write.kind === "assign") {
+      return {
+        message: `${entity.name}.${field} is set on \`${h.name}\`${passed}, after the object is built (\`${h.name}.${field} = …\`)`,
+        reason: `\`${h.name}.${field}\` is set after the object is built`,
+        hint: unreadableHint,
+      };
+    }
+    return {
+      message: `${entity.name}.${field} is set in \`${h.name}\`${passed}, but ${h.complex}`,
+      reason: `${field} is set in \`${h.name}\`, but ${h.complex}`,
+      hint: unreadableHint,
+    };
+  };
+
   const noRead = (what: string): string =>
     `no read of \`${what}\` through a \`bindings.storage.read\` function was found before this write, so atomicity cannot be decided (reported as not atomic)`;
 
@@ -651,6 +831,35 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
         fromState,
         ...(key ? { entityKey: key } : {}),
       };
+    }
+
+    if (write.kind === "held" || write.kind === "assign") {
+      const decl =
+        write.kind === "held"
+          ? heldDeclarationOf(write.expr as TS.ObjectLiteralExpression)
+          : heldOfRef(write.ref)?.decl;
+      const h = decl && heldOf(decl);
+      const sink = h?.sinks[0];
+      if (h && (write.kind === "assign" || h.complex !== undefined || !sink)) {
+        return { ...base, atomic: false, unreadable: unreadableHeld(write, h) };
+      }
+      if (h && sink) {
+        const b = fns.of(sink.call);
+        const role = b?.fn.args[argIndexOf(sink.call, sink.arg)];
+        if (b && !(b.kind === "save" && (role === "patch" || role === "entity"))) {
+          return {
+            ...base,
+            atomic: false,
+            unreadable: {
+              message: `${entity.name}.${field} is set in \`${h.name}\`, which is passed to ${gateOf(b)} as its \`${role ?? "?"}\` argument, not as the entity or a patch`,
+              reason: `${field} is set in \`${h.name}\`, passed to ${gateOf(b)} as its \`${role ?? "?"}\` argument`,
+              hint: unreadableHint,
+            },
+          };
+        }
+        // A `const` passed to one call: the patch written straight into that call.
+        return factsOf({ ...write, kind: "patch", call: sink.call }, frame, reach);
+      }
     }
 
     if (write.kind === "patch") {
@@ -897,7 +1106,7 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
 
   return {
     kind: "functions",
-    writeKinds: new Set(["assign", "spread", "patch", "update"]),
+    writeKinds: new Set(["assign", "spread", "patch", "held", "update"]),
     scopeAliasParam: -1,
     readHint: `Read the ${entity.name} with a \`bindings.storage.read\` function in the same function as the write, or in a helper that returns it.`,
 
@@ -910,6 +1119,14 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
       // The storage boundary: what a bound function does inside is not the app's transition.
       if (fns.inside(write.expr)) return false;
       if (write.kind === "update") return true;
+      if (write.kind === "held") {
+        const decl = heldDeclarationOf(write.expr as TS.ObjectLiteralExpression);
+        return decl !== undefined && heldIsEntity(heldOf(decl));
+      }
+      if (write.kind === "assign") {
+        const h = heldOfRef(write.ref);
+        return h === undefined ? undefined : heldIsEntity(h);
+      }
       if (write.kind !== "patch") return undefined;
       const call = write.call as TS.CallExpression;
       const b = fns.of(call);
@@ -917,10 +1134,7 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
         const role = b.fn.args[argIndexOf(call, write.expr)];
         return b.kind === "save" && (role === "patch" || role === "entity");
       }
-      // An unbound function: the patch is the entity's when its parameter is typed so.
-      const contextual = checker.getContextualType(write.expr);
-      if (!contextual) return false;
-      return typeNames(contextual, checker).includes(entity.name);
+      return unboundPatchIsEntity(write, call);
     },
 
     extraWrites(files) {
