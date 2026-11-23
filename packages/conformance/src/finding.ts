@@ -2,6 +2,7 @@ import {
   type BehaviorModel,
   type CodeSites,
   compareStrings,
+  coversAll,
   type Finding,
   type FindingCategory,
   type Severity,
@@ -80,9 +81,12 @@ export function pairingFinding(
   });
 }
 
-/** `["paid"]` → `paid`, `["a", "b"]` → `{a, b}`, `"*"` → `any state`. */
-export function formatStates(states: string[] | "*"): string {
-  if (states === "*") return "any state";
+/**
+ * `["paid"]` → `paid`, `["a", "b"]` → `{a, b}`, `"*"` → `any state`; with the entity's states
+ * (`all`), a list of every one of them is `any state` too.
+ */
+export function formatStates(states: string[] | "*", all?: readonly string[]): string {
+  if (states === "*" || coversAll(states, all)) return "any state";
   if (states.length === 1) return states[0] as string;
   return `{${states.join(", ")}}`;
 }

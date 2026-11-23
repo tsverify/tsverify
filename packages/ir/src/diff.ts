@@ -1,7 +1,7 @@
 import { compareStrings } from "./compare";
 import type { Actor, BehaviorModel, Bindings, Transition } from "./model";
 import { formatSymbolRef } from "./refs";
-import { formatStorageFunction, STORAGE_KINDS } from "./storage";
+import { coversAll, formatStorageFunction, STORAGE_KINDS } from "./storage";
 
 /**
  * Structural behavior diff between two spec models of the same behavior file (e.g. the PR base
@@ -75,7 +75,9 @@ const flag = (b: boolean): string => (b ? "yes" : "");
 
 function transitionFields(t: Transition, model: BehaviorModel): Fields {
   return {
-    from: t.from === "*" ? "*" : list(t.from),
+    // `from: "*"` as written; a list of every state (a blind update's) as what it means.
+    from:
+      t.from === "*" ? "*" : coversAll(t.from, model.entity.states) ? "any state" : list(t.from),
     to: t.to,
     by: list(t.by),
     requires: list(t.requires.map((g) => g.raw)),
@@ -92,7 +94,7 @@ function actorFields(a: Actor): Fields {
   return { trust: a.trust, requires: list(a.requires.map((g) => g.raw)) };
 }
 
-function bindingFields(b: Bindings): Fields {
+function bindingFields(b: Bindings, states: readonly string[]): Fields {
   const out: Fields = { persistence: b.persistence ?? "" };
   for (const [k, c] of Object.entries(b.clients)) out[`client:${k}`] = `${c.module}#${c.export}`;
   for (const [k, g] of Object.entries(b.guards)) out[`guard:${k}`] = g.raw;
@@ -101,7 +103,9 @@ function bindingFields(b: Bindings): Fields {
     const storage = b.storage;
     out["storage:key"] = storage.key;
     for (const kind of STORAGE_KINDS) {
-      out[`storage:${kind}`] = list(storage[kind].map((fn) => formatStorageFunction(kind, fn)));
+      out[`storage:${kind}`] = list(
+        storage[kind].map((fn) => formatStorageFunction(kind, fn, states)),
+      );
     }
   }
   return out;
@@ -200,8 +204,8 @@ export function diffModels(
       ["kind", "expr"],
     ),
     bindings: fieldChanges(
-      base ? bindingFields(base.bindings) : {},
-      head ? bindingFields(head.bindings) : {},
+      base ? bindingFields(base.bindings, base.entity.states) : {},
+      head ? bindingFields(head.bindings, head.entity.states) : {},
     ),
   };
   if (base === undefined) diff.kind = "added";

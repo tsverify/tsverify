@@ -53,6 +53,7 @@ export {
 } from "./refs";
 export type { StorageKind, StorageRoleAt } from "./storage";
 export {
+  coversAll,
   defaultStorageArgs,
   formatStorageArg,
   formatStorageFunction,

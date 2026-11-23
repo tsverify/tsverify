@@ -145,6 +145,39 @@ describe("diffModels", () => {
     });
   });
 
+  it("says `any state` for a from-list of every state (a blind update's), in transitions and storage", () => {
+    const head = edited((m) => {
+      const expire = m.transitions.find((t) => t.name === "expire");
+      if (!expire) throw new Error("fixture");
+      expire.from = [...m.entity.states];
+      m.bindings.storage = {
+        key: "id",
+        read: [],
+        save: [],
+        update: [
+          {
+            ref: { file: "src/orders/repo.ts", symbol: "expireOrder" },
+            args: ["key"],
+            from: [...m.entity.states],
+            to: "cancelled",
+          },
+        ],
+        atomic: [],
+      };
+    });
+    const d = diffModels(orderModel(), head);
+    expect(d.transitions[0]?.fields).toContainEqual({
+      field: "from",
+      base: "pending_payment",
+      head: "any state",
+    });
+    expect(d.bindings).toContainEqual({
+      field: "storage:update",
+      base: "",
+      head: "src/orders/repo.ts#expireOrder from any state to cancelled",
+    });
+  });
+
   it("diffs bindings by key", () => {
     const head = edited((m) => {
       m.bindings.effects["stripe.refund"] = "stripe.refunds.createV2";

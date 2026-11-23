@@ -56,6 +56,15 @@ describe("summarize", () => {
     expect(out).toContain("can move an order in any state to refunded.");
   });
 
+  it("says any state for a from-list of every state (a blind update's)", () => {
+    const model = orderModel();
+    const expire = model.transitions.find((t) => t.name === "expire");
+    if (expire) expire.from = [...model.entity.states];
+    expect(summarize(model)).toMatch(
+      /\*\*expire\*\*: .* can move an order in any state to cancelled/,
+    );
+  });
+
   it("flags an unguarded untrusted actor", () => {
     const model = orderModel();
     const checkout = model.transitions.find((t) => t.name === "checkout");

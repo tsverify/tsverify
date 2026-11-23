@@ -148,7 +148,7 @@ export function checkMissingFromStates(pairings: readonly Pairing[]): Finding[] 
   if (missing.length === 0) return [];
   const codeFrom = specFrom.filter((s) => accepted.has(s));
   const extraFrom = [...accepted].filter((s) => !specFrom.includes(s));
-  const from = formatStates([...codeFrom, ...extraFrom]);
+  const from = formatStates([...codeFrom, ...extraFrom], spec.entity.states);
   const functions = [...new Set(pairings.map((p) => p.sites.function.name))];
   const who =
     pairings.length === 1

@@ -90,14 +90,21 @@ export function formatStorageArg(arg: StorageArg): string {
 /**
  * `path#symbol`, plus what differs from the defaults: `(roles)` when the roles are not the
  * default ones, then ` from [a, b]`, ` to s` and ` returns r` (any `returns` but `changed`).
- * E.g. `src/repo.ts#markPaid(key, _) from [pending] to paid returns count`.
+ * E.g. `src/repo.ts#markPaid(key, _) from [pending] to paid returns count`. With the entity's
+ * `states`, a `from` that lists every one of them (a blind update) is ` from any state`.
  */
-export function formatStorageFunction(kind: StorageKind, fn: StorageFunction): string {
+export function formatStorageFunction(
+  kind: StorageKind,
+  fn: StorageFunction,
+  states?: readonly string[],
+): string {
   let text = formatSymbolRef(fn.ref);
   const defaults = defaultStorageArgs(kind, fn);
   const args = fn.args.map(formatStorageArg);
   if (args.join(",") !== defaults.join(",")) text += `(${args.join(", ")})`;
-  if (fn.from !== undefined) text += ` from [${fn.from.join(", ")}]`;
+  if (fn.from !== undefined) {
+    text += coversAll(fn.from, states) ? " from any state" : ` from [${fn.from.join(", ")}]`;
+  }
   if (fn.to !== undefined) text += ` to ${fn.to}`;
   if (fn.returns !== undefined && fn.returns !== "changed") text += ` returns ${fn.returns}`;
   return text;
@@ -108,4 +115,12 @@ export function storageFunctions(
   binding: StorageBinding,
 ): { kind: StorageKind; fn: StorageFunction }[] {
   return STORAGE_KINDS.flatMap((kind) => binding[kind].map((fn) => ({ kind, fn })));
+}
+
+/**
+ * Whether a list of states names every state of the entity (`all`), so a message can say "any
+ * state" instead of listing them. False without `all`, or for an entity with fewer than 2 states.
+ */
+export function coversAll(states: readonly string[], all: readonly string[] | undefined): boolean {
+  return all !== undefined && all.length > 1 && all.every((s) => states.includes(s));
 }
