@@ -6,6 +6,7 @@ import {
   formatSymbolRef,
   type SourceLocation,
   type Transition,
+  type UnreadWrite,
 } from "@tsverify/ir";
 import { formatStates, makeFinding, type Pairing } from "./finding";
 
@@ -84,16 +85,32 @@ export function checkUnlinked(spec: BehaviorModel, c: Transition): Finding {
 }
 
 /**
+ * The id subject of the `unanalyzable` finding for a transition whose impl changes the state only
+ * in forms tsverify can't read: `unanalyzable:<behavior>:<transition>:unconfirmed`.
+ */
+export const UNCONFIRMED_SUBJECT = "unconfirmed";
+
+/** `set-status.ts:64`: a location in a message, by file name (findings carry the full path). */
+function shortAt(at: SourceLocation): string {
+  return `${at.file.slice(at.file.lastIndexOf("/") + 1)}:${at.line}`;
+}
+
+/**
  * Splits the code transitions linked to `t` into its primary writes (those writing `t.to`) and
- * reports the rest: `missing-transition` when there is no primary write, `undeclared-transition`
- * for every linked write to another state. `implAt` (the code model's `implAt[t.name]`) is the
- * `codeAt` of a missing transition: the impl's declaration, since the write itself is not there.
+ * reports the rest: `undeclared-transition` for every linked write to another state, and, when
+ * there is no primary write, `missing-transition`, unless the impl reaches state writes tsverify
+ * couldn't read (`unread`, the code model's `unreadWrites[t.name]`, minus those known to write
+ * another state). Then it can't say the impl never writes `t.to`, so it reports the transition as
+ * unconfirmed (`unanalyzable`, caused by those writes' own findings). `implAt` (the code model's
+ * `implAt[t.name]`) is the `codeAt` of a missing transition: the impl's declaration, since the
+ * write itself is not there.
  */
 export function checkLinked(
   spec: BehaviorModel,
   t: Transition,
   linked: Transition[],
   implAt?: SourceLocation,
+  unread: readonly UnreadWrite[] = [],
 ): { pairings: Pairing[]; findings: Finding[] } {
   const pairings: Pairing[] = [];
   const findings: Finding[] = [];
@@ -120,7 +137,31 @@ export function checkLinked(
       }),
     );
   }
-  if (pairings.length === 0 && t.impl !== undefined) {
+  const field = spec.entity.stateField;
+  const unconfirmed = unread.filter((u) => u.value === undefined || u.value === t.to);
+  if (pairings.length === 0 && t.impl !== undefined && unconfirmed.length > 0) {
+    const where =
+      unconfirmed.length === 1
+        ? `${shortAt((unconfirmed[0] as UnreadWrite).at)} in a form tsverify can't read (${(unconfirmed[0] as UnreadWrite).reason})`
+        : `${unconfirmed.map((u) => `${shortAt(u.at)} (${u.reason})`).join(" and ")}, in forms tsverify can't read`;
+    const finding = makeFinding({
+      category: "unanalyzable",
+      severity: "warning",
+      behavior: spec.name,
+      transition: t.name,
+      subject: UNCONFIRMED_SUBJECT,
+      message:
+        `${t.name}: couldn't confirm that ${t.impl.symbol} writes ${field} = ${t.to}: it changes ` +
+        `${field} at ${where}.`,
+      hint:
+        `Restructure the write so tsverify can read it: ${field} = '${t.to}' as a literal, through ` +
+        `the storage the spec binds (docs/authoring-guide.md §7.5). Until then ${t.name} is not checked against the code.`,
+      ...specAt,
+      codeAt: (unconfirmed[0] as UnreadWrite).at,
+    });
+    finding.causedBy = [...new Set(unconfirmed.map((u) => u.finding))];
+    findings.push(finding);
+  } else if (pairings.length === 0 && t.impl !== undefined) {
     findings.push(
       makeFinding({
         category: "missing-transition",
