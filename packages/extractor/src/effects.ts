@@ -23,11 +23,11 @@
  */
 import type { BehaviorModel, EffectMultiplicity, Transition } from "@tsverify/ir";
 import { compareStrings } from "@tsverify/ir";
-import type * as TS from "@typescript/typescript6";
 import { frameCalls, leadsTo, type Reach } from "./callgraph";
 import { type Cfg, type FunctionLike, reachable } from "./cfg";
 import type { ClientCall, ClientCalls } from "./client-calls";
 import { cfgOf } from "./dominance";
+import type * as TS from "./ts-types";
 
 /** Nodes that can reach one of `targets` (any edge). */
 function reachingAny(cfg: Cfg, targets: readonly number[]): Uint8Array {

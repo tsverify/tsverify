@@ -56,7 +56,7 @@ describe("@tsverify/cli package.json", () => {
     }
   });
 
-  it("bundles no TypeScript: it comes from the project, as either optional peer", () => {
+  it("bundles no TypeScript: it comes from the project, as an optional peer", () => {
     const TYPESCRIPTS = ["typescript", "@typescript/typescript6", "ts-morph", "@ts-morph/common"];
     for (const name of TYPESCRIPTS) expect(deps, name).not.toHaveProperty(name);
     for (const dir of bundled) {
@@ -66,14 +66,9 @@ describe("@tsverify/cli package.json", () => {
         typescript: [],
       });
     }
-    expect(cli.peerDependencies).toMatchObject({
-      "@typescript/typescript6": ">=6.0.0",
-      typescript: ">=5.4",
-    });
-    expect(cli.peerDependenciesMeta).toMatchObject({
-      "@typescript/typescript6": { optional: true },
-      typescript: { optional: true },
-    });
+    expect(cli.peerDependencies).toMatchObject({ typescript: ">=7.0.0" });
+    expect(cli.peerDependencies).not.toHaveProperty("@typescript/typescript6");
+    expect(cli.peerDependenciesMeta).toMatchObject({ typescript: { optional: true } });
   });
 
   it("bundles the small pure-JS packages and Mermaid instead of depending on them", () => {

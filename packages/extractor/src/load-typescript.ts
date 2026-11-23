@@ -1,21 +1,25 @@
 /**
- * Finds the TypeScript to read a project with. tsverify bundles none: it needs the classic
- * JavaScript compiler API (`createProgram`, TypeScript 5.4–6.x), which TypeScript 7 dropped, so it
- * takes the project's own `typescript` when that has the API and `@typescript/typescript6` (what
- * TS-7 projects add) otherwise.
+ * Finds the TypeScript to read a project with. tsverify bundles none: it reads code through
+ * TypeScript 7's API (`typescript/sync` and `typescript/ast`, `typescript/unstable/*` in 7.0),
+ * which starts the project's own native compiler, so it needs the project's `typescript` 7.0 or
+ * later. Older TypeScript has no such API.
+ *
+ * The API modules are ES modules, loaded synchronously with `require` (Node 22.12+), so the
+ * extractor stays synchronous. Nothing here imports `typescript` statically: an install of
+ * tsverify must never depend on one.
  */
 import { createRequire } from "node:module";
 import path from "node:path";
 import type { TypeScript } from "./typescript";
 
-/** The oldest TypeScript whose compiler API the extractor supports. */
-export const MIN_TYPESCRIPT = "5.4";
+/** The oldest TypeScript whose API the extractor supports. */
+export const MIN_TYPESCRIPT = "7.0";
 
 export interface LoadedTypeScript {
   ts: TypeScript;
-  /** `ts.version`, e.g. `6.0.2`. */
+  /** The package version, e.g. `7.0.2`. */
   version: string;
-  /** Resolved entry file of the module. */
+  /** Resolved entry file of the synchronous API module. */
   path: string;
 }
 
@@ -25,14 +29,22 @@ export interface TypeScriptLoadError {
   projectVersion?: string;
 }
 
-/** Packages that can provide the classic compiler API, in resolution order. */
-const CANDIDATES = ["typescript", "@typescript/typescript6"] as const;
-
-interface Probe {
-  /** The package resolved but is unusable: its version, and why. */
-  rejected?: { version: string; reason: "no-api" | "too-old" | "broken"; detail?: string };
-  loaded?: LoadedTypeScript;
+/**
+ * The project cannot be read as set up: no usable TypeScript, a compiler that does not start, or
+ * a tsconfig TypeScript rejects. Thrown by `extractAll`; the CLI reports it as exit code 2.
+ */
+export class TypeScriptSetupError extends Error {
+  override readonly name = "TypeScriptSetupError";
 }
+
+/** API entry points, stable (7.1+) first. */
+const ENTRY_POINTS = [
+  { sync: "sync", ast: "ast" },
+  { sync: "unstable/sync", ast: "unstable/ast" },
+] as const;
+
+type Rejected = { version: string; reason: "too-old" | "no-api" | "broken"; detail?: string };
+type Probe = { loaded: LoadedTypeScript } | { rejected: Rejected };
 
 function versionAtLeast(version: string, min: string): boolean {
   const parse = (v: string) => v.split(/[.-]/).map((p) => Number.parseInt(p, 10));
@@ -50,80 +62,99 @@ function packageVersion(req: NodeJS.Require, name: string): string | undefined {
   }
 }
 
-/** `name` as `req` resolves it: undefined when it is not installed. */
-function probe(req: NodeJS.Require, name: string): Probe | undefined {
-  let entry: string;
-  try {
-    entry = req.resolve(name);
-  } catch {
-    return undefined;
-  }
-  let module: Partial<TypeScript>;
-  try {
-    module = req(entry) as Partial<TypeScript>;
-  } catch (error) {
-    const version = packageVersion(req, name) ?? "unknown";
-    return { rejected: { version, reason: "broken", detail: (error as Error).message } };
-  }
-  const version =
-    (typeof module.version === "string" ? module.version : undefined) ??
-    packageVersion(req, name) ??
-    "unknown";
-  if (typeof module.createProgram !== "function") {
-    return { rejected: { version, reason: "no-api" } };
-  }
-  if (!versionAtLeast(version, MIN_TYPESCRIPT)) return { rejected: { version, reason: "too-old" } };
-  return { loaded: { ts: module as TypeScript, version, path: entry } };
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
-const HEADLINE = "tsverify needs the TypeScript compiler API to read your code.";
-const ADD_TS6 =
-  "add `@typescript/typescript6` as a devDependency (`npm i -D @typescript/typescript6`)";
-const OTHERS_FINE = `TypeScript ${MIN_TYPESCRIPT}–6.x projects need nothing extra.`;
+/** Package `name` as `req` resolves it: undefined when it is not installed. */
+function probe(req: NodeJS.Require, name: string): Probe | undefined {
+  const version = packageVersion(req, name);
+  if (version === undefined) {
+    try {
+      req.resolve(name);
+    } catch {
+      return undefined;
+    }
+    return { rejected: { version: "unknown", reason: "broken", detail: "no package.json" } };
+  }
+  if (!versionAtLeast(version, MIN_TYPESCRIPT)) return { rejected: { version, reason: "too-old" } };
+  for (const entry of ENTRY_POINTS) {
+    let syncPath: string;
+    let astPath: string;
+    try {
+      syncPath = req.resolve(`${name}/${entry.sync}`);
+      astPath = req.resolve(`${name}/${entry.ast}`);
+    } catch {
+      continue;
+    }
+    try {
+      const sync = req(syncPath) as TypeScript["sync"];
+      const ast = req(astPath) as TypeScript["ast"];
+      if (typeof sync.API !== "function" || typeof ast.SyntaxKind !== "object") {
+        return { rejected: { version, reason: "broken", detail: `${entry.sync} has no API` } };
+      }
+      return { loaded: { ts: { version, sync, ast }, version, path: syncPath } };
+    } catch (error) {
+      return { rejected: { version, reason: "broken", detail: errorText(error) } };
+    }
+  }
+  return { rejected: { version, reason: "no-api" } };
+}
 
-function loadErrorMessage(project: Probe["rejected"], root: string): string {
+const HEADLINE = "tsverify needs TypeScript 7 or later to read your code.";
+
+function loadErrorMessage(project: Rejected | undefined, root: string): string {
   if (project === undefined) {
-    return `${HEADLINE} No TypeScript is installed for ${root}: ${ADD_TS6}, or \`typescript\` ${MIN_TYPESCRIPT}–6.x.`;
+    return `${HEADLINE} No TypeScript is installed for ${root}: add it with \`npm i -D typescript\`.`;
   }
   const has = `This project has TypeScript ${project.version}`;
   switch (project.reason) {
-    case "no-api":
-      return `${HEADLINE} ${has}, which no longer includes it: ${ADD_TS6}. ${OTHERS_FINE}`;
     case "too-old":
-      return `${HEADLINE} ${has}, and tsverify supports ${MIN_TYPESCRIPT} or later: upgrade it, or ${ADD_TS6}.`;
+      return `${HEADLINE} ${has}: upgrade it with \`npm i -D typescript@latest\`.`;
+    case "no-api":
+      return `${HEADLINE} ${has}, which has neither \`typescript/sync\` nor \`typescript/unstable/sync\`: upgrade it with \`npm i -D typescript@latest\`.`;
     case "broken":
-      return `${HEADLINE} ${has}, which failed to load (${project.detail}): reinstall it, or ${ADD_TS6}.`;
+      return `${HEADLINE} ${has}, which failed to load (${project.detail}): reinstall it with \`npm i -D typescript\`.`;
   }
 }
 
 /**
- * Loads a TypeScript with the classic compiler API (5.4 or later), trying in order:
- * 1. `typescript` resolved from `projectRoot`, if it has `createProgram` (TS 5.4–6.x);
- * 2. `@typescript/typescript6` resolved from `projectRoot` (TS-7 projects);
- * 3. the same two resolved from tsverify's own install location (`selfUrl`), which covers a
- *    monorepo whose root has them and tsverify's own development.
+ * Loads TypeScript 7 or later:
+ * 1. `typescript` resolved from `projectRoot` (and the directories above it);
+ * 2. only if the project has none, `typescript` resolved from tsverify's own install location
+ *    (`selfUrl`), which covers a monorepo whose root has it and tsverify's own development.
  *
- * Returns an error naming the project's TypeScript version when none is usable.
+ * A project whose own TypeScript is older than 7 gets an error naming its version and the fix,
+ * never a different TypeScript found elsewhere.
  */
 export function loadTypeScript(
   projectRoot: string,
   selfUrl: string | URL = import.meta.url,
 ): LoadedTypeScript | TypeScriptLoadError {
-  const fromProject = createRequire(path.join(path.resolve(projectRoot), "package.json"));
-  const fromSelf = createRequire(selfUrl);
-  let projectTs: Probe["rejected"];
-  for (const [req, isProject] of [
-    [fromProject, true],
-    [fromSelf, false],
-  ] as const) {
-    for (const name of CANDIDATES) {
-      const result = probe(req, name);
-      if (result?.loaded) return result.loaded;
-      if (isProject && name === "typescript") projectTs = result?.rejected;
-    }
-  }
+  const root = path.resolve(projectRoot);
+  const fromProject = probe(createRequire(path.join(root, "package.json")), "typescript");
+  const result = fromProject ?? probe(createRequire(selfUrl), "typescript");
+  if (result && "loaded" in result) return result.loaded;
+  const rejected = fromProject && "rejected" in fromProject ? fromProject.rejected : undefined;
   return {
-    error: loadErrorMessage(projectTs, path.resolve(projectRoot)),
-    ...(projectTs ? { projectVersion: projectTs.version } : {}),
+    error: loadErrorMessage(rejected, root),
+    ...(rejected ? { projectVersion: rejected.version } : {}),
+  };
+}
+
+/**
+ * Loads the TypeScript package `name` (e.g. a devDependency alias such as `typescript71`) as
+ * resolved from `from`. For tests that run the extractor on a specific TypeScript.
+ */
+export function loadTypeScriptPackage(
+  name: string,
+  from: string | URL,
+): LoadedTypeScript | TypeScriptLoadError {
+  const result = probe(createRequire(from), name);
+  if (!result) return { error: `${name} is not installed` };
+  if ("loaded" in result) return result.loaded;
+  return {
+    error: loadErrorMessage(result.rejected, name),
+    projectVersion: result.rejected.version,
   };
 }

@@ -17,7 +17,6 @@
  * until its own first `await`, so its suspensions do not delay the caller. An `await` inside an
  * inline callback suspends that callback only, so it counts only for writes inside it.
  */
-import type * as TS from "@typescript/typescript6";
 import { type LeadGroup, leadsTo, type Reach } from "./callgraph";
 import {
   buildCfg,
@@ -29,7 +28,9 @@ import {
   reachable,
 } from "./cfg";
 import type { ClientCall, ScopeRef } from "./client-calls";
+import { valueDeclarationOf } from "./declarations";
 import { symbolOf } from "./resolve";
+import type * as TS from "./ts-types";
 import { ts } from "./typescript";
 import type { WriteNode } from "./writes";
 
@@ -90,7 +91,7 @@ function suspensionsOf(fn: FunctionLike): TS.Node[] {
     ) {
       out.push(n);
     }
-    ts.forEachChild(n, visit);
+    n.forEachChild(visit);
   };
   if (fn.body) visit(fn.body);
   suspensionsMemo.set(fn, out);
@@ -120,7 +121,7 @@ function stripRef(e: TS.Expression): TS.Expression {
 }
 
 /** `w`, `this`, `ctx.job` → an `EntityRef`; anything else (calls, element access) → undefined. */
-function describeRef(e: TS.Expression, checker: TS.TypeChecker): EntityRef | undefined {
+function describeRef(e: TS.Expression, checker: TS.Checker): EntityRef | undefined {
   const path: string[] = [];
   let cur = stripRef(e);
   while (ts.isPropertyAccessExpression(cur) && ts.isIdentifier(cur.name)) {
@@ -152,14 +153,14 @@ function refInCaller(
   ref: EntityRef,
   callee: FunctionLike,
   call: TS.CallExpression,
-  checker: TS.TypeChecker,
+  checker: TS.Checker,
 ): EntityRef | undefined {
   if (ref.root === "this") {
     const target = stripRef(call.expression);
     if (!ts.isPropertyAccessExpression(target)) return undefined;
     return prefixed(describeRef(target.expression, checker), ref);
   }
-  const decl = ref.root.valueDeclaration;
+  const decl = valueDeclarationOf(ref.root);
   if (decl && ts.isParameter(decl) && decl.parent === callee) {
     const arg = call.arguments[callee.parameters.indexOf(decl)];
     if (!arg || ts.isSpreadElement(arg)) return undefined;
@@ -229,7 +230,7 @@ export function suspensionBefore(
   root: Reach,
   writeFrame: FunctionLike,
   write: WriteNode,
-  checker: TS.TypeChecker,
+  checker: TS.Checker,
 ): TS.Node | undefined {
   const field = write.field;
   const leads = leadsTo(root, writeFrame, write.expr);

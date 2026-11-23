@@ -1,17 +1,22 @@
 /**
- * Loads the TypeScript project once (no emit) and gives the analysis modules a context: the
- * probed program, its checker, and original-file source locations.
+ * Loads the TypeScript project once (no emit) in a TypeScript 7 compiler process
+ * (`compiler.ts`) and gives the analysis modules a context: the probed program, its checker, and
+ * original-file source locations.
  *
  * Order matters (X1): `loadProject` → syntactic write discovery over `files` → `planNarrowing`
  * → only then `ProjectContext` (the first type query happens in its constructor).
  *
- * Uses the TypeScript installed by `useTypeScript` (`typescript.ts`).
+ * Uses the TypeScript installed by `useTypeScript` (`typescript.ts`). The caller closes the
+ * loaded project (`close()`), which ends the compiler process.
  */
+import { existsSync } from "node:fs";
 import path from "node:path";
 import type { SourceLocation } from "@tsverify/ir";
-import type * as TS from "@typescript/typescript6";
-import { createOverlayHost, type OverlayHost, ProgramTypeFacts } from "./type-facts";
-import { ts } from "./typescript";
+import { CompilerSession } from "./compiler";
+import { TypeScriptSetupError } from "./load-typescript";
+import type * as TS from "./ts-types";
+import { ProgramTypeFacts } from "./type-facts";
+import { typescript } from "./typescript";
 
 export interface LoadedProject {
   /** Absolute project root, `/`-separated, no trailing slash. */
@@ -22,6 +27,8 @@ export interface LoadedProject {
    */
   files: TS.SourceFile[];
   facts: ProgramTypeFacts;
+  /** Ends the compiler process. Safe to call more than once. */
+  close(): void;
 }
 
 export interface LoadError {
@@ -32,9 +39,12 @@ function toPosix(p: string): string {
   return p.replace(/\\/g, "/");
 }
 
-/** Source files the extractor analyzes: project files that are neither declarations nor deps. */
-function isAnalyzed(sf: TS.SourceFile): boolean {
-  return !sf.isDeclarationFile && !sf.fileName.includes("/node_modules/");
+/** Declaration file names (`.d.ts`, `.d.mts`, `.d.cts`, `.d.css.ts`): never analyzed. */
+const DECLARATION_FILE = /\.d\.([^/.]+\.)?[cm]?ts$/;
+
+/** Files the extractor analyzes: project files that are neither declarations nor deps. */
+function isAnalyzedName(fileName: string): boolean {
+  return !DECLARATION_FILE.test(fileName) && !fileName.includes("/node_modules/");
 }
 
 export function loadProject(projectRoot: string, tsconfig?: string): LoadedProject | LoadError {
@@ -42,7 +52,7 @@ export function loadProject(projectRoot: string, tsconfig?: string): LoadedProje
   const configPath = toPosix(
     tsconfig === undefined ? path.join(root, "tsconfig.json") : path.resolve(root, tsconfig),
   );
-  if (!ts.sys.fileExists(configPath)) {
+  if (!existsSync(configPath)) {
     return {
       error:
         tsconfig === undefined
@@ -50,43 +60,40 @@ export function loadProject(projectRoot: string, tsconfig?: string): LoadedProje
           : `no tsconfig at ${configPath}`,
     };
   }
-  const read = ts.readConfigFile(configPath, ts.sys.readFile);
-  if (read.error) {
-    const why = ts.flattenDiagnosticMessageText(read.error.messageText, "\n");
-    return { error: `cannot load ${configPath}: ${why}` };
-  }
-  let program: TS.Program;
-  let host: OverlayHost;
+  let session: CompilerSession;
   try {
-    const config = ts.parseJsonConfigFileContent(
-      read.config,
-      ts.sys,
-      path.posix.dirname(configPath),
-      undefined,
-      configPath,
-    );
-    host = createOverlayHost(config.options);
-    // Project references are not passed on: imports of a referenced project resolve to its
-    // sources, which the extractor can read, rather than to its built declarations.
-    program = ts.createProgram({
-      rootNames: config.fileNames,
-      options: config.options,
-      host,
-      configFileParsingDiagnostics: config.errors,
-    });
+    session = new CompilerSession(typescript, root, configPath);
   } catch (error) {
-    return { error: `cannot load ${configPath}: ${(error as Error).message}` };
+    throw new TypeScriptSetupError(
+      `TypeScript ${typescript.version} could not start its compiler: ${(error as Error).message}`,
+    );
   }
-  const files = program
-    .getSourceFiles()
-    .filter(isAnalyzed)
-    .sort((a, b) => (a.fileName < b.fileName ? -1 : a.fileName > b.fileName ? 1 : 0));
-  return { root, files, facts: new ProgramTypeFacts(program, host) };
+  try {
+    const base = session.open();
+    // Project references are not followed: imports of a referenced project resolve to its
+    // sources, which the extractor can read, rather than to its built declarations.
+    const files: TS.SourceFile[] = [];
+    for (const name of [...base.program.getSourceFileNames()].sort()) {
+      if (!isAnalyzedName(name)) continue;
+      const sf = base.program.getSourceFile(name);
+      if (sf && !sf.isDeclarationFile) files.push(sf);
+    }
+    files.sort((a, b) => (a.fileName < b.fileName ? -1 : a.fileName > b.fileName ? 1 : 0));
+    return {
+      root,
+      files,
+      facts: new ProgramTypeFacts(session, base),
+      close: () => session.close(),
+    };
+  } catch (error) {
+    session.close();
+    throw error;
+  }
 }
 
 /** Analysis context over the probed program. Constructing it performs the first type query. */
 export class ProjectContext {
-  readonly checker: TS.TypeChecker;
+  readonly checker: TS.Checker;
   readonly program: TS.Program;
   readonly root: string;
   readonly facts: ProgramTypeFacts;

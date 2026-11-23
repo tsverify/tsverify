@@ -33,7 +33,6 @@ import type {
   Transition,
 } from "@tsverify/ir";
 import { compareStrings, parseGuardRef } from "@tsverify/ir";
-import type * as TS from "@typescript/typescript6";
 import type { PersistenceAdapter, PersistenceFacts } from "./adapters/types";
 import { frameNaming, frameOf, type Reach } from "./callgraph";
 import type { FunctionLike } from "./cfg";
@@ -44,6 +43,7 @@ import { unanalyzable } from "./findings";
 import { traceToRoot } from "./invocation";
 import { occurrenceOf } from "./occurrence";
 import type { ProjectContext } from "./project";
+import type * as TS from "./ts-types";
 import { type Narrowed, singleLiteralOf } from "./type-facts";
 import { referenceText, type WriteNode } from "./writes";
 
@@ -133,7 +133,7 @@ function implRefOf(ctx: ProjectContext, d: Draft): SymbolRef | undefined {
   return { file: ctx.rel(d.reach.root.getSourceFile().fileName), symbol: name };
 }
 
-function isLiteralArg(a: TS.Expression, checker: TS.TypeChecker): boolean {
+function isLiteralArg(a: TS.Expression, checker: TS.Checker): boolean {
   return singleLiteralOf(checker.getTypeAtLocation(a), checker) !== undefined;
 }
 

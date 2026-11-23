@@ -15,7 +15,7 @@
  *    the entity.
  */
 import type { EntityDecl } from "@tsverify/ir";
-import type * as TS from "@typescript/typescript6";
+import type * as TS from "./ts-types";
 import { type LiteralSet, singleLiteralOf } from "./type-facts";
 import { ts } from "./typescript";
 
@@ -36,7 +36,7 @@ export function matchesEntity(
  * The literal a write stores: a string literal (through parentheses and `as`), or any
  * expression whose type is exactly one literal (`NEXT_STATE`, `Status.Paid`). Otherwise undefined.
  */
-export function writtenValue(value: TS.Expression, checker: TS.TypeChecker): string | undefined {
+export function writtenValue(value: TS.Expression, checker: TS.Checker): string | undefined {
   let e = value;
   while (ts.isParenthesizedExpression(e) || ts.isAsExpression(e) || ts.isSatisfiesExpression(e)) {
     e = e.expression;

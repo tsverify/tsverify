@@ -20,7 +20,7 @@
  *
  * Whether a candidate belongs to a spec's entity is decided later, with types (`entity.ts`).
  */
-import type * as TS from "@typescript/typescript6";
+import type * as TS from "./ts-types";
 import { ts } from "./typescript";
 
 export type WriteKind = "assign" | "spread" | "data";
@@ -71,7 +71,7 @@ export const FIND_METHODS: ReadonlySet<string> = new Set([
 ]);
 
 function forEachDescendant(node: TS.Node, visit: (n: TS.Node) => void): void {
-  ts.forEachChild(node, (c) => {
+  node.forEachChild((c) => {
     visit(c);
     forEachDescendant(c, visit);
   });
@@ -271,7 +271,10 @@ function matchDataWrite(
     if (!ts.isPropertyAssignment(p) && !ts.isShorthandPropertyAssignment(p)) continue;
     const name = propertyName(p);
     if (name === undefined || !fields.has(name)) continue;
-    let value: TS.Expression = ts.isPropertyAssignment(p) ? p.initializer : p.name;
+    // A shorthand's name is an identifier (TypeScript 7 types it as any property name).
+    let value: TS.Expression = ts.isPropertyAssignment(p)
+      ? p.initializer
+      : (p.name as TS.Identifier);
     const inner = skipParens(value);
     if (ts.isObjectLiteralExpression(inner)) {
       const set = propertyNamed(inner, "set");
@@ -334,7 +337,7 @@ function matchWrite(n: TS.Node, fields: ReadonlySet<string>): WriteNode | undefi
       if (name === undefined || !fields.has(name) || !spread) continue;
       const value = ts.isPropertyAssignment(p)
         ? p.initializer
-        : (p as TS.ShorthandPropertyAssignment).name;
+        : ((p as TS.ShorthandPropertyAssignment).name as TS.Identifier);
       return { kind: "spread", field: name, expr: n, site: p, ref: spread.expression, value };
     }
   }

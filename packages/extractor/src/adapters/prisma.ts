@@ -56,10 +56,11 @@
  * through helpers when the update's `where` does not use `X.id`.
  */
 import type { EntityDecl, FromState } from "@tsverify/ir";
-import type * as TS from "@typescript/typescript6";
 import { sharedScope } from "../atomicity";
 import type { ClientCall, ClientCalls } from "../client-calls";
+import { valueDeclarationOf } from "../declarations";
 import { symbolOf } from "../resolve";
+import type * as TS from "../ts-types";
 import { literalsOf } from "../type-facts";
 import { ts } from "../typescript";
 import { propertyNamed, unwrapArgument, type WriteNode } from "../writes";
@@ -101,13 +102,19 @@ function objectProp(
   return ts.isObjectLiteralExpression(e) ? e : undefined;
 }
 
+/** The value type of a type's `number` index signature (an array's element type). */
+function numberIndexType(type: TS.Type, checker: TS.Checker): TS.Type | undefined {
+  return checker.getIndexInfosOfType(type).find((info) => info.keyType.flags & ts.TypeFlags.Number)
+    ?.valueType;
+}
+
 /** The value of a property; for `{ id }`, the declaration name of what `id` refers to. */
 function propertyValue(
   p: TS.PropertyAssignment | TS.ShorthandPropertyAssignment,
-  checker: TS.TypeChecker,
+  checker: TS.Checker,
 ): TS.Expression | undefined {
   if (ts.isPropertyAssignment(p)) return p.initializer;
-  const decl = checker.getShorthandAssignmentValueSymbol(p)?.valueDeclaration;
+  const decl = valueDeclarationOf(checker.getShorthandAssignmentValueSymbol(p));
   if (
     decl &&
     (ts.isParameter(decl) || ts.isVariableDeclaration(decl)) &&
@@ -115,21 +122,21 @@ function propertyValue(
   ) {
     return decl.name;
   }
-  return p.name;
+  return ts.isIdentifier(p.name) ? p.name : undefined;
 }
 
 // --- where: status condition --------------------------------------------------------------
 
 type Condition = { values: string[] } | { reason: string };
 
-function literalValues(e: TS.Expression, checker: TS.TypeChecker): string[] | undefined {
+function literalValues(e: TS.Expression, checker: TS.Checker): string[] | undefined {
   const s = strip(e);
   if (ts.isStringLiteral(s) || ts.isNoSubstitutionTemplateLiteral(s)) return [s.text];
   const lits = literalsOf(checker.getTypeAtLocation(s), checker);
   return lits === "*" ? undefined : [...lits];
 }
 
-function listValues(e: TS.Expression, checker: TS.TypeChecker): string[] | undefined {
+function listValues(e: TS.Expression, checker: TS.Checker): string[] | undefined {
   const s = strip(e);
   if (ts.isArrayLiteralExpression(s)) {
     const out: string[] = [];
@@ -142,7 +149,8 @@ function listValues(e: TS.Expression, checker: TS.TypeChecker): string[] | undef
     return out;
   }
   const type = checker.getTypeAtLocation(s);
-  const element = checker.getApparentType(type).getNumberIndexType();
+  const apparent = type && checker.getApparentType(type);
+  const element = apparent && numberIndexType(apparent, checker);
   if (!element) return undefined;
   const lits = literalsOf(element, checker);
   return lits === "*" ? undefined : [...lits];
@@ -161,7 +169,7 @@ function mentions(node: TS.Node, field: string): boolean {
         return;
       }
     }
-    ts.forEachChild(n, visit);
+    n.forEachChild(visit);
   };
   visit(node);
   return found;
@@ -172,7 +180,7 @@ function statusCondition(
   where: TS.ObjectLiteralExpression | undefined,
   field: string,
   entity: EntityDecl,
-  checker: TS.TypeChecker,
+  checker: TS.Checker,
 ): Condition | undefined {
   if (!where) return undefined;
   const prop = propertyNamed(where, field);
@@ -224,7 +232,7 @@ function statusCondition(
 // --- $transaction -------------------------------------------------------------------------
 
 /** The `isolationLevel` an interactive `$transaction(fn, options)` call passes, if readable. */
-function isolationLevel(call: TS.CallExpression, checker: TS.TypeChecker): string | undefined {
+function isolationLevel(call: TS.CallExpression, checker: TS.Checker): string | undefined {
   const options = call.arguments[1];
   if (!options) return undefined;
   const o = strip(options);
@@ -240,7 +248,8 @@ function isolationLevel(call: TS.CallExpression, checker: TS.TypeChecker): strin
     const lits = literalsOf(checker.getTypeAtLocation(v), checker);
     return lits !== "*" && lits.length === 1 ? lits[0] : undefined;
   }
-  const prop = checker.getPropertyOfType(checker.getTypeAtLocation(o), "isolationLevel");
+  const optionsType = checker.getTypeAtLocation(o);
+  const prop = optionsType && checker.getPropertyOfType(optionsType, "isolationLevel");
   if (!prop) return undefined;
   const lits = literalsOf(checker.getTypeOfSymbol(prop), checker);
   return lits !== "*" && lits.length === 1 ? lits[0] : undefined;
@@ -269,7 +278,7 @@ function arrayTransaction(call: TS.CallExpression, calls: ClientCalls): ClientCa
 function storageKey(
   where: TS.ObjectLiteralExpression | undefined,
   field: string,
-  checker: TS.TypeChecker,
+  checker: TS.Checker,
 ): { key: string; value: TS.Expression } | undefined {
   if (!where) return undefined;
   const plain = where.properties.filter(

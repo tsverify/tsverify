@@ -3,10 +3,10 @@
  * it commits the write, and which construct makes the two atomic.
  */
 import type { AtomicScope, EntityDecl, FromState, PersistenceKind } from "@tsverify/ir";
-import type * as TS from "@typescript/typescript6";
 import type { Callees, Reach } from "../callgraph";
 import type { FunctionLike } from "../cfg";
 import type { ClientCall, ClientCalls, ScopeRef } from "../client-calls";
+import type * as TS from "../ts-types";
 import type { WriteKind, WriteNode } from "../writes";
 
 /** Context for a "not atomic" verdict: becomes `CodeSites.atomicNote` (the reason in `non-atomic`). */
@@ -59,7 +59,7 @@ export interface AdapterInput {
   frameCalls: readonly TS.CallExpression[];
   calls: ClientCalls;
   callees: Callees;
-  checker: TS.TypeChecker;
+  checker: TS.Checker;
   /** The spec's entity. */
   entity: EntityDecl;
 }
@@ -69,7 +69,7 @@ export interface LinkInput {
   write: WriteNode;
   frame: FunctionLike;
   reach: Reach;
-  checker: TS.TypeChecker;
+  checker: TS.Checker;
 }
 
 /** Atomicity that depends on the path from the impl to the write. */

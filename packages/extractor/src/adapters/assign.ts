@@ -24,12 +24,13 @@
  * Storage: the read's client, its path minus the method (`orders.get` → `orders`), and key `id`
  * when the entity type has an `id` property.
  */
-import type * as TS from "@typescript/typescript6";
 import { sharedScope } from "../atomicity";
 import { MAX_DEPTH } from "../callgraph";
 import { type FunctionLike, isFunctionLike } from "../cfg";
 import type { ClientCall, ScopeRef } from "../client-calls";
+import { valueDeclarationOf } from "../declarations";
 import { symbolOf } from "../resolve";
+import type * as TS from "../ts-types";
 import { declaredTypeOfRef } from "../type-facts";
 import { ts } from "../typescript";
 import { parentSkippingWrappers, referenceText, unwrapArgument } from "../writes";
@@ -80,7 +81,7 @@ function chainRoot(
     segments.unshift(cur.name.text);
     cur = strip(cur.expression);
   }
-  const decl = helper && ts.isIdentifier(cur) && symbolOf(cur, input.checker)?.valueDeclaration;
+  const decl = helper && ts.isIdentifier(cur) && valueDeclarationOf(symbolOf(cur, input.checker));
   if (helper && decl && ts.isParameter(decl) && decl.parent === helper.fn) {
     const arg = helper.call.arguments[helper.fn.parameters.indexOf(decl)];
     if (!arg || ts.isSpreadElement(arg)) return undefined;
@@ -98,16 +99,16 @@ function returnedExpressions(fn: FunctionLike): TS.Expression[] {
   const visit = (n: TS.Node): void => {
     if (isFunctionLike(n) || ts.isClassLike(n)) return;
     if (ts.isReturnStatement(n) && n.expression) out.push(n.expression);
-    ts.forEachChild(n, visit);
+    n.forEachChild(visit);
   };
-  ts.forEachChild(fn.body, visit);
+  fn.body.forEachChild(visit);
   return out;
 }
 
 /** A returned local variable of `fn`, replaced by its initializer. */
-function throughLocal(e: TS.Expression, fn: FunctionLike, checker: TS.TypeChecker): TS.Expression {
+function throughLocal(e: TS.Expression, fn: FunctionLike, checker: TS.Checker): TS.Expression {
   if (!ts.isIdentifier(e)) return e;
-  const decl = symbolOf(e, checker)?.valueDeclaration;
+  const decl = valueDeclarationOf(symbolOf(e, checker));
   if (decl && ts.isVariableDeclaration(decl) && decl.initializer && contains(fn, decl)) {
     return strip(decl.initializer);
   }
@@ -150,7 +151,7 @@ export function findRead(
   input: AdapterInput,
   refSym: TS.Symbol | undefined,
 ): ClientCall | undefined {
-  const decl = refSym?.valueDeclaration;
+  const decl = valueDeclarationOf(refSym);
   if (!decl || !ts.isVariableDeclaration(decl) || !decl.initializer) return undefined;
   const init = strip(decl.initializer);
   if (!ts.isCallExpression(init)) return undefined;
@@ -210,7 +211,9 @@ export const assignAdapter: PersistenceAdapter = {
       const segments = source.path.split(".");
       const collection = segments.slice(0, -1).join(".");
       const refType = declaredTypeOfRef(write.ref, checker);
-      const hasId = checker.getPropertyOfType(checker.getApparentType(refType), "id") !== undefined;
+      const apparent = refType && checker.getApparentType(refType);
+      const hasId =
+        apparent !== undefined && checker.getPropertyOfType(apparent, "id") !== undefined;
       if (collection !== "" && hasId) storage = { client: source.client, collection, key: "id" };
     }
     return { read, commit, scope, atomic: scope !== undefined, storage, problems };

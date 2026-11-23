@@ -22,9 +22,10 @@
  *
  * Never auto-detected: set `bindings.persistence: memory`.
  */
-import type * as TS from "@typescript/typescript6";
 import { suspensionBefore } from "../atomicity";
+import { valueDeclarationOf } from "../declarations";
 import { symbolOf } from "../resolve";
+import type * as TS from "../ts-types";
 import { ts } from "../typescript";
 import type { AdapterInput, PersistenceAdapter, PersistenceFacts } from "./types";
 
@@ -56,10 +57,10 @@ function keyOfLookup(e: TS.Expression): TS.Expression | undefined {
 }
 
 /** The id expression of a keyed lookup the entity reference comes from, if any. */
-function entityKeyOf(ref: TS.Expression, checker: TS.TypeChecker): TS.Expression | undefined {
+function entityKeyOf(ref: TS.Expression, checker: TS.Checker): TS.Expression | undefined {
   const e = strip(ref);
   if (!ts.isIdentifier(e)) return keyOfLookup(e);
-  const decl = symbolOf(e, checker)?.valueDeclaration;
+  const decl = valueDeclarationOf(symbolOf(e, checker));
   if (!decl || !ts.isVariableDeclaration(decl) || !decl.initializer) return undefined;
   const list = decl.parent;
   if (!ts.isVariableDeclarationList(list) || !(list.flags & ts.NodeFlags.Const)) return undefined;

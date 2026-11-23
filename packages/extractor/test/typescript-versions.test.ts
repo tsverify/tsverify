@@ -1,11 +1,10 @@
 /**
- * The extractor reads code with the project's own TypeScript (5.4–6.x, or
- * `@typescript/typescript6`). The default suite runs on `@typescript/typescript6`, which this TS-7
- * monorepo resolves to; here the golden code models must come out byte-identical on TypeScript
- * 5.9 too. (`versions.config.ts` runs the whole suite on one version.)
+ * The extractor reads code with the project's own TypeScript 7. The default suite runs on the
+ * monorepo's `typescript` (7.0, whose API is under `typescript/unstable/*`); here the golden code
+ * models must come out byte-identical on TypeScript 7.1 too (stable `typescript/sync`, and a
+ * different snapshot API). (`versions.config.ts` runs the whole suite on one version.)
  */
 import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { join } from "node:path";
 import type { BehaviorModel } from "@tsverify/ir";
 import { orderModel } from "@tsverify/ir/testing";
@@ -13,9 +12,9 @@ import { parseSpec } from "@tsverify/spec";
 import { describe, expect, it } from "vitest";
 import { APP_ROOT as ORDERS_APP } from "../../../examples/orders-app/test/materialize";
 import { APP_ROOT as ORDERS_PRISMA } from "../../../examples/orders-prisma/test/materialize";
-import { extractAll, type TypeScript } from "../src/index";
+import { extractAll, loadTypeScriptPackage } from "../src/index";
 
-const TS59 = createRequire(import.meta.url)("typescript59") as TypeScript;
+const TS71 = loadTypeScriptPackage("typescript71", import.meta.url);
 const GOLDEN = new URL("./__golden__/", import.meta.url);
 
 function prismaSpec(): BehaviorModel {
@@ -28,10 +27,11 @@ function prismaSpec(): BehaviorModel {
 describe.each([
   ["orders-app", ORDERS_APP, orderModel],
   ["orders-prisma", ORDERS_PRISMA, prismaSpec],
-] as const)("%s on TypeScript 5.9", (name, root, spec) => {
+] as const)("%s on TypeScript 7.1", (name, root, spec) => {
   it("matches the golden code model", () => {
-    expect(TS59.version).toMatch(/^5\.9\./);
-    const { results } = extractAll([spec()], { projectRoot: root, typescript: TS59 });
+    if ("error" in TS71) throw new Error(TS71.error);
+    expect(TS71.version).toMatch(/^7\.1\./);
+    const { results } = extractAll([spec()], { projectRoot: root, typescript: TS71.ts });
     const golden = readFileSync(new URL(`${name}.code.json`, GOLDEN), "utf8");
     expect(results[0]?.findings).toEqual([]);
     expect(`${JSON.stringify(results[0]?.model, null, 2)}\n`).toBe(golden);

@@ -11,15 +11,13 @@
     }
   },
   "scripts": {
-    "test:ts5.9": "TSVERIFY_TEST_TYPESCRIPT=typescript59 vitest run --config test/versions.config.ts",
-    "test:ts6": "TSVERIFY_TEST_TYPESCRIPT=@typescript/typescript6 vitest run --config test/versions.config.ts"
+    "test:ts7.1": "TSVERIFY_TEST_TYPESCRIPT=typescript71 vitest run --config test/versions.config.ts"
   },
   "dependencies": {
     "@tsverify/ir": "workspace:*"
   },
   "devDependencies": {
     "@tsverify/spec": "workspace:*",
-    "@typescript/typescript6": "6.0.2",
-    "typescript59": "npm:typescript@5.9.3"
+    "typescript71": "npm:typescript@7.1.0-beta"
   }
 }

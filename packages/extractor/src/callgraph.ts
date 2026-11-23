@@ -10,10 +10,11 @@
  * (bound client calls: never descend into a client's implementation; bound guard calls) and at
  * `MAX_DEPTH` call levels below the impl.
  */
-import type * as TS from "@typescript/typescript6";
 import { type FunctionLike, inlineCallbackCall, isFunctionLike } from "./cfg";
+import { signatureDeclarationOf, valueDeclarationOf } from "./declarations";
 import type { ProjectContext } from "./project";
 import { functionOfDeclaration, symbolOf } from "./resolve";
+import type * as TS from "./ts-types";
 import { ts } from "./typescript";
 
 export const MAX_DEPTH = 8;
@@ -107,7 +108,7 @@ export function frameCalls(fn: FunctionLike): TS.CallExpression[] {
   const visit = (n: TS.Node): void => {
     if ((isFunctionLike(n) && !inlineCallbackCall(n)) || ts.isClassLike(n)) return;
     if (ts.isCallExpression(n)) out.push(n);
-    ts.forEachChild(n, visit);
+    n.forEachChild(visit);
   };
   if (fn.body) visit(fn.body);
   callsMemo.set(fn, out);
@@ -130,9 +131,9 @@ export class Callees {
 
   private resolve(call: TS.CallExpression): FunctionLike | undefined {
     const checker = this.ctx.checker;
-    let decl: TS.Declaration | undefined = checker.getResolvedSignature(call)?.declaration;
+    let decl = signatureDeclarationOf(checker.getResolvedSignature(call));
     if (!decl || ts.isJSDocSignature(decl)) {
-      decl = symbolOf(call.expression, checker)?.valueDeclaration;
+      decl = valueDeclarationOf(symbolOf(call.expression, checker));
     }
     const fn =
       decl && (isFunctionLike(decl) ? (decl.body ? decl : undefined) : functionOfDeclaration(decl));

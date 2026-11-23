@@ -1,11 +1,10 @@
 /**
  * The extractor suite on one TypeScript, named by `TSVERIFY_TEST_TYPESCRIPT`:
  *
- *   pnpm --filter @tsverify/extractor test:ts5.9
- *   pnpm --filter @tsverify/extractor test:ts6
+ *   pnpm --filter @tsverify/extractor test:ts7.1
  *
- * The default suite runs on whatever `loadTypeScript` finds (`@typescript/typescript6` in this
- * TS-7 monorepo); `typescript-versions.test.ts` also checks the goldens on 5.9 there.
+ * The default suite runs on whatever `loadTypeScript` finds (the monorepo's `typescript` 7.0);
+ * `typescript-versions.test.ts` also checks the goldens on 7.1 there.
  */
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";

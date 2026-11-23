@@ -27,9 +27,9 @@
  * dominates exactly when it is in every set.
  */
 import { compareStrings } from "@tsverify/ir";
-import type * as TS from "@typescript/typescript6";
 import { type Callees, frameCalls, type LeadGroup, leadsTo, type Reach } from "./callgraph";
 import { buildCfg, type Cfg, ENTRY, EXIT, type FunctionLike, reachable } from "./cfg";
+import type * as TS from "./ts-types";
 
 /**
  * Most distinct guard sets enumerated for one write (and at any CFG node on the way). Beyond

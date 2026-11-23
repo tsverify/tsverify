@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { installTypeScript } from "../test/typescript";
-import { createOverlayHost, type NarrowRequest, ProgramTypeFacts } from "./type-facts";
+import { afterAll, describe, expect, it } from "vitest";
+import { openProject } from "../test/typescript";
+import type { NarrowRequest } from "./type-facts";
 import { findCandidateWrites, rebindWrites } from "./writes";
 
 const SOURCE = `
@@ -18,16 +18,13 @@ export function deep(ctx: { order: E }) { if (ctx.order.status === "c") ctx.orde
 `;
 
 function setup() {
-  const ts = installTypeScript();
-  const options = { strict: true, target: ts.ScriptTarget.ES2022, lib: ["lib.es2022.d.ts"] };
-  const file = "/app/cases.ts";
-  const host = createOverlayHost(options, new Map([[file, SOURCE]]));
-  const base = ts.createProgram({ rootNames: [file], options, host });
-  const original = base.getSourceFile(file);
+  const project = openProject({ "cases.ts": SOURCE });
+  const file = `${project.root}/cases.ts`;
+  const original = project.files.find((f) => f.fileName === file);
   if (!original) throw new Error(`${file} is not in the program`);
   const fields = new Set(["status"]);
   const candidates = findCandidateWrites([original], fields);
-  const facts = new ProgramTypeFacts(base, host);
+  const facts = project.facts;
   const requests: NarrowRequest[] = candidates.map((c) => ({
     file: c.file,
     span: c.span,
@@ -35,11 +32,12 @@ function setup() {
     field: c.field,
   }));
   const handles = facts.planNarrowing(requests);
-  return { facts, candidates, handles, original, file, fields };
+  return { project, facts, candidates, handles, original, file, fields };
 }
 
 describe("ProgramTypeFacts (probe-first)", () => {
-  const { facts, candidates, handles, original, file, fields } = setup();
+  const { project, facts, candidates, handles, original, file, fields } = setup();
+  afterAll(() => project.close());
   const answers = handles.map((h) => facts.narrowedLiteralsAt(h));
   const byRef = (i: number) => ({ ref: candidates[i]?.ref, ...answers[i] });
 
@@ -87,7 +85,7 @@ describe("ProgramTypeFacts (probe-first)", () => {
       expect(facts.toOriginalPosition(file, w.expr.getStart(sf))).toBe(candidates[i]?.span.start);
       expect(facts.toOriginalPosition(file, w.expr.getEnd())).toBe(candidates[i]?.span.end);
     });
-    const probed = facts.program.getSourceFile(file)?.getFullText() ?? "";
+    const probed = facts.program.getSourceFile(file)?.text ?? "";
     expect(probed).toContain('(x.status, x.status = (y.status, y.status = "a"))');
     expect(probed.split("\n").length).toBe(original.text.split("\n").length);
   });

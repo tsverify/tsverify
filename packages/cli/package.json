@@ -63,14 +63,10 @@
     "@tsverify/runtime": "workspace:*"
   },
   "peerDependencies": {
-    "@typescript/typescript6": ">=6.0.0",
-    "typescript": ">=5.4",
+    "typescript": ">=7.0.0",
     "vitest": "^3.0.5 || ^4.0.1 || ^5.0.0"
   },
   "peerDependenciesMeta": {
-    "@typescript/typescript6": {
-      "optional": true
-    },
     "typescript": {
       "optional": true
     },

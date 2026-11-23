@@ -4,14 +4,13 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
-import { loadTypeScript } from "../src/index";
+import { loadTypeScript, loadTypeScriptPackage } from "../src/index";
 import { FIXTURES } from "./helpers";
 
 const SRC = fileURLToPath(new URL("../src/", import.meta.url));
 const require = createRequire(import.meta.url);
-/** Real package directories, linked into temp projects. */
-const TS59 = dirname(require.resolve("typescript59/package.json"));
-const TS6 = dirname(require.resolve("@typescript/typescript6/package.json"));
+/** The real TypeScript 7.1 package directory (the `typescript71` alias), linked into temp projects. */
+const TS71 = dirname(require.resolve("typescript71/package.json"));
 
 const created: string[] = [];
 afterAll(async () => {
@@ -37,12 +36,23 @@ async function project(
   return dir;
 }
 
-/** A fake `typescript` package: version 7.0.2 without the compiler API, or an old classic one. */
-function fakeTypeScript(version: string, classic: boolean): Record<string, string> {
-  const api = classic ? ", createProgram() {}" : "";
+/** A fake `typescript` package of `version`, with `files` (path in the package → text). */
+function fakeTypeScript(
+  version: string,
+  exports: Record<string, string> = {},
+  files: Record<string, string> = {},
+): Record<string, string> {
+  const manifest = {
+    name: "typescript",
+    version,
+    exports: { "./package.json": "./package.json", ".": "./version.cjs", ...exports },
+  };
   return {
-    "node_modules/typescript/package.json": `{ "name": "typescript", "version": "${version}", "main": "index.cjs" }`,
-    "node_modules/typescript/index.cjs": `module.exports = { version: "${version}"${api} };`,
+    "node_modules/typescript/package.json": JSON.stringify(manifest),
+    "node_modules/typescript/version.cjs": `module.exports = { version: "${version}" };`,
+    ...Object.fromEntries(
+      Object.entries(files).map(([path, text]) => [`node_modules/typescript/${path}`, text]),
+    ),
   };
 }
 
@@ -51,63 +61,76 @@ function loadAlone(root: string) {
   return loadTypeScript(root, pathToFileURL(join(root, "tsverify.js")));
 }
 
-const HEADLINE = "tsverify needs the TypeScript compiler API to read your code.";
+const HEADLINE = "tsverify needs TypeScript 7 or later to read your code.";
 
 describe("loadTypeScript", () => {
-  it("uses @typescript/typescript6 in this TS-7 monorepo", () => {
+  it("uses the monorepo's TypeScript 7", () => {
     const loaded = loadTypeScript(FIXTURES);
     if ("error" in loaded) throw new Error(loaded.error);
-    expect(loaded.version).toMatch(/^6\./);
-    expect(typeof loaded.ts.createProgram).toBe("function");
+    expect(loaded.version).toMatch(/^7\./);
+    expect(typeof loaded.ts.sync.API).toBe("function");
+    expect(typeof loaded.ts.ast.isIdentifier).toBe("function");
   });
 
-  it("prefers the project's classic typescript", async () => {
-    const root = await project({}, { typescript: TS59 });
+  it("prefers the project's own TypeScript, through the stable entry points of 7.1", async () => {
+    const root = await project({}, { typescript: TS71 });
     const loaded = loadAlone(root);
     if ("error" in loaded) throw new Error(loaded.error);
-    expect(loaded.version).toBe("5.9.3");
-    expect(loaded.ts.version).toBe("5.9.3");
+    expect(loaded.version).toBe("7.1.0-beta");
+    expect(loaded.path).toBe(require.resolve("typescript71/sync"));
   });
 
-  it("falls back to the project's @typescript/typescript6 when typescript is 7", async () => {
-    const root = await project(fakeTypeScript("7.0.2", false), {
-      "@typescript/typescript6": TS6,
-    });
-    const loaded = loadAlone(root);
-    if ("error" in loaded) throw new Error(loaded.error);
-    expect(loaded.version).toMatch(/^6\./);
-  });
-
-  it("falls back to tsverify's own install location", async () => {
-    const root = await project(fakeTypeScript("7.0.2", false));
-    const self = await project({}, { typescript: TS59 });
+  it("falls back to tsverify's own install location when the project has no TypeScript", async () => {
+    const root = await project({});
+    const self = await project({}, { typescript: TS71 });
     const loaded = loadTypeScript(root, pathToFileURL(join(self, "tsverify.js")));
     if ("error" in loaded) throw new Error(loaded.error);
-    expect(loaded.version).toBe("5.9.3");
+    expect(loaded.version).toBe("7.1.0-beta");
   });
 
-  it("names TypeScript 7 and the fix when nothing has the compiler API", async () => {
-    const root = await project(fakeTypeScript("7.0.2", false));
-    expect(loadAlone(root)).toEqual({
-      error: `${HEADLINE} This project has TypeScript 7.0.2, which no longer includes it: add \`@typescript/typescript6\` as a devDependency (\`npm i -D @typescript/typescript6\`). TypeScript 5.4–6.x projects need nothing extra.`,
-      projectVersion: "7.0.2",
+  it.each(["5.9.3", "6.0.2"])("asks a TypeScript %s project to upgrade", async (version) => {
+    const root = await project(fakeTypeScript(version));
+    const self = await project({}, { typescript: TS71 });
+    // A TypeScript 7 elsewhere is not used for a project that has its own, older one.
+    expect(loadTypeScript(root, pathToFileURL(join(self, "tsverify.js")))).toEqual({
+      error: `${HEADLINE} This project has TypeScript ${version}: upgrade it with \`npm i -D typescript@latest\`.`,
+      projectVersion: version,
     });
   });
 
-  it("rejects TypeScript older than 5.4", async () => {
-    const root = await project(fakeTypeScript("5.3.3", true));
+  it("reports a TypeScript 7 without the API entry points", async () => {
+    const root = await project(fakeTypeScript("7.0.0"));
     expect(loadAlone(root)).toEqual({
-      error: `${HEADLINE} This project has TypeScript 5.3.3, and tsverify supports 5.4 or later: upgrade it, or add \`@typescript/typescript6\` as a devDependency (\`npm i -D @typescript/typescript6\`).`,
-      projectVersion: "5.3.3",
+      error: `${HEADLINE} This project has TypeScript 7.0.0, which has neither \`typescript/sync\` nor \`typescript/unstable/sync\`: upgrade it with \`npm i -D typescript@latest\`.`,
+      projectVersion: "7.0.0",
+    });
+  });
+
+  it("reports a TypeScript 7 whose API fails to load", async () => {
+    const root = await project(
+      fakeTypeScript(
+        "7.0.0",
+        { "./unstable/sync": "./sync.cjs", "./unstable/ast": "./ast.cjs" },
+        { "sync.cjs": `throw new Error("no binary");`, "ast.cjs": "module.exports = {};" },
+      ),
+    );
+    expect(loadAlone(root)).toEqual({
+      error: `${HEADLINE} This project has TypeScript 7.0.0, which failed to load (no binary): reinstall it with \`npm i -D typescript\`.`,
+      projectVersion: "7.0.0",
     });
   });
 
   it("reports a project without TypeScript", async () => {
     const root = await project({});
-    const loaded = loadAlone(root);
-    expect(loaded).toEqual({
-      error: `${HEADLINE} No TypeScript is installed for ${root}: add \`@typescript/typescript6\` as a devDependency (\`npm i -D @typescript/typescript6\`), or \`typescript\` 5.4–6.x.`,
+    expect(loadAlone(root)).toEqual({
+      error: `${HEADLINE} No TypeScript is installed for ${root}: add it with \`npm i -D typescript\`.`,
     });
+  });
+
+  it("loads a named TypeScript package (the suite's 7.1 run)", () => {
+    const loaded = loadTypeScriptPackage("typescript71", import.meta.url);
+    if ("error" in loaded) throw new Error(loaded.error);
+    expect(loaded.version).toBe("7.1.0-beta");
   });
 });
 
@@ -117,7 +140,8 @@ describe("extractor sources", () => {
     const offending: string[] = [];
     for (const file of files) {
       const text = await readFile(join(SRC, file), "utf8");
-      const value = /^import (?!type )[^;]*from "(typescript|@typescript\/[^"]+|ts-morph)";/m;
+      const value =
+        /^import (?!type )[^;]*from "(typescript(\/[^"]+)?|@typescript\/[^"]+|ts-morph)";/m;
       if (value.test(text)) offending.push(file);
     }
     expect(offending).toEqual([]);
