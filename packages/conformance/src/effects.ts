@@ -1,10 +1,27 @@
-import { compareStrings, type Finding } from "@tsverify/ir";
+import { compareStrings, type Finding, type SourceLocation } from "@tsverify/ir";
 import { earliest, type Pairing, pairingFinding } from "./finding";
 
 /** The client an effect gate calls: `queue` for `queue.acknowledgeMessage`, `notify` for `notify`. */
 function clientOfGate(gate: string): string {
   const dot = gate.indexOf(".");
   return dot < 0 ? gate : gate.slice(0, dot);
+}
+
+/**
+ * The call site to point at: the first one in the impl's file, else in the writing function's
+ * file, else the first one anywhere. A helper in another file may make the same call, and a
+ * file that sorts first (`batch.ts` before `refund.ts`) shouldn't win over the impl's own.
+ */
+function nearest(
+  locations: SourceLocation[],
+  files: readonly (string | undefined)[],
+): SourceLocation | undefined {
+  for (const file of files) {
+    if (file === undefined) continue;
+    const own = locations.filter((l) => l.file === file.replace(/^\.\//, ""));
+    if (own.length > 0) return earliest(own);
+  }
+  return earliest(locations);
 }
 
 function uniqueSorted(names: string[]): string[] {
@@ -41,7 +58,10 @@ export function checkEffects(p: Pairing): Finding[] {
   for (const name of called) {
     if (declared.includes(name)) continue;
     const callSites = sites.effects.filter((e) => e.effect === name);
-    const at = earliest(callSites.map((e) => e.at));
+    const at = nearest(
+      callSites.map((e) => e.at),
+      [t.impl?.file, sites.function.file],
+    );
     const gate = callSites[0]?.gate ?? gateOf(name);
     const unmapped = !known.has(name);
     findings.push(
