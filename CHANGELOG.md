@@ -46,6 +46,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   `properties.strict`. Recommended for blocking CI ([`docs/workflows.md`](docs/workflows.md)).
 - Generated tests support clients bound as a bare exported function (call sites with `path: ""`, gate = the
   client name): `instrument.effects` accepts the `""` call path and makes the fake client a recording function.
+- **`bindings.storage`: point at your own storage functions.** A spec can name the app's `read`, `save`,
+  `update` (conditional save) and `atomic` functions (`path#symbol`, or `{ fn, args, returns, from, to }` with
+  positional argument roles) instead of picking a built-in storage style; `storage: assign | prisma | memory`
+  is the preset form, and `persistence:` stays accepted as its alias. The block is validated (roles per kind,
+  fixed states, unique names), carried in the IR (`Bindings.storage`, `PersistenceKind` `functions`,
+  `AtomicScope` `declared`) and diffed by `tsverify diff`, and generated tests fake the named functions with
+  the new `instrument.storage`. `tsverify check` does not recognise calls to them yet.
 
 ### Fixed
 - `tsverify test` mocked each client module wholesale, so a guard or helper exported beside a client vanished
