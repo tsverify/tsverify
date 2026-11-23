@@ -3,10 +3,12 @@
  * (`fixtures/storage-app`): a repo module with `getOrder` / `saveOrder` / `setStatusIf` over a
  * plain Map, and `withTransaction` in `src/db.ts`.
  *
- * The extractor does not recognise storage functions yet, so the code models are written by hand
- * (`order.code.json`, and the variant's) following the `ir.StorageBinding` conventions: calls are
- * `storage.<symbol>` call sites, `persistence: "functions"`, a conditional save's atomic scope is
- * `conditional-update`, a read and save inside `withTransaction` is `declared`.
+ * The code models come from the real extractor, run on a copy of the app (and of the variant).
+ * They follow the `ir.StorageBinding` conventions: calls are `storage.<symbol>` call sites,
+ * `persistence: "functions"`, a conditional save's atomic scope is `conditional-update`, a read and
+ * save inside `withTransaction` is `declared`. The hand-written models these tests used before the
+ * extractor recognised storage functions (`order.code.json`, and the variant's) stay as its
+ * target: `packages/extractor/test/storage-app.test.ts` checks it produces them.
  *
  * - The spec is parsed from the YAML and the generated files are compared with goldens.
  * - The real checker finds the double refund in the variant's code model (read + save outside
@@ -16,6 +18,7 @@
  *   refund), and on the variant the replay fails with verdict `confirmed`: Stripe refunds twice.
  */
 import { execFile } from "node:child_process";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -24,13 +27,10 @@ import { promisify } from "node:util";
 import type { BehaviorModel, Finding } from "@tsverify/ir";
 import { describe, expect, it } from "vitest";
 import { check } from "../../checker/src/index";
+import { extractAll, loadTypeScript } from "../../extractor/src/index";
 import { parseSpec } from "../../spec/src/index";
 import { buildContext } from "../src/context";
 import { generate } from "../src/index";
-import cleanJson from "./fixtures/storage-app/order.code.json" with { type: "json" };
-import variantJson from "./fixtures/storage-app/variants/read-save-refund/order.code.json" with {
-  type: "json",
-};
 
 const APP = fileURLToPath(new URL("fixtures/storage-app/", import.meta.url));
 const VARIANT = join(APP, "variants/read-save-refund");
@@ -40,8 +40,35 @@ const RUNTIME = fileURLToPath(import.meta.resolve("@tsverify/runtime"));
 const VITEST = fileURLToPath(new URL("../../../node_modules/vitest/vitest.mjs", import.meta.url));
 const RULE = "rule:Refund issued at most once per order";
 
-const clean = cleanJson as unknown as BehaviorModel;
-const variant = variantJson as unknown as BehaviorModel;
+/** The extractor's code model of a copy of the app, with `overlay`'s files over it. */
+function extracted(overlay?: string): BehaviorModel {
+  const root = mkdtempSync(join(tmpdir(), "tsverify-storage-app-extract-"));
+  try {
+    cpSync(join(APP, "src"), join(root, "src"), { recursive: true });
+    if (overlay) cpSync(join(overlay, "src"), join(root, "src"), { recursive: true });
+    writeFileSync(
+      join(root, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: { strict: true, target: "es2022", module: "esnext", types: [] },
+        include: ["src"],
+      }),
+    );
+    const text = readFileSync(join(root, SPEC_FILE), "utf8");
+    const parsed = parseSpec(text, SPEC_FILE).model;
+    const typescript = loadTypeScript(APP);
+    if (!parsed || "error" in typescript) throw new Error("fixture spec or TypeScript missing");
+    const [result] = extractAll([parsed], { projectRoot: root, typescript: typescript.ts }).results;
+    if (!result?.model || result.findings.length > 0) {
+      throw new Error(`extractor: ${JSON.stringify(result?.findings)}`);
+    }
+    return result.model;
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+const clean = extracted();
+const variant = extracted(VARIANT);
 
 async function spec(): Promise<BehaviorModel> {
   const { model, findings } = parseSpec(await readFile(join(APP, SPEC_FILE), "utf8"), SPEC_FILE);
@@ -126,9 +153,9 @@ async function run(files: { path: string; content: string }[], overlay?: string)
 }
 
 describe("named storage functions: generated tests", () => {
-  it("the hand-written code models copy the spec's bindings, storage included", async () => {
+  it("the code models copy the spec's bindings, storage included", async () => {
     const s = await spec();
-    expect(clean.bindings).toEqual(withoutAt(s.bindings));
+    expect(clean.bindings).toEqual(s.bindings);
     expect(variant.bindings).toEqual(clean.bindings);
     expect(s.bindings.storage?.update[0]).toMatchObject({ args: ["key", "from", "to"] });
   });

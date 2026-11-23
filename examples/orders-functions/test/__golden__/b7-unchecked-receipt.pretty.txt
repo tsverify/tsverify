@@ -1,0 +1,54 @@
+src/orders/order.behavior.yaml  project: .
+checkout, refund, ship: atomic, as declared by `withTransaction` (not checked inside it)
+Order lifecycle
+  ✗ non-atomic  src/orders/order.behavior.yaml:27:3 · src/payments/webhook.ts:17:23
+    payment_succeeded: onPaymentSucceeded reads the entity (storage.getOrder) and writes paid, but email.send can run although storage.updateStatusIf found status changed: the call is not behind a check of the save's result; the spec says atomic.
+    hint: Check what storage.updateStatusIf returns and stop when it saved nothing (`if (!(await …)) throw …`) before calling email.send.
+    ↳ consequence: ✗ implementation-property  src/orders/order.behavior.yaml:27:3 · src/payments/webhook.ts:20:9
+      Exactly-once effect `email.receipt` fires 2 times for one Order.
+      hint: make `payment_succeeded`'s state check and write atomic in the code (one transaction or a conditional update)
+      trace:
+        step 0  status=draft
+        step 1  checkout#1 atomic → proceed  status=pending_payment
+        step 2  payment_succeeded#1 read → proceed  status=pending_payment
+        step 3  payment_succeeded#2 read → proceed (duplicate delivery)  status=pending_payment
+        step 4  payment_succeeded#1 write  status=paid  email.receipt=1
+        step 5  payment_succeeded#2 write (duplicate delivery)  status=paid  email.receipt=2  ✗ effect-multiplicity
+    ↳ consequence: ✗ implementation-property  src/orders/order.behavior.yaml:52:3 · src/orders/refund.ts:23:10
+      Exactly-once effect `stripe.refund` fires 2 times for one Order.
+      hint: make `payment_succeeded`'s state check and write atomic in the code (one transaction or a conditional update)
+      trace:
+        step 0  status=draft
+        step 1  checkout#1 atomic → proceed  status=pending_payment
+        step 2  payment_succeeded#1 read → proceed  status=pending_payment
+        step 3  payment_succeeded#2 read → proceed (duplicate delivery)  status=pending_payment
+        step 4  payment_succeeded#1 write  status=paid  email.receipt=1
+        step 5  refund#1 atomic → proceed  status=refunded  stripe.refund=1
+        step 6  payment_succeeded#2 write (duplicate delivery)  status=paid  email.receipt=2
+        step 7  refund#2 atomic → proceed  status=refunded  stripe.refund=2  ✗ effect-multiplicity
+    ↳ consequence: ✗ implementation-property  src/orders/order.behavior.yaml:62:5
+      Rule "Refund issued at most once per order" (always: count(effect stripe.refund) <= 1) is violated: a reachable state breaks it.
+      hint: make `payment_succeeded`'s state check and write atomic in the code (one transaction or a conditional update)
+      trace:
+        step 0  status=draft
+        step 1  checkout#1 atomic → proceed  status=pending_payment
+        step 2  payment_succeeded#1 read → proceed  status=pending_payment
+        step 3  payment_succeeded#2 read → proceed (duplicate delivery)  status=pending_payment
+        step 4  payment_succeeded#1 write  status=paid  email.receipt=1
+        step 5  refund#1 atomic → proceed  status=refunded  stripe.refund=1
+        step 6  payment_succeeded#2 write (duplicate delivery)  status=paid  email.receipt=2
+        step 7  refund#2 atomic → proceed  status=refunded  stripe.refund=2  ✗ rule:Refund issued at most once per order
+    ↳ consequence: ✗ implementation-property  src/orders/order.behavior.yaml:66:5
+      Rule "Shipped orders are never refunded" (never: status == shipped and count(effect stripe.refund) > 0) is violated: a reachable state satisfies it.
+      hint: make `payment_succeeded`'s state check and write atomic in the code (one transaction or a conditional update)
+      trace:
+        step 0  status=draft
+        step 1  checkout#1 atomic → proceed  status=pending_payment
+        step 2  payment_succeeded#1 read → proceed  status=pending_payment
+        step 3  payment_succeeded#2 read → proceed (duplicate delivery)  status=pending_payment
+        step 4  payment_succeeded#1 write  status=paid  email.receipt=1
+        step 5  refund#1 atomic → proceed  status=refunded  stripe.refund=1
+        step 6  payment_succeeded#2 write (duplicate delivery)  status=paid  email.receipt=2
+        step 7  ship#1 atomic → proceed  status=shipped  ✗ rule:Shipped orders are never refunded
+
+✗ 1 spec, 5 errors, 0 warnings (6 spec states, 37 code states)

@@ -15,6 +15,17 @@
  *   `const X = await <chain>.<model>.find…(…)` on the same model declared before the call in an
  *   enclosing block. Without one there is no probe, and the write's `ref` is the update object.
  *
+ * - (`patch`, named storage functions only: `PatchOptions`) an object literal passed directly as a
+ *   call argument whose `<field>` property comes before any spread:
+ *   `patchOrder(id, { status: "paid" })`. Like a `data` write, its probe reference is chosen
+ *   syntactically (`patchRefText`): the closest `const X = await? <read>(…)` declared before the
+ *   call in an enclosing block of its function, where `<read>` is a name that may be a bound read
+ *   function (its symbol, or a local import alias of it). Phase 2 checks the symbol.
+ *
+ * A conditional save (`setStatusIf(id, from, to)`, kind `update`) is a state write with no field
+ * written in the code: the named-function adapter finds those in phase 2, by symbol, since they
+ * need no probe (`adapters/functions.ts`).
+ *
  * Not candidates: `this.<field> = v` in a constructor (object initialization, not a transition),
  * and ORM `create` calls (they initialize a new entity, like a constructor).
  *
@@ -23,7 +34,18 @@
 import type * as TS from "./ts-types";
 import { ts } from "./typescript";
 
-export type WriteKind = "assign" | "spread" | "data";
+export type WriteKind = "assign" | "spread" | "data" | "patch" | "update";
+
+/**
+ * Phase-1 options for `patch` candidates, set only when some spec names its own storage functions
+ * (`bindings.storage`), so other projects find exactly the writes they did before.
+ */
+export interface PatchOptions {
+  /** State fields of the specs with named storage functions. */
+  fields: ReadonlySet<string>;
+  /** Bound read functions' symbols (`getOrder`, `repo.get`): probe reference candidates. */
+  readSymbols: readonly string[];
+}
 
 export interface CandidateWrite {
   kind: WriteKind;
@@ -48,10 +70,15 @@ export interface WriteNode {
   ref: TS.Expression;
   /** The written value expression (`undefined` for a shorthand property: its identifier). */
   value: TS.Expression;
-  /** `data` writes: the update call (`prisma.order.update(…)`). */
+  /**
+   * `data` writes: the update call (`prisma.order.update(…)`); `patch` writes: the call the
+   * object is passed to; `update` writes: the conditional save call itself.
+   */
   call?: TS.CallExpression;
-  /** `data` writes: whether `ref` is the probe's reference (else it is the update object). */
+  /** `data` / `patch` writes: whether `ref` is the probe's reference (else it is the object). */
   probed?: boolean;
+  /** `update` writes with a fixed target (`to:` in the binding): the written state. */
+  fixedValue?: string;
 }
 
 /** Update methods whose argument holds a `data`-shaped object, and the keys that hold it. */
@@ -252,6 +279,89 @@ function precedingFind(call: TS.CallExpression, model: string): string | undefin
   return undefined;
 }
 
+/**
+ * Callee texts in `sf` that may be a bound read function: each symbol (`getOrder`, `repo.get`)
+ * and its last segment, a local alias of a named import of it (`import { getOrder as load }`),
+ * and `ns.<symbol>` for a namespace import `ns`. Syntax only; phase 2 checks the symbol.
+ */
+function readNamesOf(sf: TS.SourceFile, symbols: readonly string[]): ReadonlySet<string> {
+  const names = new Set<string>();
+  const heads = new Set<string>();
+  for (const s of symbols) {
+    names.add(s);
+    names.add(s.slice(s.lastIndexOf(".") + 1));
+    heads.add(s.split(".")[0] as string);
+  }
+  for (const st of sf.statements) {
+    if (!ts.isImportDeclaration(st)) continue;
+    const bindings = st.importClause?.namedBindings;
+    if (!bindings) continue;
+    if (ts.isNamespaceImport(bindings)) {
+      for (const s of symbols) names.add(`${bindings.name.text}.${s}`);
+      continue;
+    }
+    for (const e of bindings.elements) {
+      const imported = (e.propertyName ?? e.name).text;
+      if (!heads.has(imported)) continue;
+      for (const s of symbols) {
+        const [head, ...rest] = s.split(".");
+        if (head === imported) names.add([e.name.text, ...rest].join("."));
+      }
+    }
+  }
+  return names;
+}
+
+/** Whether `init` is `await? <name>(…)` for one of `names` (any call when `names` is undefined). */
+function isReadCall(init: TS.Expression, names: ReadonlySet<string> | undefined): boolean {
+  const e = stripValue(init);
+  if (!ts.isCallExpression(e)) return false;
+  if (!names) return true;
+  const callee = referenceText(e.expression);
+  return callee !== undefined && names.has(callee);
+}
+
+/** An arrow function or function expression passed directly as a call argument. */
+function isInlineCallback(fn: TS.Node): boolean {
+  if (!ts.isArrowFunction(fn) && !ts.isFunctionExpression(fn)) return false;
+  return ts.isCallExpression(parentSkippingWrappers(fn));
+}
+
+/**
+ * Phase 1: a `patch` write's probe reference: the closest `const X = await? <read>(…)` before
+ * the call in an enclosing block of its function (inline callbacks included), else the closest
+ * `const X = await? <any call>(…)` (a read under a name phase 1 cannot see, such as a renamed
+ * re-export). Phase 2 uses the probe only when `X` is typed as the entity.
+ */
+function patchRefText(call: TS.CallExpression, names: ReadonlySet<string>): string | undefined {
+  return closestConstCall(call, names) ?? closestConstCall(call, undefined);
+}
+
+function closestConstCall(
+  call: TS.CallExpression,
+  names: ReadonlySet<string> | undefined,
+): string | undefined {
+  let child: TS.Node = call;
+  for (let p: TS.Node | undefined = call.parent; p; child = p, p = p.parent) {
+    if (ts.isFunctionLike(p) && !isInlineCallback(p)) return undefined;
+    if (!ts.isBlock(p) && !ts.isSourceFile(p) && !ts.isCaseClause(p) && !ts.isDefaultClause(p)) {
+      continue;
+    }
+    const statements: readonly TS.Statement[] = p.statements;
+    for (let i = statements.indexOf(child as TS.Statement) - 1; i >= 0; i--) {
+      const st = statements[i];
+      if (!st || !ts.isVariableStatement(st)) continue;
+      if (!(st.declarationList.flags & ts.NodeFlags.Const)) continue;
+      for (const d of st.declarationList.declarations) {
+        if (ts.isIdentifier(d.name) && d.initializer && isReadCall(d.initializer, names)) {
+          return d.name.text;
+        }
+      }
+    }
+  }
+  return undefined;
+}
+
 /** Phase 1: the entity reference a `data` write's probe reads (see the module comment). */
 function dataRefText(call: TS.CallExpression): string | undefined {
   const args = unwrapArgument(call.arguments[0] as TS.Node);
@@ -281,14 +391,7 @@ function matchDataWrite(
       if (set && ts.isPropertyAssignment(set)) value = set.initializer;
     }
     // In the probed program, `(ref.<field>, { … })` wraps the update object.
-    const comma = n.parent;
-    const probe =
-      ts.isBinaryExpression(comma) &&
-      comma.operatorToken.kind === ts.SyntaxKind.CommaToken &&
-      comma.right === n &&
-      ts.isPropertyAccessExpression(comma.left)
-        ? comma.left.expression
-        : undefined;
+    const probe = probeRefOf(n);
     return {
       kind: "data",
       field: name,
@@ -303,8 +406,23 @@ function matchDataWrite(
   return undefined;
 }
 
+/** The `(ref.<field>, W)` probe wrapping `n` in the probed program: its reference. */
+function probeRefOf(n: TS.Expression): TS.Expression | undefined {
+  const comma = n.parent;
+  return ts.isBinaryExpression(comma) &&
+    comma.operatorToken.kind === ts.SyntaxKind.CommaToken &&
+    comma.right === n &&
+    ts.isPropertyAccessExpression(comma.left)
+    ? comma.left.expression
+    : undefined;
+}
+
 /** Matches one node; shared by both phases so they find identical writes in identical order. */
-function matchWrite(n: TS.Node, fields: ReadonlySet<string>): WriteNode | undefined {
+function matchWrite(
+  n: TS.Node,
+  fields: ReadonlySet<string>,
+  patch: PatchOptions | undefined,
+): WriteNode | undefined {
   if (
     ts.isBinaryExpression(n) &&
     n.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
@@ -334,20 +452,40 @@ function matchWrite(n: TS.Node, fields: ReadonlySet<string>): WriteNode | undefi
         continue;
       }
       const name = propertyName(p);
-      if (name === undefined || !fields.has(name) || !spread) continue;
+      if (name === undefined) continue;
       const value = ts.isPropertyAssignment(p)
         ? p.initializer
         : ((p as TS.ShorthandPropertyAssignment).name as TS.Identifier);
-      return { kind: "spread", field: name, expr: n, site: p, ref: spread.expression, value };
+      if (spread) {
+        if (!fields.has(name)) continue;
+        return { kind: "spread", field: name, expr: n, site: p, ref: spread.expression, value };
+      }
+      if (patch?.fields.has(name) && ts.isCallExpression(parent)) {
+        const probe = probeRefOf(n);
+        return {
+          kind: "patch",
+          field: name,
+          expr: n,
+          site: p,
+          ref: probe ?? n,
+          value,
+          call: parent,
+          probed: probe !== undefined,
+        };
+      }
     }
   }
   return undefined;
 }
 
-function findWrites(sf: TS.SourceFile, fields: ReadonlySet<string>): WriteNode[] {
+function findWrites(
+  sf: TS.SourceFile,
+  fields: ReadonlySet<string>,
+  patch: PatchOptions | undefined,
+): WriteNode[] {
   const out: WriteNode[] = [];
   forEachDescendant(sf, (n) => {
-    const w = matchWrite(n, fields);
+    const w = matchWrite(n, fields, patch);
     if (w) out.push(w);
   });
   return out;
@@ -357,11 +495,17 @@ function findWrites(sf: TS.SourceFile, fields: ReadonlySet<string>): WriteNode[]
 export function findCandidateWrites(
   files: readonly TS.SourceFile[],
   fields: ReadonlySet<string>,
+  patch?: PatchOptions,
 ): CandidateWrite[] {
   const out: CandidateWrite[] = [];
   for (const sf of files) {
-    for (const w of findWrites(sf, fields)) {
-      const ref = w.call ? dataRefText(w.call) : referenceText(w.ref);
+    let readNames: ReadonlySet<string> | undefined;
+    for (const w of findWrites(sf, fields, patch)) {
+      let ref: string | undefined;
+      if (w.kind === "patch" && w.call) {
+        readNames ??= readNamesOf(sf, patch?.readSymbols ?? []);
+        ref = patchRefText(w.call, readNames);
+      } else ref = w.call ? dataRefText(w.call) : referenceText(w.ref);
       out.push({
         kind: w.kind,
         field: w.field,
@@ -383,6 +527,7 @@ export function rebindWrites(
   fields: ReadonlySet<string>,
   sourceFile: (file: string) => TS.SourceFile | undefined,
   toOriginal: (file: string, offset: number) => number,
+  patch?: PatchOptions,
 ): WriteNode[] {
   const perFile = new Map<string, WriteNode[]>();
   const cursor = new Map<string, number>();
@@ -391,7 +536,7 @@ export function rebindWrites(
     if (!writes) {
       const sf = sourceFile(c.file);
       if (!sf) throw new Error(`extractor: ${c.file} missing from the probed program`);
-      writes = findWrites(sf, fields);
+      writes = findWrites(sf, fields, patch);
       perFile.set(c.file, writes);
     }
     const i = cursor.get(c.file) ?? 0;

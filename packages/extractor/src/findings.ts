@@ -9,7 +9,7 @@
 import type { Finding, SourceLocation } from "@tsverify/ir";
 import { compareStrings } from "@tsverify/ir";
 
-export type LinkKind = "impl" | "client" | "guard" | "tsconfig";
+export type LinkKind = "impl" | "client" | "guard" | "storage" | "tsconfig";
 
 export function brokenLink(
   behavior: string,

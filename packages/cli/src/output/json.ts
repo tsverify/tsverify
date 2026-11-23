@@ -37,6 +37,11 @@ export interface JsonSpec {
   extract?: JsonExtractStats;
   /** `test` only: the generated directory (relative to the cwd) and the test counts. */
   generated?: { dir: string; tests: TestCounts };
+  /**
+   * `check` only: transitions atomic only as declared (`bindings.storage.atomic`; tsverify does
+   * not check inside that function), with the function. Absent when there are none.
+   */
+  declaredAtomic?: { transition: string; by: string }[];
 }
 
 /** `CheckStats` without `durationMs`, which would make the document non-deterministic. */
@@ -52,6 +57,7 @@ export function toJsonReport(report: Report): JsonReport {
     findings,
     specs: report.specs.map((s) => {
       const { file, behavior, enforced, stats, project, codeStats, extract, generated } = s;
+      const { declaredAtomic } = s;
       const spec: JsonSpec = { file, behavior: behavior ?? null };
       if (enforced) spec.enforced = true;
       if (stats) spec.stats = withoutDuration(stats);
@@ -59,6 +65,7 @@ export function toJsonReport(report: Report): JsonReport {
       if (codeStats) spec.codeStats = withoutDuration(codeStats);
       if (extract) spec.extract = withoutDuration(extract);
       if (generated) spec.generated = generated;
+      if (declaredAtomic) spec.declaredAtomic = declaredAtomic;
       return spec;
     }),
     summary: {

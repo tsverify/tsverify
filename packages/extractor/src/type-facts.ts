@@ -320,7 +320,7 @@ function allowedBy(cond: TS.Expression, holds: boolean, t: MembershipTarget): Al
 }
 
 /** A statement after which the rest of its block does not run (`throw`, `return`, …). */
-function alwaysExits(st: TS.Statement): boolean {
+export function alwaysExits(st: TS.Statement): boolean {
   if (
     ts.isThrowStatement(st) ||
     ts.isReturnStatement(st) ||
@@ -340,7 +340,7 @@ function alwaysExits(st: TS.Statement): boolean {
   return false;
 }
 
-function blockStatements(n: TS.Node): readonly TS.Statement[] | undefined {
+export function blockStatements(n: TS.Node): readonly TS.Statement[] | undefined {
   if (ts.isBlock(n) || ts.isSourceFile(n) || ts.isModuleBlock(n)) return n.statements;
   if (ts.isCaseClause(n) || ts.isDefaultClause(n)) return n.statements;
   return undefined;

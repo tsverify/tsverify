@@ -1,0 +1,53 @@
+behavior: Storage bugs
+summary: Planted bugs for the functions adapter (bindings.storage naming the app's functions).
+entity:
+  name: Order
+  state: status
+  states: [pending, paid, shipped, refunded, cancelled]
+  initial: pending
+  terminal: [shipped, refunded, cancelled]
+actors:
+  admin: { trust: authenticated, requires: role(admin) }
+  system: { trust: internal }
+transitions:
+  pay:
+    from: pending
+    to: paid
+    by: system
+    atomic: true
+    impl: src/orders/pay.ts#markPaid
+  ship:
+    from: paid
+    to: shipped
+    by: admin
+    atomic: true
+    impl: src/orders/ship.ts#shipOrder
+  refund:
+    from: paid
+    to: refunded
+    by: admin
+    atomic: true
+    effects:
+      - stripe.refund: exactly-once
+    impl: src/orders/refund.ts#refundOrder
+  cancel:
+    from: pending
+    to: cancelled
+    by: admin
+    atomic: true
+    impl: src/orders/cancel.ts#cancelOrder
+rules:
+  - name: Refund issued at most once per order
+    always: count(effect stripe.refund) <= 1
+bindings:
+  storage:
+    read: src/store/repo.ts#getOrder
+    save: src/store/repo.ts#saveOrder
+    update: src/store/repo.ts#setStatusIf
+    atomic: src/store/db.ts#withTransaction
+  clients:
+    stripe: { module: src/payments/stripe.ts, export: stripe }
+  guards:
+    role(admin): src/auth/guards.ts#requireRole("admin")
+  effects:
+    stripe.refund: stripe.refunds.create

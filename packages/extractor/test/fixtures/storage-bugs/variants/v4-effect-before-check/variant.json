@@ -1,0 +1,14 @@
+{
+  "id": "v4-effect-before-check",
+  "bug": "the refund is issued before the conditional save's result is checked",
+  "expected": [
+    {
+      "category": "non-atomic",
+      "transition": "refund"
+    },
+    {
+      "category": "implementation-property",
+      "property": "rule:Refund issued at most once per order"
+    }
+  ]
+}

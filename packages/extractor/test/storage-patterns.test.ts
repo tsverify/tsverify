@@ -1,0 +1,639 @@
+/**
+ * The `functions` adapter (`bindings.storage` naming the app's own functions), one pattern per
+ * test, each on a small temp project: how reads, saves, conditional saves and atomic functions
+ * are recognised by symbol, and how a conditional save's result decides which effects belong to
+ * the transition.
+ */
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import type {
+  Bindings,
+  StorageBinding,
+  StorageFunction,
+  StorageKind,
+  StorageRole,
+} from "@tsverify/ir";
+import { defaultStorageArgs, parseSymbolRef } from "@tsverify/ir";
+import { afterAll, describe, expect, it } from "vitest";
+import { type ExtractResult, extractAll } from "../src/index";
+import { orderSpec, type TransitionSpec, transitionOf } from "./helpers";
+import { installTypeScript } from "./typescript";
+
+const TSCONFIG = JSON.stringify({
+  compilerOptions: {
+    strict: true,
+    target: "es2022",
+    lib: ["es2022"],
+    module: "esnext",
+    moduleResolution: "bundler",
+    types: [],
+  },
+  include: ["src"],
+});
+
+/** The app's storage layer: a Map, and every kind of function the binding can name. */
+const REPO = `
+export type Status = "draft" | "pending_payment" | "paid" | "shipped" | "refunded" | "cancelled";
+export interface Order { id: string; status: Status; chargeId: string }
+const orders = new Map<string, Order>();
+export async function getOrder(id: string): Promise<Order | undefined> {
+  const o = orders.get(id);
+  return o && { ...o };
+}
+export async function findOrder(_tenant: string, id: string): Promise<Order | undefined> {
+  return getOrder(id);
+}
+export async function saveOrder(order: Order): Promise<void> {
+  orders.set(order.id, { ...order });
+}
+export async function patchOrder(id: string, patch: Partial<Order>): Promise<void> {
+  const o = orders.get(id);
+  if (o) orders.set(id, { ...o, ...patch });
+}
+export async function setStatusIf(id: string, from: Status | readonly Status[], to: Status): Promise<boolean> {
+  const o = orders.get(id);
+  const allowed: readonly Status[] = Array.isArray(from) ? from : [from as Status];
+  if (!o || !allowed.includes(o.status)) return false;
+  orders.set(id, { ...o, status: to });
+  return true;
+}
+export async function markShipped(id: string): Promise<number> {
+  return (await setStatusIf(id, "paid", "shipped")) ? 1 : 0;
+}
+export async function refundIf(id: string, from: Status): Promise<Order | undefined> {
+  return (await setStatusIf(id, from, "refunded")) ? getOrder(id) : undefined;
+}
+export async function cancelOrThrow(id: string): Promise<void> {
+  if (!(await setStatusIf(id, "pending_payment", "cancelled"))) throw new Error("changed");
+}
+export const repo = { get: getOrder, save: saveOrder };
+`;
+const DB = `
+let tail: Promise<unknown> = Promise.resolve();
+export async function withTransaction<T>(fn: () => Promise<T>): Promise<T> {
+  const run = tail.then(fn);
+  tail = run.catch(() => undefined);
+  return run;
+}
+`;
+const INDEX = `
+export { getOrder as loadOrder, saveOrder, setStatusIf as updateIf } from "./repo";
+export * as store from "./repo";
+`;
+const CLIENTS = `
+export const stripe = { refunds: { async create(_p: { charge: string }) { return { id: "re_1" }; } } };
+export const email = { async send(_to: string, _what: string) {} };
+export const legacy = { async patch(_id: string, _p: Partial<import("./repo").Order>) {} };
+`;
+
+type FnSpec = string | ({ fn: string; args?: StorageRole[] } & Partial<StorageFunction>);
+
+function fn(kind: StorageKind, spec: FnSpec): StorageFunction {
+  const s = typeof spec === "string" ? { fn: spec } : spec;
+  const fixed = { ...(s.from ? { from: s.from } : {}), ...(s.to ? { to: s.to } : {}) };
+  const ref = parseSymbolRef(s.fn);
+  if (!ref) throw new Error(`not path#symbol: ${s.fn}`);
+  return {
+    ref,
+    args: s.args ?? defaultStorageArgs(kind, fixed),
+    ...(s.returns ? { returns: s.returns } : {}),
+    ...fixed,
+  };
+}
+
+function storageOf(b: Partial<Record<StorageKind, FnSpec[]>>): StorageBinding {
+  return {
+    key: "id",
+    read: (b.read ?? []).map((s) => fn("read", s)),
+    save: (b.save ?? []).map((s) => fn("save", s)),
+    update: (b.update ?? []).map((s) => fn("update", s)),
+    atomic: (b.atomic ?? []).map((s) => fn("atomic", s)),
+  };
+}
+
+const DEFAULT_STORAGE = storageOf({
+  read: ["src/repo.ts#getOrder", { fn: "src/repo.ts#findOrder", args: ["_", "key"] }],
+  save: ["src/repo.ts#saveOrder", { fn: "src/repo.ts#patchOrder", args: ["key", "patch"] }],
+  update: [
+    "src/repo.ts#setStatusIf",
+    { fn: "src/repo.ts#markShipped", from: ["paid"], to: "shipped", returns: "count" },
+    { fn: "src/repo.ts#refundIf", args: ["key", "from"], to: "refunded", returns: "entity" },
+    {
+      fn: "src/repo.ts#cancelOrThrow",
+      from: ["pending_payment"],
+      to: "cancelled",
+      returns: "throws",
+    },
+  ],
+  atomic: ["src/db.ts#withTransaction"],
+});
+
+function bindings(storage = DEFAULT_STORAGE): Bindings {
+  return {
+    storage,
+    clients: {
+      email: { module: "src/clients.ts", export: "email" },
+      legacy: { module: "src/clients.ts", export: "legacy" },
+      stripe: { module: "src/clients.ts", export: "stripe" },
+    },
+    guards: {},
+    effects: { "email.receipt": "email.send", "stripe.refund": "stripe.refunds.create" },
+  };
+}
+
+const roots: string[] = [];
+afterAll(() => {
+  for (const r of roots) rmSync(r, { recursive: true, force: true });
+});
+
+/** Extracts `impl` (the file `src/impl.ts`) next to the storage layer. */
+function extract(
+  impl: string,
+  transitions: TransitionSpec[],
+  storage?: StorageBinding,
+): ExtractResult {
+  const root = mkdtempSync(join(tmpdir(), "tsverify-storage-"));
+  roots.push(root);
+  const files: Record<string, string> = {
+    "tsconfig.json": TSCONFIG,
+    "src/repo.ts": REPO,
+    "src/db.ts": DB,
+    "src/index.ts": INDEX,
+    "src/clients.ts": CLIENTS,
+    "src/impl.ts": impl,
+  };
+  for (const [path, text] of Object.entries(files)) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), text);
+  }
+  const spec = orderSpec(transitions, bindings(storage));
+  const { results } = extractAll([spec], { projectRoot: root, typescript: installTypeScript() });
+  return results[0] as ExtractResult;
+}
+
+const IMPORTS = `
+import { getOrder, findOrder, saveOrder, patchOrder, setStatusIf, markShipped, refundIf, cancelOrThrow, repo } from "./repo";
+import { loadOrder, updateIf, store } from "./index";
+import { withTransaction } from "./db";
+import { stripe, email, legacy } from "./clients";
+`;
+
+function t(name: string, to: string, extra: Partial<TransitionSpec> = {}): TransitionSpec {
+  return { name, impl: `src/impl.ts#${name}`, to, ...extra };
+}
+
+describe("read + save (entity)", () => {
+  const result = extract(
+    `${IMPORTS}
+export async function ship(id: string) {
+  await withTransaction(async () => {
+    const order = await getOrder(id);
+    if (order?.status !== "paid") throw new Error("not paid");
+    order.status = "shipped";
+    await saveOrder(order);
+  });
+}
+export async function shipOutside(id: string) {
+  const order = await getOrder(id);
+  if (order?.status !== "paid") throw new Error("not paid");
+  await withTransaction(async () => {
+    order.status = "shipped";
+    await saveOrder(order);
+  });
+}
+export async function shipReadInside(id: string) {
+  let order: Awaited<ReturnType<typeof getOrder>>;
+  await withTransaction(async () => {
+    const o = await getOrder(id);
+    if (o?.status !== "paid") throw new Error("not paid");
+    o.status = "shipped";
+    order = o;
+  });
+  await saveOrder(order!);
+}
+export async function shipSpread(id: string) {
+  const order = await getOrder(id);
+  if (order?.status !== "paid") throw new Error("not paid");
+  await saveOrder({ ...order, status: "shipped" });
+}
+`,
+    [
+      t("ship", "shipped"),
+      t("shipOutside", "shipped"),
+      t("shipReadInside", "shipped"),
+      t("shipSpread", "shipped"),
+    ],
+  );
+
+  it("reports nothing but the read-inside write it cannot follow", () => {
+    expect(result.findings.map((f) => f.id)).toEqual([
+      "unanalyzable:Fixture orders:storage:shipReadInside",
+    ]);
+  });
+
+  it("a read and a save inside the atomic callback: atomic, as declared", () => {
+    const s = transitionOf(result, "ship");
+    expect(s.atomic).toBe(true);
+    expect(s.from).toEqual(["paid"]);
+    expect(s.sites).toMatchObject({
+      persistence: "functions",
+      read: { client: "storage", path: "getOrder", gate: "storage.getOrder", occurrence: 0 },
+      commit: { client: "storage", path: "saveOrder", gate: "storage.saveOrder" },
+      atomic: { kind: "declared", gate: "storage.withTransaction", at: { line: 8 } },
+      storage: { client: "storage", collection: "Order", key: "id" },
+      invocation: { entityId: { param: 0, path: [] } },
+    });
+  });
+
+  it("a read outside and a save inside: not atomic", () => {
+    const s = transitionOf(result, "shipOutside");
+    expect(s.atomic).toBe(false);
+    expect(s.sites?.atomic).toBeUndefined();
+    expect(s.sites?.commit?.gate).toBe("storage.saveOrder");
+  });
+
+  it("a spread passed to the save is the write; its call is the commit", () => {
+    const s = transitionOf(result, "shipSpread");
+    expect(s.atomic).toBe(false);
+    expect(s.from).toEqual(["paid"]);
+    expect(s.sites?.read?.gate).toBe("storage.getOrder");
+    expect(s.sites?.commit).toMatchObject({ gate: "storage.saveOrder", at: { line: 36 } });
+  });
+});
+
+describe("by symbol: imports, re-exports, aliases, namespaces, methods", () => {
+  const result = extract(
+    `${IMPORTS}
+export async function viaAlias(id: string) {
+  await withTransaction(async () => {
+    const order = await loadOrder(id);
+    if (order?.status !== "paid") throw new Error("not paid");
+    order.status = "shipped";
+    await store.saveOrder(order);
+  });
+}
+export async function viaMethod(id: string) {
+  await withTransaction(async () => {
+    const order = await repo.get(id);
+    if (order?.status !== "paid") throw new Error("not paid");
+    order.status = "shipped";
+    await repo.save(order);
+  });
+}
+export async function viaRenamedUpdate(id: string) {
+  if (!(await updateIf(id, "paid", "shipped"))) throw new Error("changed");
+}
+async function getOrderLookalike(id: string): Promise<import("./repo").Order> {
+  return { id, status: "paid", chargeId: "" };
+}
+export async function lookalike(id: string) {
+  const order = await getOrderLookalike(id);
+  if (order.status !== "paid") return;
+  order.status = "shipped";
+}
+`,
+    [
+      t("viaAlias", "shipped"),
+      t("viaMethod", "shipped"),
+      t("viaRenamedUpdate", "shipped"),
+      t("lookalike", "shipped", { atomic: false }),
+    ],
+    storageOf({
+      read: ["src/repo.ts#getOrder", "src/repo.ts#repo.get"],
+      save: ["src/repo.ts#saveOrder", "src/repo.ts#repo.save"],
+      update: ["src/repo.ts#setStatusIf"],
+      atomic: ["src/db.ts#withTransaction"],
+    }),
+  );
+
+  it("a renamed re-export and a namespace import are the bound functions", () => {
+    const s = transitionOf(result, "viaAlias");
+    expect(s.atomic).toBe(true);
+    expect(s.sites?.read?.gate).toBe("storage.getOrder");
+    expect(s.sites?.commit?.gate).toBe("storage.saveOrder");
+  });
+
+  it("a bound method of an exported object (`repo.get`) is recognized", () => {
+    const s = transitionOf(result, "viaMethod");
+    expect(s.sites?.read?.gate).toBe("storage.repo.get");
+    expect(s.sites?.commit?.gate).toBe("storage.repo.save");
+    expect(s.atomic).toBe(true);
+  });
+
+  it("a conditional save under another name is still the update", () => {
+    const s = transitionOf(result, "viaRenamedUpdate");
+    expect(s.sites?.commit?.gate).toBe("storage.setStatusIf");
+    expect(s.sites?.atomic?.kind).toBe("conditional-update");
+  });
+
+  it("a function named like a storage function is not one", () => {
+    const s = transitionOf(result, "lookalike");
+    expect(s.sites?.read).toBeUndefined();
+    expect(result.findings.map((f) => f.id)).toContain(
+      "unanalyzable:Fixture orders:storage:lookalike",
+    );
+  });
+});
+
+describe("save [key, patch]", () => {
+  const result = extract(
+    `${IMPORTS}
+export async function cancel(id: string) {
+  await withTransaction(async () => {
+    const order = await getOrder(id);
+    if (order?.status !== "pending_payment") throw new Error("not pending");
+    await patchOrder(id, { status: "cancelled" });
+  });
+}
+export async function cancelBlind(id: string) {
+  await patchOrder(id, { status: "cancelled" });
+}
+export async function cancelLegacy(id: string) {
+  const order = await getOrder(id);
+  if (order?.status !== "pending_payment") throw new Error("not pending");
+  await legacy.patch(id, { status: "cancelled" });
+}
+`,
+    [
+      t("cancel", "cancelled", { from: ["pending_payment"] }),
+      t("cancelBlind", "cancelled", { from: ["pending_payment"] }),
+      t("cancelLegacy", "cancelled", { from: ["pending_payment"] }),
+    ],
+  );
+
+  it("the patch is the write, its from-state the narrowed state at the call", () => {
+    const s = transitionOf(result, "cancel");
+    expect(s.from).toEqual(["pending_payment"]);
+    expect(s.atomic).toBe(true);
+    expect(s.sites).toMatchObject({
+      write: { line: 11 },
+      read: { gate: "storage.getOrder" },
+      commit: { gate: "storage.patchOrder" },
+      atomic: { kind: "declared", gate: "storage.withTransaction" },
+      invocation: { entityId: { param: 0, path: [] } },
+    });
+  });
+
+  it("a patch with no read before it writes from every state", () => {
+    const s = transitionOf(result, "cancelBlind");
+    expect(s.sites?.fromState).toMatchObject({ unconstrained: true });
+    expect(s.from).toEqual([
+      "draft",
+      "pending_payment",
+      "paid",
+      "shipped",
+      "refunded",
+      "cancelled",
+    ]);
+  });
+
+  it("a patch passed to an unbound data layer is unanalyzable, naming the storage kinds", () => {
+    const f = result.findings.find(
+      (x) => x.id === "unanalyzable:Fixture orders:storage:cancelLegacy",
+    );
+    expect(f?.message).toContain("`legacy.patch`, which is not a `bindings.storage.save` function");
+    expect(f?.hint).toContain("`bindings.storage` (`read`, `save`, `update` or `atomic`)");
+    expect(transitionOf(result, "cancelLegacy").atomic).toBe(false);
+  });
+});
+
+describe("update (conditional save)", () => {
+  const result = extract(
+    `${IMPORTS}
+const FROM = ["paid"] as const;
+export async function refund(id: string) {
+  const order = await getOrder(id);
+  if (!order || order.status !== "paid") throw new Error("not paid");
+  if (!(await setStatusIf(id, ["paid"], "refunded"))) {
+    await email.send("ops", "refund raced");
+    throw new Error("changed");
+  }
+  await stripe.refunds.create({ charge: order.chargeId });
+}
+export async function refundTuple(id: string) {
+  const ok = await setStatusIf(id, FROM, "refunded");
+  if (!ok) return;
+  await stripe.refunds.create({ charge: "ch" });
+}
+export async function refundWide(id: string) {
+  if (!(await setStatusIf(id, ["paid", "shipped"], "refunded"))) return;
+}
+export async function refundEarly(id: string) {
+  const ok = await setStatusIf(id, "paid", "refunded");
+  await stripe.refunds.create({ charge: "ch" });
+  if (!ok) throw new Error("changed");
+}
+export async function refundBefore(id: string) {
+  await stripe.refunds.create({ charge: "ch" });
+  if (!(await setStatusIf(id, "paid", "refunded"))) throw new Error("changed");
+}
+export async function ship(id: string) {
+  if ((await markShipped(id)) === 0) return;
+  await email.send("customer", "shipped");
+}
+export async function refundEntity(id: string) {
+  const updated = await refundIf(id, "paid");
+  if (updated === undefined) return;
+  await stripe.refunds.create({ charge: updated.chargeId });
+}
+export async function cancel(id: string) {
+  await cancelOrThrow(id);
+  await email.send("customer", "cancelled");
+}
+async function doRefund(id: string) {
+  return setStatusIf(id, "paid", "refunded");
+}
+export async function refundViaHelper(id: string) {
+  if (!(await doRefund(id))) throw new Error("changed");
+  await stripe.refunds.create({ charge: "ch" });
+}
+async function doRefundQuietly(id: string) {
+  if (!(await setStatusIf(id, "paid", "refunded"))) return;
+}
+export async function refundViaQuietHelper(id: string) {
+  await doRefundQuietly(id);
+  await stripe.refunds.create({ charge: "ch" });
+}
+`,
+    [
+      t("refund", "refunded", {
+        effects: [{ name: "stripe.refund", multiplicity: "exactly-once" }],
+      }),
+      t("refundTuple", "refunded", {
+        effects: [{ name: "stripe.refund", multiplicity: "exactly-once" }],
+      }),
+      t("refundWide", "refunded"),
+      t("refundEarly", "refunded", {
+        effects: [{ name: "stripe.refund", multiplicity: "exactly-once" }],
+      }),
+      t("refundBefore", "refunded", {
+        effects: [{ name: "stripe.refund", multiplicity: "exactly-once" }],
+      }),
+      t("ship", "shipped", { effects: [{ name: "email.receipt", multiplicity: "exactly-once" }] }),
+      t("refundEntity", "refunded", {
+        effects: [{ name: "stripe.refund", multiplicity: "exactly-once" }],
+      }),
+      t("cancel", "cancelled", {
+        from: ["pending_payment"],
+        effects: [{ name: "email.receipt", multiplicity: "exactly-once" }],
+      }),
+      t("refundViaHelper", "refunded", {
+        effects: [{ name: "stripe.refund", multiplicity: "exactly-once" }],
+      }),
+      t("refundViaQuietHelper", "refunded", {
+        effects: [{ name: "stripe.refund", multiplicity: "exactly-once" }],
+      }),
+    ],
+  );
+
+  it("reports no findings", () => {
+    expect(result.findings).toEqual([]);
+  });
+
+  it("the call is the write and the commit, atomic on its own; the read is the one before it", () => {
+    const s = transitionOf(result, "refund");
+    expect(s.atomic).toBe(true);
+    expect(s.from).toEqual(["paid"]);
+    expect(s.sites).toMatchObject({
+      write: { line: 11, column: 15 },
+      read: { gate: "storage.getOrder", at: { line: 9 } },
+      commit: { gate: "storage.setStatusIf", at: { line: 11 } },
+      atomic: { kind: "conditional-update", gate: "storage.setStatusIf", at: { line: 11 } },
+    });
+  });
+
+  it("an effect in the branch that runs when the save failed is not the transition's", () => {
+    const s = transitionOf(result, "refund");
+    expect(s.sites?.effects.map((e) => e.effect)).toEqual(["stripe.refund"]);
+  });
+
+  it("from-states come from the from argument: a literal, an array, a tuple constant", () => {
+    expect(transitionOf(result, "refundTuple").from).toEqual(["paid"]);
+    expect(transitionOf(result, "refundWide").from).toEqual(["paid", "shipped"]);
+    expect(transitionOf(result, "refundEarly").from).toEqual(["paid"]);
+  });
+
+  it("an effect before the result is checked, or before the save, escapes the atomic step", () => {
+    for (const name of ["refundEarly", "refundBefore", "refundViaQuietHelper"]) {
+      const s = transitionOf(result, name);
+      expect({ name, atomic: s.atomic, scope: s.sites?.atomic }).toEqual({
+        name,
+        atomic: false,
+        scope: undefined,
+      });
+      expect(s.sites?.atomicNote?.message).toBe(
+        "stripe.refunds.create can run although storage.setStatusIf found status changed: the call is not behind a check of the save's result",
+      );
+      expect(s.sites?.effects.map((e) => e.effect)).toEqual(["stripe.refund"]);
+    }
+  });
+
+  it("fixed from / to, and each `returns` kind's failure test", () => {
+    const ship = transitionOf(result, "ship");
+    expect(ship.from).toEqual(["paid"]);
+    expect(ship.to).toBe("shipped");
+    expect(ship.atomic).toBe(true);
+    expect(ship.sites?.effects.map((e) => e.effect)).toEqual(["email.receipt"]);
+    const entity = transitionOf(result, "refundEntity");
+    expect(entity.atomic).toBe(true);
+    expect(entity.from).toEqual(["paid"]);
+    const cancel = transitionOf(result, "cancel");
+    expect(cancel.atomic).toBe(true);
+    expect(cancel.from).toEqual(["pending_payment"]);
+  });
+
+  it("a helper that returns the save's result passes the check to its caller", () => {
+    const s = transitionOf(result, "refundViaHelper");
+    expect(s.atomic).toBe(true);
+    expect(s.sites?.function.name).toBe("doRefund");
+    expect(s.sites?.invocation?.entityId).toEqual({ param: 0, path: [] });
+  });
+});
+
+describe("helpers", () => {
+  const result = extract(
+    `${IMPORTS}
+async function loadPaid(id: string) {
+  const order = await getOrder(id);
+  if (order?.status !== "paid") throw new Error("not paid");
+  return order;
+}
+async function markShippedAndSave(order: NonNullable<Awaited<ReturnType<typeof getOrder>>>) {
+  order.status = "shipped";
+  await saveOrder(order);
+}
+export async function ship(id: string) {
+  await withTransaction(async () => {
+    const order = await getOrder(id);
+    if (order?.status !== "paid") throw new Error("not paid");
+    await markShippedAndSave(order);
+  });
+}
+export async function shipLeaky(id: string) {
+  const order = await getOrder(id);
+  if (order?.status !== "paid") throw new Error("not paid");
+  await withTransaction(async () => {});
+  await markShippedAndSave(order);
+}
+export async function shipViaLoader(id: string) {
+  await withTransaction(async () => {
+    const order = await loadPaid(id);
+    order.status = "shipped";
+    await saveOrder(order);
+  });
+}
+`,
+    [t("ship", "shipped"), t("shipLeaky", "shipped"), t("shipViaLoader", "shipped")],
+  );
+
+  it("a save inside a helper reached from inside the atomic callback: atomic", () => {
+    const names = result.model?.transitions.map((x) => x.name);
+    expect(names).toContain("ship");
+    const s = transitionOf(result, "ship");
+    expect(s.sites?.function.name).toBe("markShippedAndSave");
+    expect(s.sites?.read?.gate).toBe("storage.getOrder");
+    expect(s.sites?.commit?.gate).toBe("storage.saveOrder");
+    expect(s.atomic).toBe(true);
+    expect(s.sites?.atomic?.kind).toBe("declared");
+  });
+
+  it("the same helper reached from outside it: not atomic", () => {
+    const s = transitionOf(result, "shipLeaky");
+    expect(s.sites?.function.name).toBe("markShippedAndSave");
+    expect(s.atomic).toBe(false);
+  });
+
+  it("a read returned by a helper called inside the callback: atomic", () => {
+    const s = transitionOf(result, "shipViaLoader");
+    expect(s.sites?.read).toMatchObject({ gate: "storage.getOrder", at: { line: 8 } });
+    expect(s.atomic).toBe(true);
+  });
+});
+
+describe("storage functions themselves", () => {
+  it("are not looked into, and a binding that does not resolve is a broken link", () => {
+    const result = extract(
+      `${IMPORTS}
+export async function ship(id: string) {
+  if (!(await setStatusIf(id, "paid", "shipped"))) throw new Error("changed");
+}
+`,
+      [t("ship", "shipped")],
+      storageOf({
+        read: ["src/repo.ts#getOrder"],
+        update: ["src/repo.ts#setStatusIf", "src/repo.ts#noSuchFunction"],
+      }),
+    );
+    expect(result.findings.map((f) => f.id)).toEqual([
+      "broken-link:Fixture orders:storage:noSuchFunction",
+    ]);
+    // Only the impl's write: none inside repo.ts (markShipped, refundIf … call setStatusIf).
+    expect(result.model?.transitions.map((x) => x.name).sort()).toEqual([
+      "cancelOrThrow",
+      "markShipped",
+      "refundIf",
+      "ship",
+    ]);
+  });
+});

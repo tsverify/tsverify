@@ -33,7 +33,7 @@ import type {
   Transition,
 } from "@tsverify/ir";
 import { compareStrings, parseGuardRef } from "@tsverify/ir";
-import type { PersistenceAdapter, PersistenceFacts } from "./adapters/types";
+import type { AtomicityNote, PersistenceAdapter, PersistenceFacts } from "./adapters/types";
 import { frameNaming, frameOf, type Reach } from "./callgraph";
 import type { FunctionLike } from "./cfg";
 import type { ClientCall, ClientCalls } from "./client-calls";
@@ -140,11 +140,11 @@ function isLiteralArg(a: TS.Expression, checker: TS.Checker): boolean {
 function invocationOf(
   env: AssembleEnv,
   d: Draft,
+  p: PersistenceFacts,
   guardCalls: readonly TS.CallExpression[],
 ): InvocationShape | undefined {
   const checker = env.ctx.checker;
   const impl = implRefOf(env.ctx, d);
-  const p = d.write.persistence;
   const idArg = p.entityKey ?? p.read?.call.arguments[0];
   if (!impl || !idArg) return undefined;
   const entityId = traceToRoot(idArg, d.reach, checker);
@@ -169,7 +169,6 @@ function buildTransition(
 ): Transition {
   const { ctx, calls, dominance } = env;
   const m = d.write;
-  const p = m.persistence;
   const t = d.linked;
   const naming = frameNaming(m.frame);
   const linkAtomicity = env.adapter.linkAtomicity?.({
@@ -177,11 +176,20 @@ function buildTransition(
     frame: m.frame,
     reach: d.reach,
     checker: ctx.checker,
+    facts: m.persistence,
   });
+  const p: PersistenceFacts = linkAtomicity?.facts
+    ? { ...m.persistence, ...linkAtomicity.facts }
+    : m.persistence;
   let atomicScope: CodeSites["atomic"];
   if (linkAtomicity) {
-    if (linkAtomicity.atomic && linkAtomicity.kind)
-      atomicScope = { kind: linkAtomicity.kind, at: m.at };
+    if (linkAtomicity.atomic && linkAtomicity.kind) {
+      atomicScope = {
+        kind: linkAtomicity.kind,
+        at: linkAtomicity.at ? ctx.loc(linkAtomicity.at) : m.at,
+        ...(linkAtomicity.gate ? { gate: linkAtomicity.gate } : {}),
+      };
+    }
   } else if (p.atomicAt) {
     atomicScope = { kind: p.atomicAt.kind, at: ctx.loc(p.atomicAt.call), gate: p.atomicAt.gate };
   } else if (p.scope) {
@@ -208,13 +216,28 @@ function buildTransition(
     )
     .map((s) => s.call);
 
-  const effects: (CallSite & { effect: string })[] = effectCalls(
+  // Effects that run only after a failed conditional save are not the transition's; ones that
+  // can run although it failed escape the atomic step.
+  let unchecked: ClientCall | undefined;
+  const attributed = effectCalls(
     d.reach,
     m.frame,
     m.write.expr,
     calls,
     env.persistenceClients,
-  )
+  ).filter((cc) => {
+    const outcome =
+      env.adapter.effectOutcome?.({
+        call: cc,
+        write: m.write,
+        frame: m.frame,
+        reach: d.reach,
+        checker: ctx.checker,
+      }) ?? "attributed";
+    if (outcome === "unchecked") unchecked ??= cc;
+    return outcome !== "excluded";
+  });
+  const effects: (CallSite & { effect: string })[] = attributed
     .map((cc) => ({ ...callSite(ctx, calls, cc, d.reach), effect: effectNameOf(cc.gate, spec, t) }))
     .sort((a, b) => compareLoc(a.at, b.at));
   const effectNames = [...new Set(effects.map((e) => e.effect))].sort(compareStrings);
@@ -252,15 +275,34 @@ function buildTransition(
       unanalyzable(spec.name, "read", name, `${name}: ${problem}`, {
         transition: name,
         codeAt: m.at,
-        hint: "Read the entity through a bound client (`bindings.clients`) in the same function as the write.",
+        hint:
+          env.adapter.readHint ??
+          "Read the entity through a bound client (`bindings.clients`) in the same function as the write.",
       }),
     );
   }
-  const atomic = linkAtomicity?.atomic ?? p.atomic;
+  // A write that bypasses the storage the spec names: tsverify cannot tell how it is stored.
+  if (p.unbound) {
+    env.findings.push(
+      unanalyzable(spec.name, "storage", name, `${name}: ${p.unbound.message}`, {
+        transition: name,
+        codeAt: m.at,
+        hint: p.unbound.hint,
+      }),
+    );
+  }
+  const escaped: AtomicityNote | undefined = unchecked && {
+    subject: "unchecked-effect",
+    message: `${unchecked.gate} can run although ${p.commit?.gate ?? "the conditional save"} found ${m.write.field} changed: the call is not behind a check of the save's result`,
+    hint: `Check what ${p.commit?.gate ?? "the conditional save"} returns and stop when it saved nothing (\`if (!(await …)) throw …\`) before calling ${unchecked.gate}.`,
+    at: unchecked.call,
+  };
+  const atomic = escaped ? false : (linkAtomicity?.atomic ?? p.atomic);
+  if (escaped) atomicScope = undefined;
   // Why a scoped-looking write is still not atomic: conformance reports it in `non-atomic`.
-  const note = atomic ? undefined : p.notes?.[0];
+  const note = atomic ? undefined : (escaped ?? p.notes?.[0]);
 
-  const invocation = invocationOf(env, d, guardCalls);
+  const invocation = invocationOf(env, d, p, guardCalls);
   const sites: CodeSites = {
     persistence: env.persistence,
     write: m.at,

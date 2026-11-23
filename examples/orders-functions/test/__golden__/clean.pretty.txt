@@ -1,0 +1,5 @@
+src/orders/order.behavior.yaml  project: .
+checkout, refund, ship: atomic, as declared by `withTransaction` (not checked inside it)
+✓ no findings
+
+✓ 1 spec, 0 errors, 0 warnings (6 spec states, 6 code states)

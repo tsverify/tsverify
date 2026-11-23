@@ -27,6 +27,12 @@ export interface SpecReport {
   extract?: ExtractStats;
   /** `test` only: where the spec's tests were generated (relative to the cwd) and how they ran. */
   generated?: { dir: string; tests: TestCounts };
+  /**
+   * `check` only: transitions that are atomic only because the spec declares a function atomic
+   * (`bindings.storage.atomic`, which tsverify does not check inside), with that function. Absent
+   * when there are none.
+   */
+  declaredAtomic?: { transition: string; by: string }[];
 }
 
 export interface Report {

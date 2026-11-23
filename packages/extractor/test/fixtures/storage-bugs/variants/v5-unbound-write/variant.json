@@ -1,0 +1,11 @@
+{
+  "id": "v5-unbound-write",
+  "bug": "cancel writes through a data layer the spec does not name",
+  "expected": [
+    {
+      "category": "unanalyzable",
+      "transition": "cancel",
+      "subject": "storage:cancel"
+    }
+  ]
+}

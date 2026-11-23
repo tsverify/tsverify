@@ -530,10 +530,6 @@ Prefer a small, behavior-preserving refactor that makes the code checkable over 
 
 ### 7.6 Storage: point at your own functions
 
-> **Not yet checked by `tsverify check`.** The format, validation and generated-test fakes are in place;
-> recognising calls to these functions in the code check comes next. Until then, `check` treats the spec as if
-> `bindings.storage` were omitted.
-
 Most apps already have a storage layer: a repository, a data-access module, a service. Instead of a preset,
 name its functions under `bindings.storage` ([format](behavior-format.md#bindingsstorage)). tsverify then treats
 them as the storage boundary and never looks inside, whatever they use underneath.
@@ -562,7 +558,12 @@ How to find them:
   some fields is `args: [key, patch]`. An update with the states built in (`markPaid(id)`) is
   `{ fn: …, from: [pending], to: paid }`.
 - **`returns`.** Say what an update returns when the state check fails: `changed` (`false`, the default),
-  `count` (`0`), `entity` (`undefined`) or `throws`. The code is expected to stop when it does.
+  `count` (`0`), `entity` (`undefined`) or `throws`. The code is expected to stop when it does
+  (`if (!(await setStatusIf(…))) throw …`, `if (updated === undefined) return`): an effect that can run before
+  that check (or before the update) fires even when nothing was saved, and `check` reports the transition as
+  `non-atomic`. An effect only in the "nothing saved" branch is not the transition's.
+- **Pass every argument a role names.** The generated tests' fake reads each role's argument, so a `patch`
+  role needs an object even when there is nothing to merge (`updateStatusIf(id, "paid", "refunded", {})`).
 - **`atomic` is declared, not proven.** Name a function only if it really serializes the callback against
   other requests (a database transaction at a sufficient isolation level, or a lock). tsverify trusts the
   declaration and can't check what happens inside; the generated replay tests still run the race through it.
@@ -571,10 +572,27 @@ How to find them:
   Keep the `impl`s in other files.
 - **Only the functions the transitions call.** One read, one save and the conditional saves and atomic
   wrappers that the `impl`s use are enough; list several of a kind if the code uses several.
+- **Calls are matched by symbol**, through imports, renamed re-exports, namespace imports and helpers, never by
+  name. A write the named functions don't save (an older data layer, a raw query helper) is `unanalyzable`;
+  `--strict` makes it an error.
 - **Use a preset instead** (`storage: assign`, `prisma` or `memory`) when there is no such layer: the `impl`s
   call a Prisma client directly (`prisma`), a repository object on a bound client (`assign`), or in-process
   objects (`memory`, see [§7.2–7.4](#72-assign-repository-objects-the-default)). If the code reads and writes
   inline, with no function to point at, extract one ([§7.5](#75-restructuring-unanalyzable-code)).
+
+What `tsverify check` says, for a refund that reads and saves outside `withTransaction`, and for the clean code
+(the transitions that rely on `withTransaction` are named, because tsverify trusts it and can't look inside):
+
+```
+✗ non-atomic  src/orders/order.behavior.yaml:52:3 · src/orders/refund.ts:10:23
+  refund: refundOrder reads the entity (storage.getOrder) and writes refunded outside one atomic scope; the spec says atomic.
+  hint: Run the read and the save inside one `bindings.storage.atomic` function, or save with a conditional save (`bindings.storage.update`) and stop when it saved nothing.
+
+checkout, refund, ship: atomic, as declared by `withTransaction` (not checked inside it)
+✓ no findings
+```
+
+Example: [`examples/orders-functions`](../examples/orders-functions/src/orders/order.behavior.yaml).
 
 ---
 

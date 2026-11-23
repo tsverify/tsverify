@@ -49,6 +49,11 @@ export interface PersistenceFacts {
   problems: string[];
   /** Why the write is not atomic although it looks scoped; the first becomes `CodeSites.atomicNote`. */
   notes?: AtomicityNote[];
+  /**
+   * The write is not read or saved through the storage the spec names (a call into an unbound
+   * data layer): always an `unanalyzable` warning, whatever the spec's `atomic`.
+   */
+  unbound?: { message: string; hint: string };
 }
 
 export interface AdapterInput {
@@ -70,6 +75,8 @@ export interface LinkInput {
   frame: FunctionLike;
   reach: Reach;
   checker: TS.Checker;
+  /** The adapter's facts for the write (`analyzeWrite`). */
+  facts: PersistenceFacts;
 }
 
 /** Atomicity that depends on the path from the impl to the write. */
@@ -77,12 +84,41 @@ export interface LinkAtomicity {
   atomic: boolean;
   /** The scope kind recorded in `CodeSites.atomic` (at the write) when atomic. */
   kind?: AtomicScope["kind"];
+  /** The call that opens the scope, when it is not the write (`CodeSites.atomic.at`). */
+  at?: TS.Node;
+  /** The gate of `at`'s call. */
+  gate?: string;
+  /**
+   * Facts that depend on the call path too (a read or commit in the impl, for a write in a
+   * helper that takes the entity as a parameter): they replace `analyzeWrite`'s for this link.
+   */
+  facts?: Partial<Pick<PersistenceFacts, "read" | "commit" | "entityKey" | "problems" | "unbound">>;
 }
+
+/** An effect call attributed to a write, as `effectCalls` found it. */
+export interface EffectInput {
+  call: ClientCall;
+  write: WriteNode;
+  frame: FunctionLike;
+  reach: Reach;
+  checker: TS.Checker;
+}
+
+/**
+ * - `attributed`: it runs on the write's path (the default for every effect);
+ * - `excluded`: it runs only when the write did not happen (the branch after a conditional save
+ *   found the state changed), so it is not the transition's;
+ * - `unchecked`: it can run although a conditional save found the state changed (before the
+ *   save, or before its result is checked). The effect then escapes the atomic step.
+ */
+export type EffectOutcome = "attributed" | "excluded" | "unchecked";
 
 export interface PersistenceAdapter {
   readonly kind: PersistenceKind;
   /** The candidate write shapes this adapter analyzes; other shapes are not state writes for it. */
   readonly writeKinds: ReadonlySet<WriteKind>;
+  /** The hint of the `unanalyzable` "no read" warning (default: read through a bound client). */
+  readonly readHint?: string;
   /** Which parameter of a scope callback aliases the client (`tx` in `db.transaction(async (tx) => …)`). */
   readonly scopeAliasParam: number;
   /**
@@ -93,8 +129,16 @@ export interface PersistenceAdapter {
   /**
    * Whether a write belongs to the spec's entity, when the adapter decides it from the call shape
    * instead of the types (`entity.ts`): `prisma.order.update(…)` writes the `Order` model.
+   * Undefined: decided by the types, as without the method.
    */
-  matchEntity?(write: WriteNode, calls: ClientCalls, entity: EntityDecl): boolean;
+  matchEntity?(write: WriteNode, calls: ClientCalls, entity: EntityDecl): boolean | undefined;
+  /**
+   * Writes the adapter finds itself, with types, after the syntactic ones (`writes.ts`): they
+   * need no narrowing probe, e.g. calls to a conditional save function.
+   */
+  extraWrites?(files: readonly TS.SourceFile[], entity: EntityDecl): WriteNode[];
+  /** Where an attributed effect stands relative to the write (default: `attributed`). */
+  effectOutcome?(input: EffectInput): EffectOutcome;
   analyzeWrite(input: AdapterInput): PersistenceFacts;
   /**
    * Atomicity per linked impl, for adapters where it depends on the call path (`memory`). When

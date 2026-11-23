@@ -1,0 +1,11 @@
+{
+  "id": "b2-guard-bypass",
+  "bug": "refundOrder skips requireRole(\"admin\") when ctx.internal is set, so a non-admin caller can refund.",
+  "expected": [
+    {
+      "category": "guard-not-dominating",
+      "transition": "refund",
+      "file": "src/orders/refund.ts"
+    }
+  ]
+}

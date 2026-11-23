@@ -26,6 +26,9 @@ export function validate(
   new Validator(input, normalized, locator, out).run();
 }
 
+/** The client name of every named storage function's call sites (`CallSite.client`). */
+const STORAGE_CLIENT = "storage";
+
 /** The roles each kind of storage function can take. */
 const ALLOWED_ROLES: Record<StorageKind, readonly StorageRole[]> = {
   read: ["key", "_"],
@@ -100,6 +103,17 @@ class Validator {
         "bindings.storage: names no read, save or update function (at least one is required)",
         {
           hint: `add \`read: path/to/file.ts#symbol\` (the function that loads one ${this.model.entity.name} by key) and \`save:\` (the one that persists it)`,
+        },
+      );
+    }
+
+    // Calls to the named functions are the gates `storage.<symbol>`: a client may not share it.
+    if (b.clients !== undefined && Object.hasOwn(b.clients, STORAGE_CLIENT)) {
+      this.out.error(
+        this.locator.key(["bindings", "clients", STORAGE_CLIENT]),
+        `bindings.clients: "${STORAGE_CLIENT}" is reserved when bindings.storage names the app's functions (a call to one is the gate ${STORAGE_CLIENT}.<symbol>, which a client of that name would share)`,
+        {
+          hint: `rename the client (e.g. \`blob\`), and the paths in bindings.effects that start with \`${STORAGE_CLIENT}.\``,
         },
       );
     }

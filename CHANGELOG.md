@@ -56,7 +56,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   is the preset form, and `persistence:` stays accepted as its alias. The block is validated (roles per kind,
   fixed states, unique names), carried in the IR (`Bindings.storage`, `PersistenceKind` `functions`,
   `AtomicScope` `declared`) and diffed by `tsverify diff`, and generated tests fake the named functions with
-  the new `instrument.storage`. `tsverify check` does not recognise calls to them yet.
+  the new `instrument.storage`.
+- **`tsverify check` reads named storage functions.** With `bindings.storage` naming the app's functions, the
+  code check recognises calls to them by resolved symbol (through imports, renamed re-exports, namespace
+  imports and helpers): a read and a save of the entity (inside a bound `atomic` function: atomic, as declared),
+  a save of a `patch` with the state field, and a conditional save, atomic on its own, whose from-states and
+  target come from its arguments. What it `returns` decides the "save failed" branch: an effect that can run
+  although the save failed makes the transition `non-atomic`. A write that bypasses the named functions is
+  `unanalyzable`. Output says when atomicity is only declared ("ship: atomic, as declared by
+  `withTransaction`"; JSON `specs[].declaredAtomic`), and a client may not be named `storage` alongside
+  named functions. New example: `examples/orders-functions` (B1–B7).
 
 ### Fixed
 - `tsverify test` mocked each client module wholesale, so a guard or helper exported beside a client vanished

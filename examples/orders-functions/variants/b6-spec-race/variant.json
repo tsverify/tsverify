@@ -1,0 +1,15 @@
+{
+  "id": "b6-spec-race",
+  "bug": "the spec marks refund atomic: false, so its own model lets two concurrent refunds both pay out; the code is the clean, atomic code.",
+  "expected": [
+    {
+      "category": "spec-property",
+      "property": "effect-multiplicity",
+      "subject": "stripe.refund"
+    },
+    {
+      "category": "spec-property",
+      "property": "rule:Refund issued at most once per order"
+    }
+  ]
+}

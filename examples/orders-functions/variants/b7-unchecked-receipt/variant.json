@@ -1,0 +1,16 @@
+{
+  "id": "b7-unchecked-receipt",
+  "bug": "onPaymentSucceeded sends the receipt without checking what the conditional save returned, so a redelivered event sends a second receipt.",
+  "expected": [
+    {
+      "category": "non-atomic",
+      "transition": "payment_succeeded",
+      "file": "src/payments/webhook.ts"
+    },
+    {
+      "category": "implementation-property",
+      "property": "effect-multiplicity",
+      "subject": "email.receipt"
+    }
+  ]
+}

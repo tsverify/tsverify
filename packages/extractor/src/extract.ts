@@ -10,8 +10,14 @@
  *    persistence facts; then model assembly (`assemble.ts`).
  */
 import type { BehaviorModel, Finding, PersistenceKind, SourceLocation } from "@tsverify/ir";
-import { compareStrings } from "@tsverify/ir";
+import { compareStrings, formatSymbolRef, storageFunctions } from "@tsverify/ir";
 import { assignAdapter } from "./adapters/assign";
+import {
+  type BoundFunction,
+  functionsAdapter,
+  STORAGE_CLIENT,
+  StorageFunctions,
+} from "./adapters/functions";
 import { memoryAdapter } from "./adapters/memory";
 import { prismaAdapter } from "./adapters/prisma";
 import type { PersistenceAdapter, PersistenceFacts } from "./adapters/types";
@@ -24,7 +30,13 @@ import { matchesEntity, writtenValue } from "./entity";
 import { brokenLink, sortFindings, unanalyzable, uniqueIds } from "./findings";
 import { loadTypeScript, TypeScriptSetupError } from "./load-typescript";
 import { type LoadedProject, loadProject, ProjectContext } from "./project";
-import { resolveClient, resolveGuard, resolveImpl, symbolOf } from "./resolve";
+import {
+  resolveClient,
+  resolveGuard,
+  resolveImpl,
+  resolveStorageFunction,
+  symbolOf,
+} from "./resolve";
 import type * as TS from "./ts-types";
 import {
   declaredFieldType,
@@ -38,7 +50,7 @@ import {
   withMembershipGuards,
 } from "./type-facts";
 import { type TypeScript, ts, useTypeScript } from "./typescript";
-import { findCandidateWrites, rebindWrites, type WriteNode } from "./writes";
+import { findCandidateWrites, type PatchOptions, rebindWrites, type WriteNode } from "./writes";
 
 export interface ExtractOptions {
   /** Project root; `impl` and binding paths are relative to it. */
@@ -147,6 +159,16 @@ function unprobedTypes(write: WriteNode, checker: TS.Checker): Narrowed {
   };
 }
 
+/** `patch` write discovery, only when some spec names its own storage functions. */
+function patchOptions(specs: readonly BehaviorModel[]): PatchOptions | undefined {
+  const named = specs.filter((s) => s.bindings.storage !== undefined);
+  if (named.length === 0) return undefined;
+  return {
+    fields: new Set(named.map((s) => s.entity.stateField)),
+    readSymbols: named.flatMap((s) => s.bindings.storage?.read.map((f) => f.ref.symbol) ?? []),
+  };
+}
+
 function requireTypeScript(projectRoot: string): TypeScript {
   const loaded = loadTypeScript(projectRoot);
   if ("error" in loaded) throw new TypeScriptSetupError(loaded.error);
@@ -197,7 +219,8 @@ function extractLoaded(
 ): { results: ExtractResult[]; stats: ExtractStats } {
   // Phase 1 (syntax) and probe planning: no type query before planNarrowing.
   const fields = new Set(specs.map((s) => s.entity.stateField));
-  const candidates = findCandidateWrites(loaded.files, fields);
+  const patch = patchOptions(specs);
+  const candidates = findCandidateWrites(loaded.files, fields, patch);
   const requests: NarrowRequest[] = [];
   const requestOf: (number | undefined)[] = [];
   for (const c of candidates) {
@@ -217,6 +240,7 @@ function extractLoaded(
     fields,
     (f) => ctx.sourceFile(f),
     (f, o) => ctx.facts.toOriginalPosition(f, o),
+    patch,
   );
   const types: WriteTypes[] = writes.map((w, i) => {
     const r = requestOf[i];
@@ -257,8 +281,44 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
   const findings: Finding[] = [];
   const behavior = spec.name;
 
-  const kind = spec.bindings.persistence ?? detectPersistence(ctx);
-  const adapter = ADAPTERS[kind];
+  const storageBinding = spec.bindings.storage;
+  const kind: PersistenceKind = storageBinding
+    ? "functions"
+    : (spec.bindings.persistence ?? detectPersistence(ctx));
+  // Named storage functions: resolved by symbol, for the `functions` adapter.
+  let storage: StorageFunctions | undefined;
+  if (storageBinding) {
+    const bound = new Map<TS.Symbol, BoundFunction>();
+    for (const { kind: fnKind, fn } of storageFunctions(storageBinding)) {
+      const r = resolveStorageFunction(ctx, fn);
+      if (r.ok) bound.set(r.value, { kind: fnKind, fn, path: fn.ref.symbol });
+      else {
+        findings.push(
+          brokenLink(
+            behavior,
+            "storage",
+            fn.ref.symbol,
+            `storage ${fnKind} function ${formatSymbolRef(fn.ref)} does not resolve: ${r.reason}`,
+            fn.at ?? storageBinding.at,
+            {
+              hint: "Point `bindings.storage` at `path#function` (or `path#object.method`), relative to the project root.",
+            },
+          ),
+        );
+      }
+    }
+    storage = new StorageFunctions(checker, bound);
+  }
+  const adapter =
+    storageBinding && storage
+      ? functionsAdapter({
+          binding: storageBinding,
+          fns: storage,
+          callees,
+          checker,
+          entity: spec.entity,
+        })
+      : ADAPTERS[kind];
   if (!adapter) {
     findings.push(
       unanalyzable(
@@ -313,7 +373,12 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
       );
     }
   }
-  const calls = new ClientCalls(checker, clientSyms, adapter);
+  const calls = new ClientCalls(
+    checker,
+    clientSyms,
+    adapter,
+    storage && ((call) => storage.clientCall(call)),
+  );
   const guardSyms = new Set(guards.map((g) => g.sym));
   const calleeSym = (call: TS.CallExpression) => symbolOf(call.expression, checker);
   const match = (call: TS.CallExpression): string[] => {
@@ -376,12 +441,27 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
 
   // Writes of this spec's entity.
   const matched: MatchedWrite[] = [];
-  env.writes.forEach((write, i) => {
+  // Writes the adapter finds by symbol (conditional saves) need no probe.
+  const extra = adapter.extraWrites?.(ctx.analyzedFiles(), spec.entity) ?? [];
+  const writeTypes: WriteTypes[] = extra.map(() => ({
+    narrowed: {
+      values: "*",
+      declared: spec.entity.states,
+      unconstrained: false,
+      typeText: "unknown",
+      declaredText: "unknown",
+      refTypeNames: [],
+    },
+    probed: false,
+  }));
+  [...env.writes, ...extra].forEach((write, i) => {
     if (write.field !== spec.entity.stateField || !adapter.writeKinds.has(write.kind)) return;
-    const { narrowed, probed } = env.types[i] as WriteTypes;
-    const match = adapter.matchEntity
-      ? adapter.matchEntity(write, calls, spec.entity) && "name"
-      : matchesEntity(spec.entity, narrowed.declared, narrowed.refTypeNames);
+    const { narrowed, probed } = (env.types[i] ?? writeTypes[i - env.writes.length]) as WriteTypes;
+    const decided = adapter.matchEntity?.(write, calls, spec.entity);
+    const match =
+      decided === undefined
+        ? matchesEntity(spec.entity, narrowed.declared, narrowed.refTypeNames)
+        : decided && "name";
     if (!match) return;
     const frame = frameOf(write.expr);
     let persistence: PersistenceFacts | undefined;
@@ -400,7 +480,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
     // The exact-union fallback needs a recognized read: DTOs and events share the union.
     if (match === "union" && (!frame || !analyze(frame).read)) return;
     const at = ctx.loc(write.site);
-    const value = writtenValue(write.value, checker);
+    const value = write.fixedValue ?? writtenValue(write.value, checker);
     if (value === undefined) {
       findings.push(
         unanalyzable(
@@ -434,7 +514,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
     matched.push({ write, at, value, narrowed, probed, frame, persistence: analyze(frame) });
   });
 
-  const persistenceClients = new Set<string>();
+  const persistenceClients = new Set<string>(storage ? [STORAGE_CLIENT] : []);
   for (const m of matched) {
     const p = m.persistence;
     if (p.read) persistenceClients.add(p.read.client);

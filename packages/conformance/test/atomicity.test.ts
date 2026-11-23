@@ -45,6 +45,17 @@ describe("atomicity", () => {
     ]);
   });
 
+  it("points named storage functions at a bound atomic function or a conditional save", () => {
+    const { spec, code } = VARIANT_CASES["b3-refund-race"]();
+    for (const t of code.transitions) if (t.sites) t.sites.persistence = "functions";
+    expect(compare(spec, code).map((f) => [f.id, f.hint])).toEqual([
+      [
+        "non-atomic:Order lifecycle:refund",
+        "Run the read and the save inside one `bindings.storage.atomic` function, or save with a conditional save (`bindings.storage.update`) and stop when it saved nothing.",
+      ],
+    ]);
+  });
+
   it("accepts atomic code for a spec that does not require it (B6)", () => {
     const { spec, code } = VARIANT_CASES["b6-spec-race"]();
     expect(compare(spec, code)).toEqual([]);

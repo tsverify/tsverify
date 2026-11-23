@@ -3,7 +3,7 @@
  * function. Paths are project-root-relative (docs/behavior-format.md, "Paths"). A link that does
  * not resolve is reported by the caller as `broken-link`.
  */
-import type { ClientBinding, GuardBinding, SymbolRef } from "@tsverify/ir";
+import type { ClientBinding, GuardBinding, StorageFunction, SymbolRef } from "@tsverify/ir";
 import { type FunctionLike, isFunctionLike } from "./cfg";
 import { primaryDeclarationOf } from "./declarations";
 import type { ProjectContext } from "./project";
@@ -140,6 +140,20 @@ export function resolveClient(ctx: ProjectContext, binding: ClientBinding): Reso
     return fail(`${binding.module}#${binding.export} is a type, not a value`);
   }
   return { ok: true, value: sym };
+}
+
+/** A `bindings.storage` function: `file#symbol` (or `file#obj.method`) that can be called. */
+export function resolveStorageFunction(
+  ctx: ProjectContext,
+  fn: StorageFunction,
+): Resolved<TS.Symbol> {
+  const sym = resolveSymbolPath(ctx, fn.ref.file, fn.ref.symbol);
+  if (!sym.ok) return sym;
+  const type = ctx.checker.getTypeOfSymbol(sym.value);
+  const callable =
+    type !== undefined && ctx.checker.getSignaturesOfType(type, ts.SignatureKind.Call).length > 0;
+  if (!callable) return fail(`${fn.ref.file}#${fn.ref.symbol} is not a function`);
+  return sym;
 }
 
 export function resolveGuard(ctx: ProjectContext, binding: GuardBinding): Resolved<TS.Symbol> {

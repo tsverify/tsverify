@@ -9,6 +9,7 @@ import type {
   Transition,
 } from "@tsverify/ir";
 import { compareStrings } from "@tsverify/ir";
+import { declaredAtomicBy, declaredAtomicText } from "./atomicity";
 import { isNonAtomicOnce } from "./mermaid";
 
 /**
@@ -88,7 +89,9 @@ function transitionSentence(model: BehaviorModel, t: Transition, noun: string): 
 
   const clauses: string[] = [];
   if (t.effects.length > 0) clauses.push(`issues ${joinList(t.effects.map(effectPhrase), "and")}`);
-  clauses.push(t.atomic ? "is atomic" : "is not atomic");
+  const declared = declaredAtomicBy(t);
+  if (declared !== undefined) clauses.push(`is ${declaredAtomicText(declared)}`);
+  else clauses.push(t.atomic ? "is atomic" : "is not atomic");
   if (t.idempotent) clauses.push("tolerates duplicate delivery (idempotent)");
   text += ` This ${joinList(clauses, "and")}.`;
 

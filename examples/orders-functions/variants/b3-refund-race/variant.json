@@ -1,0 +1,17 @@
+{
+  "id": "b3-refund-race",
+  "bug": "refundOrder reads, checks, calls Stripe and saves without withTransaction, so two concurrent refunds both pass the check and both pay out.",
+  "expected": [
+    {
+      "category": "non-atomic",
+      "transition": "refund",
+      "file": "src/orders/refund.ts"
+    },
+    {
+      "category": "implementation-property",
+      "transition": "refund",
+      "property": "effect-multiplicity",
+      "subject": "stripe.refund"
+    }
+  ]
+}

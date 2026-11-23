@@ -1,4 +1,5 @@
 import { check } from "@tsverify/checker";
+import { declaredAtomicTransitions } from "@tsverify/render";
 import { type CodeOutcome, checkCode } from "../code-conformance";
 import { type ExitCode, exitCodeFor, UsageError } from "../exit-codes";
 import { type LoadedSpec, loadSpecs, resolveSpecFiles, selectEnforced } from "../inputs";
@@ -90,6 +91,8 @@ export async function runCheck(
       r.findings.push(...outcome.findings);
       if (outcome.extract) r.extract = outcome.extract;
       if (outcome.codeStats) r.codeStats = outcome.codeStats;
+      const declared = outcome.code ? declaredAtomicTransitions(outcome.code) : [];
+      if (declared.length > 0) r.declaredAtomic = declared;
     });
   }
   for (const r of reports) r.findings = dedupeFindings(r.findings);
