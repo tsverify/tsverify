@@ -1,5 +1,5 @@
-import { realpath } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { realpath, stat } from "node:fs/promises";
+import { basename, dirname, join, resolve } from "node:path";
 import type { BehaviorModel, Finding } from "@tsverify/ir";
 import { compareStrings } from "@tsverify/ir";
 import { formatFindings } from "@tsverify/render";
@@ -28,11 +28,13 @@ const SPEC_SUFFIX = ".behavior.yaml";
  * `tsverify diff --base <ref> [paths…]`: the behavior diff between the specs at `<ref>` and the
  * working tree. Head specs are found like `check` finds them; base specs are the same paths at
  * `<ref>`, read with the local `git` (`ls-tree`, `show`) and parsed from text. Files are paired by
- * path, so a renamed file is one removed and one added behavior.
+ * path, so a renamed file is one removed and one added behavior. Each path is read from the git
+ * repository that contains it, not the cwd's: `tsverify diff --base HEAD ../other/x.behavior.yaml`
+ * compares with `HEAD` of `../other`'s repository (paths in several repositories: `<ref>` in each).
  *
  * Exit 0 whenever the diff could be computed, changed or not (CI decides what a change means);
- * 2 when a spec on either side is invalid (findings on stderr), the ref is unknown, or the cwd
- * is not in a git repository.
+ * 2 when a spec on either side is invalid (findings on stderr), the ref is unknown, or a path is
+ * not in a git repository.
  */
 export async function diffCommand(
   io: Io,
@@ -57,23 +59,33 @@ async function diff(
   format: ReturnType<typeof parseDiffFormat>,
   enforcedOnly: boolean,
 ): Promise<ExitCode> {
-  const root = await repoRoot(io.cwd);
-  const commit = await resolveCommit(root, ref);
-  // git reports the root with symlinks resolved; so must the cwd be, for relative paths to agree.
+  // git reports a root with symlinks resolved; so must the cwd be, for relative paths to agree.
   const cwd = await realpath(io.cwd);
   const args = paths.length > 0 ? paths : ["."];
 
-  const pathspecs = args.map((p) => {
-    const rel = toRelative(root, resolve(cwd, p));
-    if (rel === ".." || rel.startsWith("../")) {
-      throw new UsageError(`${p} is outside the git repository (${root})`);
+  // Each path's own repository, and the pathspecs to list in it.
+  const repos = new Map<string, { commit: string; pathspecs: string[] }>();
+  for (const p of args) {
+    const absolute = await realPath(resolve(cwd, p));
+    const root = await repoRoot(await existingDir(absolute));
+    let entry = repos.get(root);
+    if (entry === undefined) {
+      entry = { commit: await resolveCommit(root, ref), pathspecs: [] };
+      repos.set(root, entry);
     }
-    return rel === "" ? "." : rel;
-  });
-  const named = new Set(pathspecs);
-  const baseFiles = (await listFiles(root, commit, pathspecs))
-    .filter((f) => named.has(f) || (f.endsWith(SPEC_SUFFIX) && !inSkippedDir(f)))
-    .map((f) => toRelative(cwd, join(root, f)));
+    const rel = toRelative(root, absolute);
+    entry.pathspecs.push(rel === "" ? "." : rel);
+  }
+  // Base-side file (relative to the cwd) → where to read it.
+  const baseAt = new Map<string, { root: string; commit: string }>();
+  for (const [root, { commit, pathspecs }] of repos) {
+    const named = new Set(pathspecs);
+    for (const f of await listFiles(root, commit, pathspecs)) {
+      if (!named.has(f) && !(f.endsWith(SPEC_SUFFIX) && !inSkippedDir(f))) continue;
+      baseAt.set(toRelative(cwd, join(root, f)), { root, commit });
+    }
+  }
+  const baseFiles = [...baseAt.keys()];
   const headFiles = await resolveSpecFiles(args, cwd, { existingOnly: true });
 
   const files = [...new Set([...baseFiles, ...headFiles])].sort(compareStrings);
@@ -88,7 +100,8 @@ async function diff(
     if (spec.model) head.set(spec.file, spec.model);
   }
   const base = new Map<string, BehaviorModel>();
-  for (const file of new Set(baseFiles)) {
+  for (const file of baseFiles) {
+    const { root, commit } = baseAt.get(file) as { root: string; commit: string };
     const repoPath = toRelative(root, resolve(cwd, file));
     const { model, findings } = parseSpec(await showFile(root, commit, repoPath), file);
     errors.push(...findings.filter((f) => f.severity === "error").map((f) => atRef(f, ref)));
@@ -105,8 +118,16 @@ async function diff(
     ...(head.has(file) && { head: head.get(file) }),
   }));
   const pairs = enforcedOnly ? all.filter(isEnforced) : all;
+  const [first] = repos.values();
+  const commits = new Map(
+    [...repos].map(([root, { commit }]) => [toRelative(cwd, root) || ".", commit]),
+  );
   const run = {
-    base: { ref, commit },
+    base: {
+      ref,
+      commit: first?.commit ?? "",
+      ...(repos.size > 1 ? { commits: Object.fromEntries(commits) } : {}),
+    },
     pairs,
     ...(enforcedOnly && { enforcedOnly: { skipped: all.length - pairs.length } }),
   };
@@ -122,6 +143,31 @@ function parseBase(value: unknown): string {
     throw new UsageError(`--base takes one git ref (got ${String(value)})`);
   }
   return String(value);
+}
+
+/**
+ * `path` with symlinks resolved (as git reports a repository root), also when it doesn't exist
+ * (a spec deleted from the working tree): its nearest existing ancestor resolved, the rest kept.
+ */
+async function realPath(path: string): Promise<string> {
+  try {
+    return await realpath(path);
+  } catch {
+    const parent = dirname(path);
+    return parent === path ? path : join(await realPath(parent), basename(path));
+  }
+}
+
+/** The nearest existing directory at or above `path` (a file's own directory), to run git in. */
+async function existingDir(path: string): Promise<string> {
+  for (let dir = path; ; dir = dirname(dir)) {
+    try {
+      const stats = await stat(dir);
+      return stats.isDirectory() ? dir : dirname(dir);
+    } catch {
+      if (dirname(dir) === dir) return dir;
+    }
+  }
 }
 
 function inSkippedDir(file: string): boolean {
