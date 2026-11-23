@@ -247,15 +247,22 @@ async function smokeView(cwd: string): Promise<void> {
         "skip  view draws the state diagram in a browser  (no Chrome; set CHROME_PATH)\n",
       );
     } else {
-      const drawn = await renderDiagram(chrome, url);
-      check(
-        "view draws the state diagram in a browser",
-        drawn.diagrams.includes("stateDiagram") &&
-          !drawn.syntaxError &&
-          drawn.nodes > 0 &&
-          drawn.errors.length === 0,
-        `diagrams: ${drawn.diagrams.join(", ") || "none"}, ${drawn.nodes} nodes${drawn.syntaxError ? ", Mermaid syntax error" : ""}${drawn.errors.length > 0 ? `; errors: ${drawn.errors.join(" | ")}` : ""}`,
+      // A browser that won't start fails this check only: the checks after it still run.
+      const drawn = await renderDiagram(chrome, url).catch((e: unknown) =>
+        e instanceof Error ? e : new Error(String(e)),
       );
+      if (drawn instanceof Error) {
+        check("view draws the state diagram in a browser", false, drawn.message);
+      } else {
+        check(
+          "view draws the state diagram in a browser",
+          drawn.diagrams.includes("stateDiagram") &&
+            !drawn.syntaxError &&
+            drawn.nodes > 0 &&
+            drawn.errors.length === 0,
+          `diagrams: ${drawn.diagrams.join(", ") || "none"}, ${drawn.nodes} nodes${drawn.syntaxError ? ", Mermaid syntax error" : ""}${drawn.errors.length > 0 ? `; errors: ${drawn.errors.join(" | ")}` : ""}`,
+        );
+      }
     }
 
     kill("SIGINT");
