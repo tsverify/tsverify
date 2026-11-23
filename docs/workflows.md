@@ -144,9 +144,12 @@ tsverify diff --base origin/main [paths…] [--format markdown|json|pretty] [--e
 - The diff covers the behavior name and `enforced`, the entity (name, state field, initial state), states
   (incl. terminal), transitions (from, to, by, requires, effects, atomic, idempotent, after, impl, concurrency),
   actors, rules and bindings. `summary` and `fixtures` are not compared.
+- Each path is read from the git repository that contains it, not the cwd's, so `tsverify diff --base HEAD
+  ../other-repo/x.behavior.yaml` works from anywhere; paths in several repositories are each compared with `<ref>`
+  in their own (JSON: `base.commits`).
 - Exit 0 whether or not anything changed; CI decides whether a behavior change needs extra review. Exit 2 for an
-  invalid spec on either side (base-side findings are located as `<ref>:<file>`), an unknown ref, or a cwd outside
-  a git repository.
+  invalid spec on either side (base-side findings are located as `<ref>:<file>`), an unknown ref, or a path outside
+  any git repository.
 
 The example workflow posts the Markdown as a single PR comment and edits it on every push (found by its
 `<!-- tsverify-diff -->` marker) instead of adding a new comment each time.

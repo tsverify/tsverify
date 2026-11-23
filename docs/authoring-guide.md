@@ -184,6 +184,18 @@ current directory as an absolute path. Each spec's TypeScript project is still f
 `tsconfig.json`). The summary line counts the states the model checker explored, for the spec and for the code's
 model.
 
+**Which project, and which of its files.** `impl` and binding paths are relative to the project root: the
+directory of the nearest `tsconfig.json` above the spec. `--project <dir>` names it for every spec, and
+`--project <dir>/tsconfig.<name>.json` names the tsconfig too, when the one to read isn't `tsconfig.json` (a
+solution-style `tsconfig.json` that only lists `references`, say: `--project packages/x/tsconfig.src.json`). The
+program holds the tsconfig's files and everything they import, which can include other workspace packages
+resolved to their sources (through `paths` or `customConditions`). Only the project's **own files** are searched
+for state writes no transition asked about (`undeclared-transition`, and `unanalyzable` warnings on such writes):
+files under the project root, and files the tsconfig's own `files` / `include` name, wherever they are. A file
+of another package counts only where an `impl` reaches it: its writes are then that transition's, like any
+helper's. So a package's forwarding wrappers (`startAttempt(…) { return this.inner.startAttempt(…) }`) need no
+binding to stay quiet.
+
 `--strict` (on `check` and `test`) reports every `unanalyzable` warning as an error, so the run exits 1 when
 `tsverify` could not analyze some of the code. Without it, reshaping code into a form `tsverify` can't read would
 turn a finding into a passing warning. On `tsverify test` it also fails a transition with an `impl` that got no
@@ -394,12 +406,12 @@ a redelivered `idempotent` event.
 | `from-state-mismatch` | error (1), or warning | Error: the code allows extra from-states. Warning: the code is stricter than the spec | Error: tighten the code's check. Warning: confirm which is intended. Narrow the spec only if the stricter code is the intent |
 | `guard-not-dominating` | error (1) | A guard in the transition's `requires` is never called, or is skipped on some path (an early return, a flag) before the write: "`ship: role(admin) (requireRole) is called on some paths but not all before the write`". With several actors in `by`: some path passes none of the listed actors' guards in full: "`cancel: cancelOrder reaches the write on a path that passes only {verified}; it must pass owner to act as customer, or role(admin) to act as admin.`" (one finding per such path) | Call the guards on every path before the write: on each path, those of the actor the caller acts as. Don't remove them from the spec |
 | `undeclared-effect` | error (1) | The code calls a bound client on the transition's path that the transition doesn't declare | An intended effect: declare it with the right multiplicity. Not intended (B5: a refund on expiry): remove the call |
-| `missing-effect` | error (1) | A declared effect is never called when the transition happens | Call it, or fix `bindings.effects` / `bindings.clients` so `tsverify` can see the call ([§7.1](#71-all-persistences)) |
+| `missing-effect` | error (1), or warning | A declared effect is never called when the transition happens. A warning when the effect's client is bound but no call anywhere in the project resolves to it: then `tsverify` can't see the call, and says "couldn't confirm" (caused by the binding's own `unanalyzable` warning) | Call it, or fix `bindings.effects` / `bindings.clients` so `tsverify` can see the call ([§7.1](#71-all-persistences)) |
 | `non-atomic` | error (1) | `atomic: true`, but the code's read and write are not in one atomic scope (no transaction, a read through the root client, a non-Serializable Prisma transaction). When `tsverify` can't tell (no read found, a write saved outside `bindings.storage`), it reports that as `unanalyzable` instead, and no `non-atomic` | Use a transaction / conditional update / no `await` between check and write ([§7](#7-code-shapes-tsverify-understands)). Never drop `atomic` to pass |
-| `generated-test-failed` | error (1) | A test from `tsverify test` failed: a path test (allowed transition), forbidden test (disallowed from-state), or guard test (an actor outside `by`, or another actor in `by`). Also a replay that could not run | Read the assertion. It's the real code misbehaving, or bad `fixtures` ([§8](#8-fixtures-for-tsverify-test)) |
+| `generated-test-failed` | error (1) | A test from `tsverify test` failed: a path test (allowed transition), forbidden test (disallowed from-state), or guard test (an actor outside `by`, or another actor in `by`). Also a replay that could not run. "… could not start, before any of the code under test ran" (`…:setup:<file>`) is a setup problem instead: a test file that couldn't load | Read the assertion. It's the real code misbehaving, or bad `fixtures` ([§8](#8-fixtures-for-tsverify-test)). A setup failure: make the modules the tests import resolve under vitest ([§8](#8-fixtures-for-tsverify-test)) |
 | `replay-confirmed` | error (1) | The real code reproduced a counterexample: the bug is confirmed | Fix the code. The test in `.tsverify/generated/` fails until you do |
 | `replay-disagrees` | warning (0) | The real code did not reproduce a counterexample (it threw, or took another path) | Check that the "Observed" line is a real rejection, not a setup error. If the code is right, the extracted model over-approximates. Mention it in the PR |
-| `unanalyzable` | warning or info (0); with `--strict`, warnings are errors (1) | `tsverify` couldn't tell: from-state of a `string` field, a write of a non-literal value or in a shape it can't read (then each transition it would confirm says "couldn't confirm that … writes …", as a `↳ consequence`), a read it can't see, a write saved outside `bindings.storage`, a transition without `impl` (info), an unsupported persistence, the state limit | Restructure the code ([§7.5](#75-restructuring-unanalyzable-code)) or add `impl`. Unanalyzable code is unchecked code. Don't leave new ones unexplained |
+| `unanalyzable` | warning or info (0); with `--strict`, warnings are errors (1) | `tsverify` couldn't tell: from-state of a `string` field, a write of a non-literal value or in a shape it can't read (then each transition it would confirm says "couldn't confirm that … writes …", as a `↳ consequence`), a read it can't see, a write saved outside `bindings.storage`, a client or storage function that is bound but never called (the binding most likely points at the wrong export), a transition without `impl` (info), an unsupported persistence, the state limit (the hint names what makes the search large, and how to lower `concurrency`) | Restructure the code ([§7.5](#75-restructuring-unanalyzable-code)) or add `impl`. Unanalyzable code is unchecked code. Don't leave new ones unexplained |
 | `not-generated` | info (0); with `--strict`, a transition with `impl` that got no test at all, or a spec that got none, is an error (1) | `tsverify test` generated no test for a transition or actor: no `fixtures`, no `impl`, `memory` persistence, unknown invocation shape, an actor without a fixture. With several actors in `by`: a caller acting as one of them but failing its guards (one fixture per actor can't express it; the static check covers it) | Add fixtures, or accept it (e.g. `memory` has no test support yet) |
 
 ### 6.2 Built-in properties
@@ -447,8 +459,41 @@ database. It is conservative: when unsure, it reports `unanalyzable` or "unconst
 | **From-state checks** (narrowing) | `if (x.status !== "a") throw`, early `return`, `switch (x.status)`, `x.status === "a" \|\| x.status === "b"`, assertion functions (`asserts x is Paid`), type predicates (`x is Paid`, incl. inferred `return s === "a"`), ternaries, checks inside the transaction callback | `ALLOWED.includes(x.status)`, `set.has(x.status)`, `const s = x.status; if (s …)`, `const { status } = x`, `const ok = x.status === "a"; if (!ok)` on a mutable field, `: boolean` helpers → compare `x.status` directly, or use a type predicate |
 | **Written value** | A string literal, or a constant with a literal type (`JobStatus.Done`) | A variable or parameter (`x.status = next`) → `unanalyzable`, and the write is not checked: a transition whose impl reaches it is reported as "couldn't confirm", not `missing-transition`. Write the literal at each call site |
 | **Guards** | A call to the bound function, with literal arguments equal to the binding's (`requireRole(actor, "admin")` = `role(admin)`), on every path before the write. A project function that calls the guard on every path counts as that guard | Middleware registered elsewhere (route-level `app.use(auth)`), decorators → call the guard (or a wrapper) inside the impl's reach |
-| **Clients** (database, effects) | Calls on an exported object or function, imported directly (also aliased, re-exported or through a namespace import): `stripe.refunds.create(…)`, or `sendMail(…)` for `export async function sendMail` (map its effect to the client name, [§8](#8-fixtures-for-tsverify-test)); the transaction alias `tx`; and a client injected as a parameter or field typed as the export (`constructor(private prisma: PrismaClient)`, `deps: { db: typeof db }`) | Destructured (`const { orders } = db`), element access (`db["orders"]`), a call's result as the root, an injected client typed `any` or with a type several clients share → import the bound export, or type the parameter as the export's type |
+| **Clients** (database, effects) | Calls on an exported object or function, imported directly (also aliased, re-exported or through a namespace import): `stripe.refunds.create(…)`, or `sendMail(…)` for `export async function sendMail` (map its effect to the client name, [§8](#8-fixtures-for-tsverify-test)); the transaction alias `tx`; a client injected as a parameter or field typed as the export (`constructor(private prisma: PrismaClient)`, `deps: { db: typeof db }`); and, for a client bound to an exported **class**, any instance of it held that way (see "Injected clients" below) | Destructured (`const { orders } = db`), element access (`db["orders"]`), a call's result as the root, an injected client typed `any`, as an interface, or with a type several clients share → import the bound export, or type the parameter as the export's type. A bound client that no call resolves to gets an `unanalyzable` warning ("bound but never called") |
 | **Effects** | A bound-client call that can run on a path that performs the write and completes normally (before the write, or after the commit) | A call only on a path that throws or returns before the write is not attributed. That is correct |
+
+**Injected clients.** Code that receives its clients (a constructor, a resources object such as `this.$`) is
+matched by the declared type of what holds them. Bind the export that type names: for `this.$.runQueue` with
+`runQueue: RunQueue`, bind the class, `queue: { module: src/run-queue/index.ts, export: RunQueue }`; every
+instance typed `RunQueue` (a field, a parameter, a property of an injected object) is then the `queue` client,
+and `this.$.runQueue.acknowledgeMessage(…)` is the call `queue.acknowledgeMessage`. Types compare by identity:
+an instance held as an interface the class implements, as a subclass or as `any` is not matched. When nothing
+matches, `check` says so: the binding gets a "bound but never called" warning, and each effect on it a
+`missing-effect` **warning** ("couldn't confirm … no call in the project resolves to client queue") instead of
+an error, with the effect taken as specified meanwhile. The same goes for `bindings.storage`: a function bound
+by a path no call resolves to (`DelegatingStore.save` when the code calls `store.save` on a `Store` interface)
+gets the warning; bind the one the code calls (`types.ts#Store.save`).
+
+**Effect identity is the call.** An effect is recognized by its call path, `bindings.effects` maps names to
+paths, and a call is one path. So two effect names bound to the same call (`queue.ack_cancel` and
+`queue.ack_expire`, both `queue.acknowledgeMessage`) can't be told apart in the code: a transition that declares
+one of them gets that one, and any other call of that path is named after the first of them alphabetically, so
+a transition that acknowledges for another reason is reported as `undeclared-effect` `queue.ack_cancel`, and a
+rule about `count(effect queue.ack_cancel)` may count it. To cope, either:
+
+- use one effect name per call path (`queue.ack: queue.acknowledgeMessage`), declare it on every transition that
+  acknowledges, and let the rule say *which* by the state (`never: status == EXPIRED and count(effect notify.cancel) > 0`,
+  with the cancel-only effect), or
+- give each meaning its own call: a small exported function per reason (`ackCancelled(…)`, `ackExpired(…)`, each
+  calling `acknowledgeMessage`), bound as its own client (`ack_cancel: { module: …, export: ackCancelled }`).
+
+**Several transitions, one `impl`.** A write reached from an `impl` belongs to that transition; when several
+transitions' impls reach it, the ones whose `to` is the written state win. Transitions that share an `impl`
+*and* a `to` are each compared with every write of that state the impl reaches: each gets all of them. Their
+from-states are checked together (a `from-state-mismatch` warning only for a state none of the writes accepts),
+but the transitions themselves can't be told apart, so a write meant for one is checked against the other's
+`from`, `requires` and `effects` too. Declare them as one transition with the union of their `from` (comment
+which code path covers which state), or point each at the function that only does its part.
 
 ### 7.2 `assign`: repository objects (the default)
 
@@ -466,7 +511,7 @@ await stripe.refunds.create({ charge });       // effect, after the commit
 |---|---|
 | Detected | When no Prisma or Drizzle import is found. Set `persistence: assign` to be explicit |
 | Read | A call on a bound client (or on `tx`) whose result initializes the entity reference, also through a helper (`const o = await loadOrder(tx, id)`) |
-| Write | `ref.<state> = "literal"`, or `{ ...ref, <state>: "literal" }` passed directly to a call |
+| Write | `ref.<state> = "literal"`, or `{ ...ref, <state>: "literal" }` passed to a call, directly or as a `const` only that call takes (`const next = { ...order, status: "refunded" }; await tx.orders.save(next)`); anything else done with such a `const` (a `let`, two saves, the state set on it afterwards) is reported as `unanalyzable` |
 | Atomic | Read, write and commit inside one `<client>.transaction(async (tx) => …)` callback, all through `tx`. The method must be called `transaction`, with the callback as its first argument. A `db.…` call inside the callback bypasses the transaction |
 | Not a write | `this.status = …` in a constructor, and new object literals (`{ id, status: "draft" }`) |
 | `tsverify test` | Supported (in-memory fake store) |
@@ -490,6 +535,11 @@ await stripe.refunds.create({ charge: order.chargeId });
 | The same inside `prisma.$transaction(async (tx) => …, { isolationLevel: "Serializable" })`, all through `tx` | Narrowed | yes |
 | The same inside `$transaction` at the default level, `RepeatableRead` or lower, or the array form `$transaction([…])` | Narrowed | **no** (the message names the reason) |
 | Blind update: no state in `where`, and no read | every state (`from-state-unconstrained`) | yes (the bug is the missing check) |
+
+The update object may be held in a `const` first (`const data = { status: "refunded" }; await
+prisma.order.update({ where: { id }, data })`): one used only as that update's `data` is read as if written into
+the call. A `let`, one object for several updates, the state set on it afterwards (`data.status = …`) or any
+other use is reported as `unanalyzable`, and the transitions reaching it as "couldn't confirm".
 
 The entity is matched by model delegate, ignoring case: `prisma.order` is `entity.name: Order`. Bind the client
 in `bindings.clients` (persistence is auto-detected from a `@prisma/client` or `PrismaClient` import). **Not modelled:** nested writes
@@ -536,8 +586,9 @@ Prefer a small, behavior-preserving refactor that makes the code checkable over 
 | "no read of `x` through a bound client was found" | Read the entity through the bound client (or `tx`) in the impl or a helper it calls. Don't pass the entity in from outside |
 | `missing-effect`, although the call exists | Call it on an imported module-level object that is bound in `bindings.clients`. Map the effect to that call path in `bindings.effects` |
 | `guard-not-dominating`, although a middleware checks it | Call the guard (or a wrapper that calls it) inside the impl, before the write |
-| `undeclared-transition` from test or seed files | Exclude them from the `tsconfig.json` that the spec's project uses (`"include": ["src"]`), or point `tsverify check --project <dir>` at a directory whose tsconfig excludes them |
-| Clients injected with a type `tsverify` can't tie to one export (`any`, an interface several clients share) | Type the field or parameter as the export's type (`typeof db`), or export the client from a module and import it where it is used. For DI frameworks, a thin exported function per transition that the class delegates to |
+| `undeclared-transition` from test or seed files | Exclude them from the `tsconfig.json` that the spec's project uses (`"include": ["src"]`), or point `tsverify check --project` at a tsconfig that excludes them (`--project tsconfig.src.json`) |
+| Clients injected with a type `tsverify` can't tie to one export (`any`, an interface several clients share) | Type the field or parameter as the export's type (`typeof db`, or the class for a class-bound client), or export the client from a module and import it where it is used. For DI frameworks, a thin exported function per transition that the class delegates to |
+| "client … is bound but never called", or "storage … function … is bound but never called" | Point the binding at what the code calls: the class its instances are typed as, the interface method a `store: Store` call resolves to. Remove bindings the code doesn't use |
 
 ### 7.6 Storage: point at your own functions
 
@@ -572,7 +623,15 @@ How to find them:
   `count` (`0`), `entity` (`undefined`) or `throws`. The code is expected to stop when it does
   (`if (!(await setStatusIf(…))) throw …`, `if (updated === undefined) return`): an effect that can run before
   that check (or before the update) fires even when nothing was saved, and `check` reports the transition as
-  `non-atomic`. An effect only in the "nothing saved" branch is not the transition's.
+  `non-atomic`. An effect only in the "nothing saved" branch is not the transition's. A `count` may also be a
+  count object (`r.count === 0`), as Prisma's `updateMany` returns.
+- **An unconditional ("blind") update** writes its state whatever the stored one is (`update({ where: { id } })`
+  with a fixed status, a store method such as `startAttempt(id, …)` that sets `EXECUTING` unconditionally). Bind
+  it with `from` **every state** (a YAML anchor helps: `from: &ALL [DELAYED, PENDING, …]`, then `from: *ALL`) and
+  `returns: throws`: it never "finds the state changed", so there is no result to check (it can only throw, e.g.
+  for a missing row), and no effect counts as running "although it saved nothing". `check` then reports the
+  missing state check honestly, as `from-state-unconstrained` on each transition whose spec `from` is narrower.
+  Don't give it the spec's `from`: tsverify trusts a bound `from`, so that would hide the missing check.
 - **Pass every argument a role names.** The generated tests' fake reads each role's argument. The one exception
   is a `patch`: leaving it out (`updateStatusIf(id, "paid", "refunded")`) counts as `{}`, so nothing is merged.
 - **`atomic` is declared, not proven.** Name a function only if it really serializes the callback against
@@ -662,6 +721,16 @@ fixtures:
   "acting as one of them but failing its guards" can't be generated (a `not-generated` info); actors outside `by`
   are the rejected callers.
 - `memory` persistence generates no tests yet.
+- An `impl` that is an instance method (`file.ts#Class.method`, not `static`) gets no test yet (`not-generated`,
+  an error under `--strict`): a test would need an object of the class to call it on.
+- A binding the generated mocks can't replace means no test for the spec (`not-generated`, with each reason): a
+  client bound to a class (an object in its place would break `new`), or a storage function that is a method of
+  an interface (a type: there is no value to replace) or of a class.
+- The tests resolve imports like the project: the tsconfig's `customConditions` are passed to vitest, so a
+  workspace package resolved to its sources (`"exports": { "@org/source": "./src/index.ts", … }`) resolves the
+  same way. A test file that can't load at all (an import that doesn't resolve, a mock that can't be built) is
+  reported once per error as a setup failure ("could not start, before any of the code under test ran"), not as
+  a behavior the spec forbids.
 
 ---
 

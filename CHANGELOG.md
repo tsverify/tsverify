@@ -66,6 +66,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   `unanalyzable`. Output says when atomicity is only declared ("ship: atomic, as declared by
   `withTransaction`"; JSON `specs[].declaredAtomic`), and a client may not be named `storage` alongside
   named functions. New example: `examples/orders-functions` (B1–B7).
+- `--project` takes a tsconfig file as well as a directory (`--project packages/x/tsconfig.src.json`); its
+  directory is the project root.
+- A client bound to an exported class matches calls on its instances (`this.$.runQueue.acknowledgeMessage(…)`
+  with `runQueue: RunQueue`).
+- A bound client or `bindings.storage` function that no call in the project resolves to gets an `unanalyzable`
+  warning ("bound but never called"); `missing-effect` for an effect on such a client is a warning that says
+  tsverify couldn't see the call, instead of an error saying the code never makes it.
 
 ### Fixed
 - **No state write is missed silently** with `bindings.storage`. A patch object held in a variable
@@ -87,6 +94,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   which reports them as 1).
 - `tsverify test` mocked each client module wholesale, so a guard or helper exported beside a client vanished
   (`No "requireOwner" export is defined on the mock`). The mocks now replace only the bound exports.
+- An unconfirmed transition (its write can't be read) is taken as specified in the code's model, like one
+  without `impl`, so it no longer causes stuck-state or `eventually` errors: plain `check` reports only the
+  warnings, `--strict` still fails on them. A transition whose impl writes nothing stays `missing-transition`.
+- With the Prisma preset, an update object held in a `const` (`const data = { status: "paid" }; …update({ where,
+  data })`) is read, and one tsverify can't follow is reported; the same for a spread held before an `assign`
+  save (`const next = { ...order, status: "paid" }; save(next)`).
+- Writes in files outside the project (other workspace packages pulled in through `paths` or
+  `customConditions`) are no longer reported as `undeclared-transition`: only the project's own files (under its
+  root, or in its tsconfig's `files` / `include`) are searched for writes no `impl` reaches.
+- `from-state-mismatch` compares the from-states of all of a transition's writes together, so one write per code
+  path no longer warns that each covers only some of the spec's states.
+- A consequence is linked only to a cause that can produce it: a missing effect only to a rule broken by fewer of
+  that effect, an extra transition write only to traces that take that write.
+- `tsverify diff` reads each spec from the git repository that contains it, not the cwd's.
+- The state-limit hint names what makes the model's search large and shows the `concurrency` syntax to shrink it.
+- `tsverify test` reports an `impl` that is an instance method, and bindings it can't replace with a fake (a
+  class, a method of an interface), as `not-generated` instead of generating tests that break; resolves imports
+  with the tsconfig's `customConditions`; and reports a test file that can't load as one setup failure with the
+  original error, not as a behavior the spec forbids.
+- No `non-atomic` from an effect before an unconditional update bound with every `from` state, and `returns:
+  count` reads a count object (`r.count === 0`).
+- `render --summary` picks `a` / `an` by sound ("a user", "an SMS").
 
 ## [0.1.0-alpha.0]
 
