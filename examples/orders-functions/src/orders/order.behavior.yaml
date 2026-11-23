@@ -1,0 +1,99 @@
+# The orders-app spec, stored through the app's own functions (bindings.storage).
+behavior: Order lifecycle
+summary: A customer checks out and pays; an admin ships or refunds; unpaid orders expire.
+
+entity:
+  name: Order
+  state: status
+  states: [draft, pending_payment, paid, shipped, refunded, cancelled]
+  initial: draft
+  terminal: [shipped, refunded, cancelled]
+
+actors:
+  customer: { trust: untrusted }
+  admin: { trust: authenticated, requires: role(admin) }
+  stripe: { trust: signed-webhook }
+  system: { trust: internal }
+
+transitions:
+  checkout:
+    from: draft
+    to: pending_payment
+    by: customer
+    requires: [owner]
+    atomic: true
+    impl: src/orders/checkout.ts#checkout
+
+  payment_succeeded:
+    from: pending_payment
+    to: paid
+    by: stripe
+    idempotent: true
+    atomic: true
+    effects:
+      - email.receipt: exactly-once
+    impl: src/payments/webhook.ts#onPaymentSucceeded
+
+  expire:
+    from: pending_payment
+    to: cancelled
+    by: system
+    after: 30m
+    atomic: true
+    impl: src/jobs/expire-orders.ts#expireOrder
+
+  ship:
+    from: paid
+    to: shipped
+    by: admin
+    atomic: true
+    impl: src/admin/orders.ts#shipOrder
+
+  refund:
+    from: paid
+    to: refunded
+    by: admin
+    atomic: true
+    effects:
+      - stripe.refund: exactly-once
+    impl: src/orders/refund.ts#refundOrder
+
+rules:
+  - name: Refund issued at most once per order
+    always: count(effect stripe.refund) <= 1
+  - name: Unpaid orders don't linger
+    eventually: status != pending_payment
+  - name: Shipped orders are never refunded
+    never: status == shipped and count(effect stripe.refund) > 0
+
+concurrency:
+  default: 2
+  max_parallel:
+    refund: 2
+
+bindings:
+  storage:
+    read: src/store/orders.ts#getOrder
+    save: src/store/orders.ts#saveOrder
+    update:
+      fn: src/store/orders.ts#updateStatusIf
+      args: [key, from, to, patch]
+      returns: entity
+    atomic: src/store/transaction.ts#withTransaction
+  clients:
+    stripe: { module: src/payments/stripe.ts, export: stripe }
+    email: { module: src/notify/email.ts, export: email }
+  guards:
+    owner: src/auth/guards.ts#requireOwner
+    role(admin): src/auth/guards.ts#requireRole("admin")
+  effects:
+    stripe.refund: stripe.refunds.create
+    email.receipt: email.send
+
+fixtures:
+  entity: { id: o1, ownerId: c1, email: c1@example.com, chargeId: ch_1 }
+  actors:
+    customer: { id: c1, roles: [] }
+    admin: { id: a1, roles: [admin] }
+  args:
+    payment_succeeded: [{ id: evt_1, orderId: $id, chargeId: ch_1 }]

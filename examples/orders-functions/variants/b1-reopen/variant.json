@@ -1,0 +1,10 @@
+{
+  "id": "b1-reopen",
+  "bug": "reopenOrder moves a paid order back to pending_payment, a transition the spec does not declare, so the order can be paid (and receipted) twice.",
+  "expected": [
+    {
+      "category": "undeclared-transition",
+      "file": "src/admin/orders.ts"
+    }
+  ]
+}

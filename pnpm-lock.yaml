@@ -36,6 +36,21 @@ importers:
         specifier: workspace:*
         version: link:../../packages/spec
 
+  examples/orders-functions:
+    devDependencies:
+      '@tsverify-examples/shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@tsverify/cli':
+        specifier: workspace:*
+        version: link:../../packages/cli
+      '@tsverify/ir':
+        specifier: workspace:*
+        version: link:../../packages/ir
+      '@tsverify/spec':
+        specifier: workspace:*
+        version: link:../../packages/spec
+
   examples/orders-prisma:
     devDependencies:
       '@tsverify-examples/shared':

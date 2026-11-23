@@ -1,0 +1,11 @@
+{
+  "id": "b5-undeclared-effect",
+  "bug": "expireOrder refunds a cancelled order's charge through Stripe, an effect the spec does not declare on expire.",
+  "expected": [
+    {
+      "category": "undeclared-effect",
+      "transition": "expire",
+      "file": "src/jobs/expire-orders.ts"
+    }
+  ]
+}

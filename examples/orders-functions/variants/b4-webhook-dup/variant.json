@@ -1,0 +1,16 @@
+{
+  "id": "b4-webhook-dup",
+  "bug": "onPaymentSucceeded saves paid without checking the status, so a redelivered event marks the order paid again and sends a second receipt.",
+  "expected": [
+    {
+      "category": "from-state-unconstrained",
+      "transition": "payment_succeeded",
+      "file": "src/payments/webhook.ts"
+    },
+    {
+      "category": "implementation-property",
+      "property": "effect-multiplicity",
+      "subject": "email.receipt"
+    }
+  ]
+}
