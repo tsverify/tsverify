@@ -799,6 +799,8 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
     };
   };
 
+  const readFirstHint = `Read the ${entity.name} with a \`bindings.storage.read\` function into a \`const\` before the write, in the function that writes it (\`const x = await ${binding.read[0]?.ref.symbol ?? "read"}(…)\`), and check \`x.${field}\` there.`;
+
   const noRead = (what: string): string =>
     `no read of \`${what}\` through a \`bindings.storage.read\` function was found before this write, so whether it is atomic cannot be decided (not checked)`;
 
@@ -832,6 +834,7 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
             unconstrained: false,
             reason: `the \`from\` argument of ${commit.gate} (${fromArg?.getText() ?? "missing"}) is not a literal state or a list of them`,
           };
+      const fromStateHint = `Pass the \`from\` states to ${commit.gate} as a literal or a list of literals, or give the binding a fixed \`from:\` list.`;
       // The read that the code checked before the save: the latest one with the same key.
       let read: ClientCall | undefined;
       if (key) {
@@ -849,6 +852,7 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
         atomic: true,
         atomicAt: { kind: "conditional-update", call, gate: commit.gate },
         fromState,
+        ...(states ? {} : { fromStateHint }),
         ...(key ? { entityKey: key } : {}),
       };
     }
@@ -885,10 +889,13 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
     if (write.kind === "patch") {
       const call = write.call as TS.CallExpression;
       const b = fns.of(call);
-      // The probe (chosen by syntax) counts only when it reads an entity.
+      // The probe (chosen by syntax) counts only when it reads an entity: its type names the
+      // entity, or it holds what a bound read returned. A type the entity's name doesn't survive
+      // (`z.infer<…>`, `typeof table.$inferSelect`, behind `| undefined`) still has the read.
       const probed =
         write.probed === true &&
-        typeNames(declaredTypeOfRef(write.ref, checker), checker).includes(entity.name);
+        (typeNamesEntity(declaredTypeOfRef(write.ref, checker)) ||
+          readOfRef(write.ref, frame, reach, 0) !== undefined);
       if (b?.kind !== "save") {
         return {
           ...base,
@@ -901,6 +908,7 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
                   unconstrained: false,
                   reason: `no read of the ${entity.name} precedes the call`,
                 },
+                fromStateHint: readFirstHint,
               }),
           unbound: unbound(
             `${entity.name}.${field} is written in a patch passed to \`${call.expression.getText()}\`, which is not a \`bindings.storage.save\` function`,

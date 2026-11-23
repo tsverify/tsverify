@@ -588,6 +588,57 @@ export async function reply(id: string) {
   });
 });
 
+describe("a read whose type doesn't name the entity", () => {
+  // The row type of a query builder or a schema library (\`z.infer<…>\`, \`$inferSelect\`) is
+  // an anonymous object type: its name is lost, but it is what a bound read returned.
+  const result = extract(
+    `${IMPORTS}
+import type { Status } from "./repo";
+export async function getRow(id: string): Promise<{ id: string; status: Status } | undefined> {
+  return getOrder(id);
+}
+export async function cancel(id: string) {
+  const row = await getRow(id);
+  if (!row) throw new Error("missing");
+  if (row.status !== "pending_payment") throw new Error("not pending");
+  await qb.update("orders").set({ status: "cancelled", note: "x" }).where(id);
+}
+export async function cancelUnread(id: string) {
+  const other = await Promise.resolve({ status: "x" });
+  await legacy.patch(id, { status: "cancelled" });
+  return other;
+}
+`,
+    [
+      t("cancel", "cancelled", { from: ["pending_payment"] }),
+      t("cancelUnread", "cancelled", { from: ["pending_payment"] }),
+    ],
+    storageOf({
+      read: ["src/impl.ts#getRow"],
+      save: [{ fn: "src/repo.ts#patchOrder", args: ["key", "patch"] }],
+    }),
+  );
+
+  it("the patch's from-state is read from the bound read before it", () => {
+    expect(transitionOf(result, "cancel").from).toEqual(["pending_payment"]);
+    expect(result.findings.map((f) => f.id)).not.toContain(
+      "unanalyzable:Fixture orders:from-state:cancel",
+    );
+  });
+
+  it("with no read before the write, the hint says to read it, not to retype the field", () => {
+    const f = result.findings.find(
+      (x) => x.id === "unanalyzable:Fixture orders:from-state:cancelUnread",
+    );
+    expect(f?.message).toBe(
+      "cancelUnread: the from-state of this write is unknown: no read of the Order precedes the call",
+    );
+    expect(f?.hint).toBe(
+      "Read the Order with a `bindings.storage.read` function into a `const` before the write, in the function that writes it (`const x = await getRow(…)`), and check `x.status` there.",
+    );
+  });
+});
+
 describe("update (conditional save)", () => {
   const result = extract(
     `${IMPORTS}
@@ -902,6 +953,34 @@ export async function ship(deps: { orders: OrderStore }, id: string) {
         reason: "OrderStore.get is a method of OrderStore, a type, which has no value to replace",
       },
     ]);
+  });
+
+  it("a function that isn't exported is a broken link, but still read as bound", () => {
+    const result = extract(
+      `${IMPORTS}
+async function findLocal(_db: unknown, id: string) {
+  return getOrder(id);
+}
+export async function cancel(id: string) {
+  const order = await findLocal(null, id);
+  if (order?.status !== "pending_payment") throw new Error("not pending");
+  await patchOrder(id, { status: "cancelled" });
+}
+`,
+      [t("cancel", "cancelled", { from: ["pending_payment"] })],
+      storageOf({
+        read: [{ fn: "src/impl.ts#findLocal", args: ["_", "key"] }],
+        save: [{ fn: "src/repo.ts#patchOrder", args: ["key", "patch"] }],
+      }),
+    );
+    const f = result.findings.find((x) => x.id === "broken-link:Fixture orders:storage:findLocal");
+    expect(f).toMatchObject({ severity: "error" });
+    expect(f?.message).toBe(
+      "storage read function src/impl.ts#findLocal is not exported: `tsverify test` replaces storage functions by mocking the module that exports them, so it can't replace this one",
+    );
+    const s = transitionOf(result, "cancel");
+    expect(s.from).toEqual(["pending_payment"]);
+    expect(s.sites?.read?.gate).toBe("storage.findLocal");
   });
 
   it("warns about a bound function (any kind) that no call resolves to", () => {

@@ -100,27 +100,47 @@ function baseName(d: Draft, functionName: string): string {
   return d.linked.to === d.write.value ? d.linked.name : `${d.linked.name}->${d.write.value}`;
 }
 
-function fromStateOf(spec: BehaviorModel, m: MatchedWrite): FromState {
+/** The hint of the `unanalyzable` from-state finding when the adapter gave none. */
+const RESTRUCTURE_HINT =
+  'Check the state with a comparison tsverify reads (`if (x.status !== "a") throw`, a `switch`, `.includes` on a list of literals) before the write (docs/authoring-guide.md §7.5).';
+
+function fromStateOf(spec: BehaviorModel, m: MatchedWrite): FromState & { hint: string } {
   const n = m.narrowed;
   const ref = referenceText(m.write.ref) ?? m.write.ref.getText();
   const target = `${ref}.${m.write.field}`;
   if (n.values === "*") {
-    let reason: string;
-    if (!m.probed)
-      reason = `${target} is not a plain reference (identifier, this or a property chain), so it cannot be probed`;
-    else if (n.declared === "*")
-      reason = `${spec.entity.name}.${m.write.field} is typed ${n.declaredText}`;
-    else reason = `the type of ${target} at the write is ${n.typeText}`;
-    return { values: "*", unconstrained: false, reason };
+    if (!m.probed) {
+      return {
+        values: "*",
+        unconstrained: false,
+        reason: `${target} is not a plain reference (identifier, this or a property chain), so it cannot be probed`,
+        hint: `Hold the ${spec.entity.name} in a local \`const\` or a parameter and write its ${m.write.field} through that name, so its state at the write can be read.`,
+      };
+    }
+    if (n.declared === "*") {
+      return {
+        values: "*",
+        unconstrained: false,
+        reason: `${spec.entity.name}.${m.write.field} is typed ${n.declaredText}`,
+        hint: `Type ${spec.entity.name}.${m.write.field} as a union of string literals so narrowing can be read.`,
+      };
+    }
+    return {
+      values: "*",
+      unconstrained: false,
+      reason: `the type of ${target} at the write is ${n.typeText}`,
+      hint: RESTRUCTURE_HINT,
+    };
   }
   if (n.unconstrained) {
     return {
       values: [...n.values],
       unconstrained: true,
       reason: `nothing narrows ${target} before the write: its type there is the full declared union ${n.declaredText}`,
+      hint: RESTRUCTURE_HINT,
     };
   }
-  return { values: [...n.values], unconstrained: false };
+  return { values: [...n.values], unconstrained: false, hint: RESTRUCTURE_HINT };
 }
 
 function callSite(
@@ -276,7 +296,9 @@ function buildTransition(
     multiplicity: multiplicityOf(e, spec, t),
   }));
 
-  const fromState = p.fromState ?? fromStateOf(spec, m);
+  const { hint: fromStateHint, ...fromState } = p.fromState
+    ? { ...p.fromState, hint: p.fromStateHint ?? RESTRUCTURE_HINT }
+    : fromStateOf(spec, m);
   const from =
     fromState.values === "*"
       ? "*"
@@ -294,7 +316,7 @@ function buildTransition(
         {
           transition: name,
           codeAt: m.at,
-          hint: `Type ${spec.entity.name}.${m.write.field} as a union of string literals so narrowing can be read.`,
+          hint: fromStateHint,
         },
       ),
     );

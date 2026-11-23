@@ -103,6 +103,17 @@ function propertyOf(checker: TS.Checker, sym: TS.Symbol, name: string): TS.Symbo
   return type && checker.getPropertyOfType(type, name);
 }
 
+/** Whether the head of a `file#Head.member` path (or `file#fn`) is one of the module's exports. */
+export function isExportedPath(ctx: ProjectContext, ref: SymbolRef): boolean {
+  const sf = ctx.sourceFile(ctx.abs(ref.file));
+  const moduleSym = sf && ctx.checker.getSymbolAtLocation(sf);
+  const head = ref.symbol.split(".")[0];
+  return (
+    moduleSym !== undefined &&
+    ctx.checker.getExportsOfModule(moduleSym).some((s) => s.name === head)
+  );
+}
+
 /**
  * What a `file#Head.member` path's head is, when it is a class or a type (an interface, a type
  * alias): the kinds of export generated tests can't replace with a plain fake object.

@@ -45,6 +45,7 @@ import { guardArgs } from "./guard-args";
 import { loadTypeScript, TypeScriptSetupError } from "./load-typescript";
 import { type LoadedProject, loadProject, ProjectContext } from "./project";
 import {
+  isExportedPath,
   isInstanceMember,
   pathHeadKind,
   resolveClient,
@@ -313,8 +314,25 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
               : `${fn.ref.symbol} is a method of the class ${head}, which would have to be replaced as a whole`,
         });
       }
-      if (r.ok) bound.set(r.value, { kind: fnKind, fn, path: fn.ref.symbol });
-      else {
+      if (r.ok) {
+        bound.set(r.value, { kind: fnKind, fn, path: fn.ref.symbol });
+        // Still read as bound, so the rest of the check stays accurate; but generated tests
+        // replace storage functions by mocking the module that exports them.
+        if (!isExportedPath(ctx, fn.ref)) {
+          findings.push(
+            brokenLink(
+              behavior,
+              "storage",
+              fn.ref.symbol,
+              `storage ${fnKind} function ${formatSymbolRef(fn.ref)} is not exported: \`tsverify test\` replaces storage functions by mocking the module that exports them, so it can't replace this one`,
+              fn.at ?? storageBinding.at,
+              {
+                hint: `Export ${head} from ${fn.ref.file} (and keep the impls that call it in another module, so the mock reaches their calls), or bind the exported function that calls it.`,
+              },
+            ),
+          );
+        }
+      } else {
         findings.push(
           brokenLink(
             behavior,

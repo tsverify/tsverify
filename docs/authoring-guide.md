@@ -397,7 +397,7 @@ a redelivered `idempotent` event.
 | Category | Severity (exit) | Means | Do this |
 |---|---|---|---|
 | `invalid-spec` | error (2), or warning | The spec doesn't parse or validate: unknown key, unknown state or actor, rule syntax, unbound guard. Warnings: a terminal state with an outgoing transition, an unused guard binding | Fix the YAML at the location. Most messages carry a "did you mean" |
-| `broken-link` | error (2) | `impl`, a client or a guard binding doesn't resolve: missing file, file not in the tsconfig, missing export, not a function with a body, no `tsconfig.json` | Fix the path (project-root relative) or the symbol (`file.ts#name`, `file.ts#Class.method`) |
+| `broken-link` | error (2) | `impl`, a client, a guard or a storage function binding doesn't resolve: missing file, file not in the tsconfig, missing export, not a function with a body, no `tsconfig.json`. Also a `bindings.storage` function that isn't exported (generated tests can't replace it) | Fix the path (project-root relative) or the symbol (`file.ts#name`, `file.ts#Class.method`); export the storage function |
 | `spec-property` | error (1), or warning | The **spec** breaks a property, as a design bug. See [§6.2](#62-built-in-properties) | Fix the design (`atomic`, `from`, `idempotent`, a missing transition). Don't delete the rule |
 | `implementation-property` | error (1) | The **code's** model breaks a property, with a trace. Usually a `↳ consequence` of a conformance finding | Fix the root cause. If it stands alone, the code reaches a bad state the spec forbids. Fix the code |
 | `undeclared-transition` | error (1) | The code writes a state change that no transition declares, or a linked function writes a different `to` | A legit transition: declare it with that `impl`. A bug (B1 "reopen"): remove the write. Test or seed code: keep it out of the tsconfig `include` |
@@ -637,9 +637,10 @@ How to find them:
 - **`atomic` is declared, not proven.** Name a function only if it really serializes the callback against
   other requests (a database transaction at a sufficient isolation level, or a lock). tsverify trusts the
   declaration and can't check what happens inside; the generated replay tests still run the race through it.
-- **In their own module.** Generated tests replace the functions by mocking the module that exports them, so a
-  call from inside that same module (an `impl` next to `getOrder` in `repo.ts`) still reaches the real one.
-  Keep the `impl`s in other files.
+- **Exported, in their own module.** Generated tests replace the functions by mocking the module that exports
+  them, so each must be exported (a function that isn't is a `broken-link` error; `check` still reads its calls),
+  and a call from inside that same module (an `impl` next to `getOrder` in `repo.ts`) still reaches the real one.
+  Keep the `impl`s in other files. Guards need not be exported: tests run them as they are.
 - **Only the functions the transitions call.** One read, one save and the conditional saves and atomic
   wrappers that the `impl`s use are enough; list several of a kind if the code uses several.
 - **Calls are matched by symbol**, through imports, renamed re-exports, namespace imports and helpers, never by

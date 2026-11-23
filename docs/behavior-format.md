@@ -230,7 +230,8 @@ How the code check and the generated tests see these functions:
   transition's, and an effect that can run before the update's result is checked makes it `non-atomic`
 - a write that no named function saves is `unanalyzable` (`--strict`: an error)
 - `tsverify test` replaces each named function with an in-memory version (`instrument.storage`) by mocking its
-  module; the module's other exports stay real
+  module; the module's other exports stay real. So each must be exported (or be a method of an export): one
+  that isn't is a `broken-link` error, although `check` still reads its calls
 
 Errors (`invalid-spec`, at the offending YAML node):
 
