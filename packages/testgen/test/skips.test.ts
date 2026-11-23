@@ -88,15 +88,29 @@ describe("skipped", () => {
     ]);
   });
 
-  it("a transition without an invocation shape", () => {
+  it("a transition whose key argument tsverify can't trace, without fixtures.args", () => {
     const model = code();
     for (const t of model.transitions)
       if (t.name === "refund" && t.sites) delete t.sites.invocation;
     const result = run(orderModel(), model);
-    expect(result.skipped.map((f) => f.message)).toContain(
-      "tsverify test generated no tests for `refund`: the extractor could not tell how to call src/orders/refund.ts#refundOrder (no invocation shape)",
+    const f = result.skipped.find((x) => x.transition === "refund");
+    expect(f?.message).toBe(
+      "tsverify test generated no tests for `refund`: tsverify can't tell which arguments of src/orders/refund.ts#refundOrder carry the Order's key and the actor (it couldn't trace the key the code reads the Order with back to a parameter)",
     );
+    expect(f?.hint).toContain("`fixtures.args.refund`, with `$id` where the key goes");
     expect(result.tests.some((t) => t.transition === "refund")).toBe(false);
+  });
+
+  it("with fixtures.args, no traced arguments are needed", () => {
+    const model = code();
+    for (const t of model.transitions)
+      if (t.name === "refund" && t.sites) delete t.sites.invocation;
+    const spec = orderModel();
+    if (spec.fixtures)
+      spec.fixtures.args.refund = [{ ctx: { actor: "$actor" }, input: { id: "$id" } }];
+    const result = run(spec, model);
+    expect(result.skipped.some((f) => f.transition === "refund")).toBe(false);
+    expect(result.tests.some((t) => t.transition === "refund")).toBe(true);
   });
 
   it("a transition whose permitted actors have no fixture", () => {

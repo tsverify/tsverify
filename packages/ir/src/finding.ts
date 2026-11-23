@@ -25,7 +25,7 @@ export type FindingCategory =
   | "replay-disagrees"
   // analysis limits
   | "unanalyzable"
-  /** `tsverify test` could not generate a test (missing fixtures, invocation shape, unsupported persistence). */
+  /** `tsverify test` could not generate a test (missing fixtures, arguments it can't trace without `fixtures.args`, unsupported persistence). */
   | "not-generated";
 
 /** Categories that mean "the input is invalid" rather than "a behavior bug was found". */

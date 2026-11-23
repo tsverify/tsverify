@@ -43,7 +43,7 @@ export function guardsFile(ctx: Context): {
           skipFinding(
             ctx.behavior,
             `guards:${t.name}`,
-            `tsverify test generated no guard tests for \`${t.name}\`: ${linked.invocation.impl.symbol} takes no actor, so the actors not allowed to perform it (${outsiders.join(", ")}) cannot be passed in`,
+            `tsverify test generated no guard tests for \`${t.name}\`: ${linked.impl.symbol} takes no actor, so the actors not allowed to perform it (${outsiders.join(", ")}) cannot be passed in`,
             where,
           ),
         );

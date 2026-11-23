@@ -31,7 +31,7 @@ export type ArgsResult = { ok: true; args: string } | { ok: false; reason: strin
  * fixture) or as nobody.
  */
 export function buildArgs(
-  invocation: InvocationShape,
+  invocation: InvocationShape | undefined,
   fixtureArgs: readonly unknown[] | undefined,
   actor: string | undefined,
 ): ArgsResult {
@@ -44,6 +44,12 @@ export function buildArgs(
     return { ok: true, args: fixtureArgs.map((v) => literal(v, replace)).join(", ") };
   }
 
+  if (invocation === undefined) {
+    return {
+      ok: false,
+      reason: "no `fixtures.args` for it, and tsverify can't tell which arguments carry the key",
+    };
+  }
   const slots: Slot[] = [];
   const placed = [
     place(slots, invocation.entityId, ID, "entity id"),
@@ -90,7 +96,7 @@ function place(slots: Slot[], path: ArgPath, code: string, what: string): string
 
 function conflict(path: ArgPath, what: string): string {
   const where = [`parameter ${path.param}`, ...path.path].join(".");
-  return `the invocation shape puts the ${what} at ${where}, which another argument already uses; add \`fixtures.args\` for this transition`;
+  return `tsverify traced the ${what} to ${where}, which another argument already uses; give the arguments under \`fixtures.args\` for this transition`;
 }
 
 function render(slot: Slot): string {

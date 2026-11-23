@@ -109,7 +109,7 @@ function replayFile(
       "  }",
       "}",
     ],
-    impls: linked.map((l) => l.invocation.impl),
+    impls: linked.map((l) => l.impl),
     reserved: HELPERS,
   });
 
@@ -120,7 +120,7 @@ function replayFile(
   lines.push("/** One invocation per transition the counterexample's workers perform. */");
   lines.push("const INVOKE: Record<string, () => Promise<unknown>> = {");
   for (const l of linked) {
-    const impl = p.impls.get(`${l.invocation.impl.file}#${l.invocation.impl.symbol}`) ?? "";
+    const impl = p.impls.get(`${l.impl.file}#${l.impl.symbol}`) ?? "";
     const who = l.actor === undefined ? "no actor argument" : `as ${l.actor}`;
     lines.push(`  ${propertyKey(l.spec.name)}: () => ${impl}(${l.args}), // ${who}`);
   }

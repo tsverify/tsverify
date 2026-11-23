@@ -412,7 +412,7 @@ a redelivered `idempotent` event.
 | `replay-confirmed` | error (1) | The real code reproduced a counterexample: the bug is confirmed | Fix the code. The test in `.tsverify/generated/` fails until you do |
 | `replay-disagrees` | warning (0) | The real code did not reproduce a counterexample (it threw, or took another path) | Check that the "Observed" line is a real rejection, not a setup error. If the code is right, the extracted model over-approximates. Mention it in the PR |
 | `unanalyzable` | warning or info (0); with `--strict`, warnings are errors (1) | `tsverify` couldn't tell: from-state of a `string` field, a write of a non-literal value or in a shape it can't read (then each transition it would confirm says "couldn't confirm that … writes …", as a `↳ consequence`), a read it can't see, a write saved outside `bindings.storage`, a client or storage function that is bound but never called (the binding most likely points at the wrong export), a transition without `impl` (info), an unsupported persistence, the state limit (the hint names what makes the search large, and how to lower `concurrency`) | Restructure the code ([§7.5](#75-restructuring-unanalyzable-code)) or add `impl`. Unanalyzable code is unchecked code. Don't leave new ones unexplained |
-| `not-generated` | info (0); with `--strict`, a transition with `impl` that got no test at all, or a spec that got none, is an error (1) | `tsverify test` generated no test for a transition or actor: no `fixtures`, no `impl`, `memory` persistence, unknown invocation shape, an actor without a fixture. With several actors in `by`: a caller acting as one of them but failing its guards (one fixture per actor can't express it; the static check covers it) | Add fixtures, or accept it (e.g. `memory` has no test support yet) |
+| `not-generated` | info (0); with `--strict`, a transition with `impl` that got no test at all, or a spec that got none, is an error (1) | `tsverify test` generated no test for a transition or actor: no `fixtures`, no `impl`, `memory` persistence, an impl whose key and actor arguments tsverify can't trace ("can't tell which arguments of … carry the key": give them under `fixtures.args`), an actor without a fixture. With several actors in `by`: a caller acting as one of them but failing its guards (one fixture per actor can't express it; the static check covers it) | Add fixtures, or accept it (e.g. `memory` has no test support yet) |
 
 ### 6.2 Built-in properties
 
@@ -723,9 +723,13 @@ fixtures:
 - One entity fixture serves every state. If an effect depends on a field (a refund only when `depositId` is
   set), set the field so that the effect happens: path tests expect each `exactly-once` effect exactly once.
 - `args` are used for every actor's test of that transition, including the guard tests.
-- Without `args`, `tsverify` builds the arguments from the impl's parameters: the entity id and the actor go where the
-  code reads them (`(ctx: { actor }, orderId)`). Use `args` when the impl needs more (an event payload). Inside
-  `args`, `$id` is the seeded entity's key and `$actor` is the acting actor's fixture.
+- Without `args`, `tsverify` builds the arguments from the impl's parameters: it traces the key the code reads
+  the entity with, and the actor its guards get, back to the impl's parameters, and puts the entity id and the
+  actor there (`(ctx: { actor }, orderId)`). Use `args` when the impl needs more (an event payload, a
+  `{ ctx, input }` object with other fields), or when the trace fails ("can't tell which arguments of … carry the
+  key": a key read from a parsed input, or through a helper). With `args`, nothing is traced. Inside `args`,
+  `$id` is the seeded entity's key and `$actor` is the acting actor's fixture, e.g.
+  `approve: [{ ctx: { workspace: { id: 1 }, actor: $actor }, input: { id: $id } }]`.
 - Only the bound export of a client module is replaced; its other exports (a guard or helper next to `db`) stay
   real. A client may be a bare exported function (`email: { module: src/mail.ts, export: sendMail }`): map its
   effect to the client name (`bindings.effects: { email.welcome: email }`) and the fake is a recording function.
