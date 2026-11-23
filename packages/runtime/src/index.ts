@@ -34,6 +34,7 @@ export {
 } from "./instrument/prisma.js";
 export {
   STORAGE_CLIENT,
+  type StorageArgInput,
   type StorageBindingInput,
   StorageConditionError,
   type StorageFake,

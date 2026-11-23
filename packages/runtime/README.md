@@ -3,7 +3,7 @@
 The runtime library of [tsverify](https://github.com/tsverify/tsverify), which verifies TypeScript code against
 `*.behavior.yaml` state-machine specs.
 
-You don't call it yourself. The tests that `tsverify test` generates (under `.tsverify/generated/`) import it: it
+You don't call it yourself. The tests that `tsverify test` generates (under `<project>/.tsverify/generated/<spec-slug>/`) import it: it
 replays a model-checker counterexample against your real code, with a scheduler that gates every call on your
 clients in the order the counterexample dictates, plus in-memory fakes for stores, effect clients and the Prisma
 client.

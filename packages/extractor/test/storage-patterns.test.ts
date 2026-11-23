@@ -7,13 +7,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type {
-  Bindings,
-  StorageBinding,
-  StorageFunction,
-  StorageKind,
-  StorageRole,
-} from "@tsverify/ir";
+import type { Bindings, StorageBinding, StorageFunction, StorageKind } from "@tsverify/ir";
 import { defaultStorageArgs, parseSymbolRef } from "@tsverify/ir";
 import { afterAll, describe, expect, it } from "vitest";
 import { type ExtractResult, extractAll } from "../src/index";
@@ -74,6 +68,26 @@ export async function getByArgs(args: { id: string; tenant: string }): Promise<O
 }
 /** A storage interface the app injects (\`deps.orders.get(id)\`). */
 export interface OrderStore { get(id: string): Promise<Order | undefined> }
+/** An unconditional ("blind") update: \`UPDATE orders SET status = 'cancelled' WHERE id = $1\`. */
+export async function expireOrder(id: string): Promise<void> {
+  orders.delete(id);
+}
+/** A blind bulk update of several orders. */
+export async function expireOrders(ids: readonly string[]): Promise<number> {
+  for (const id of ids) await expireOrder(id);
+  return ids.length;
+}
+/** A read of several orders: a list. */
+export async function listOrders(ids: readonly string[]): Promise<Order[]> {
+  return ids.flatMap((id) => orders.get(id) ?? []);
+}
+/** A save and a conditional save that take one object of named arguments. */
+export async function savePatch(args: { id: string; data: Partial<Order> }): Promise<void> {
+  orders.delete(args.id);
+}
+export async function setStatusWhere(args: { id: string; from: readonly Status[]; to: Status }): Promise<boolean> {
+  return orders.delete(args.id);
+}
 `;
 const DB = `
 let tail: Promise<unknown> = Promise.resolve();
@@ -81,6 +95,12 @@ export async function withTransaction<T>(fn: () => Promise<T>): Promise<T> {
   const run = tail.then(fn);
   tail = run.catch(() => undefined);
   return run;
+}
+/** A lock held by a service object, reached through an injected field (\`this.deps.locker.lock\`). */
+export class Locker {
+  async lock<T>(_name: string, _keys: string[], fn: () => Promise<T>): Promise<T> {
+    return fn();
+  }
 }
 `;
 const INDEX = `
@@ -111,9 +131,14 @@ export const orm = {
   },
 };
 export const bus = { async publish(_e: { id: string; status: import("./repo").Status }) {} };
+// A logger's metadata: an object of anything, unrelated to the entity.
+export const logger = { warn(_msg: string, _meta?: Record<string, unknown>) {} };
+// A data layer whose parameter says nothing (\`any\`): the object's own type speaks for it.
+// biome-ignore lint/suspicious/noExplicitAny: the point of the fixture
+export const loose = { async put(_id: string, _p: any) {} };
 `;
 
-type FnSpec = string | ({ fn: string; args?: StorageRole[] } & Partial<StorageFunction>);
+type FnSpec = string | ({ fn: string } & Partial<StorageFunction>);
 
 function fn(kind: StorageKind, spec: FnSpec): StorageFunction {
   const s = typeof spec === "string" ? { fn: spec } : spec;
@@ -205,7 +230,7 @@ const IMPORTS = `
 import { getOrder, findOrder, saveOrder, patchOrder, setStatusIf, markShipped, refundIf, cancelOrThrow, repo } from "./repo";
 import { loadOrder, updateIf, store } from "./index";
 import { withTransaction } from "./db";
-import { stripe, email, legacy, qb, http, bus, orm } from "./clients";
+import { stripe, email, legacy, qb, http, bus, orm, logger, loose } from "./clients";
 `;
 
 function t(name: string, to: string, extra: Partial<TransitionSpec> = {}): TransitionSpec {
@@ -496,6 +521,18 @@ export async function ormUpdate(id: string) {
 export async function announce(id: string) {
   await bus.publish({ id, status: "cancelled" });
 }
+export async function logState(id: string) {
+  const order = await getOrder(id);
+  if (!order) return;
+  logger.warn("checked", { id, status: order.status });
+  const meta = { id, status: order.status };
+  logger.warn("checked again", meta);
+}
+export async function looseSave(id: string, next: Status) {
+  const order = await getOrder(id);
+  if (order?.status !== "pending_payment") throw new Error("not pending");
+  await loose.put(id, { status: next });
+}
 `,
     [
       t("heldConst", "cancelled", { from: ["pending_payment"] }),
@@ -524,7 +561,12 @@ export async function announce(id: string) {
       "unanalyzable:Fixture orders:write-shape:heldLater",
       "unanalyzable:Fixture orders:write-shape:heldLet",
       "unanalyzable:Fixture orders:write-value:heldValue",
+      // Passed where the parameter is \`any\`: the object's own type says it holds a state.
+      "unanalyzable:Fixture orders:write-value:looseSave",
     ]);
+    // A logger's metadata (\`Record<string, unknown>\`) is not the entity's, though its
+    // \`status\` holds one: neither \`logState\` call is a write.
+    expect(result.findings.some((f) => f.id.includes("logState"))).toBe(false);
   });
 
   it("a const patch passed to one bound save is read like a patch written into the call", () => {
@@ -999,6 +1041,238 @@ export async function shipUnchecked(id: string) {
   });
 });
 
+describe("checks before an unconditional (blind) update", () => {
+  const ALL = ["draft", "pending_payment", "paid", "shipped", "refunded", "cancelled"];
+  const result = extract(
+    `${IMPORTS}
+import { expireOrder, expireOrders, listOrders } from "./repo";
+/** Read, check and update inside the bound atomic function: atomic, from the checked state. */
+export async function expireLocked(id: string) {
+  await withTransaction(async () => {
+    const order = await getOrder(id);
+    if (order?.status !== "pending_payment") return;
+    await expireOrder(id);
+  });
+}
+/** The same check with no atomic scope: the state can change between the check and the update. */
+export async function expireUnlocked(id: string) {
+  const order = await getOrder(id);
+  if (!order || order.status !== "pending_payment") return;
+  await expireOrder(id);
+}
+/** Nothing checks the state. */
+export async function expireBlind(id: string) {
+  await expireOrder(id);
+}
+/** A check of another order says nothing about this one. */
+export async function expireOther(id: string, otherId: string) {
+  const other = await getOrder(otherId);
+  if (other?.status !== "pending_payment") return;
+  await expireOrder(id);
+}
+/** A check on the rows of a list, then a bulk update. */
+export async function expireMany(ids: string[]) {
+  const listed = await listOrders(ids);
+  const due: string[] = [];
+  for (const o of listed) {
+    if (o.status !== "pending_payment") continue;
+    due.push(o.id);
+  }
+  await expireOrders(due);
+}
+`,
+    [
+      t("expireLocked", "cancelled", { from: ["pending_payment"] }),
+      t("expireUnlocked", "cancelled", { from: ["pending_payment"] }),
+      t("expireBlind", "cancelled", { from: ["pending_payment"] }),
+      t("expireOther", "cancelled", { from: ["pending_payment"] }),
+      t("expireMany", "cancelled", { from: ["pending_payment"] }),
+    ],
+    storageOf({
+      read: ["src/repo.ts#getOrder"],
+      update: [
+        { fn: "src/repo.ts#expireOrder", from: ALL, to: "cancelled", returns: "throws" },
+        { fn: "src/repo.ts#expireOrders", from: ALL, to: "cancelled", returns: "count" },
+      ],
+      atomic: ["src/db.ts#withTransaction"],
+    }),
+  );
+
+  it("a check inside the same atomic function narrows the from-state, atomic as declared", () => {
+    const s = transitionOf(result, "expireLocked");
+    expect(s.from).toEqual(["pending_payment"]);
+    expect(s.atomic).toBe(true);
+    expect(s.sites).toMatchObject({
+      read: { gate: "storage.getOrder" },
+      commit: { gate: "storage.expireOrder" },
+      atomic: { kind: "declared", gate: "storage.withTransaction" },
+      fromState: { values: ["pending_payment"], unconstrained: false },
+    });
+  });
+
+  it("a check outside one atomic scope with the update narrows it too, but is not atomic", () => {
+    for (const name of ["expireUnlocked"]) {
+      const s = transitionOf(result, name);
+      expect({ name, from: s.from, atomic: s.atomic, scope: s.sites?.atomic }).toEqual({
+        name,
+        from: ["pending_payment"],
+        atomic: false,
+        scope: undefined,
+      });
+      expect(s.sites?.atomicNote?.message).toBe(
+        "the check of status on `order` (read by storage.getOrder) and storage.expireOrder are not in one atomic scope, so status can change in between",
+      );
+      expect(s.sites?.atomicNote?.hint).toContain("`bindings.storage.atomic` function");
+    }
+  });
+
+  it("with no check, or a check of another key, the update writes from every state", () => {
+    for (const name of ["expireBlind", "expireOther"]) {
+      const s = transitionOf(result, name);
+      expect({ name, from: s.from, unconstrained: s.sites?.fromState.unconstrained }).toEqual({
+        name,
+        from: ALL,
+        unconstrained: true,
+      });
+      // The update itself is one step: nothing to race with.
+      expect(s.atomic).toBe(true);
+    }
+  });
+
+  it("a lock method of a class, called through an injected field, is the atomic scope", () => {
+    const locked = extract(
+      `${IMPORTS}
+import { expireOrder } from "./repo";
+import type { Locker } from "./db";
+interface Deps { locker: Locker }
+export class Expiry {
+  constructor(private readonly deps: Deps) {}
+  async expire(id: string) {
+    await this.deps.locker.lock("expire", [id], async () => {
+      const order = await getOrder(id);
+      if (order?.status !== "pending_payment") return;
+      await expireOrder(id);
+    });
+  }
+}
+`,
+      [
+        {
+          name: "expire",
+          impl: "src/impl.ts#Expiry.expire",
+          to: "cancelled",
+          from: ["pending_payment"],
+        },
+      ],
+      storageOf({
+        read: ["src/repo.ts#getOrder"],
+        update: [{ fn: "src/repo.ts#expireOrder", from: ALL, to: "cancelled", returns: "throws" }],
+        atomic: [{ fn: "src/db.ts#Locker.lock", args: ["_", "_", "callback"] }],
+      }),
+    );
+    const s = transitionOf(locked, "expire");
+    expect({ from: s.from, atomic: s.atomic, scope: s.sites?.atomic?.gate }).toEqual({
+      from: ["pending_payment"],
+      atomic: true,
+      scope: "storage.Locker.lock",
+    });
+  });
+
+  it("a check on the rows of a list is not one entity's check: from-state unknown, not atomic", () => {
+    const s = transitionOf(result, "expireMany");
+    expect(s.from).toBe("*");
+    expect(s.atomic).toBe(false);
+    expect(s.sites?.fromState.reason).toBe(
+      "status is checked on the rows of `listed`, read by `listOrders(…)`, and tsverify can't tell which of them storage.expireOrders writes",
+    );
+    expect(s.sites?.atomicNote?.message).toBe(
+      "the check of status on the rows of `listed` (read by `listOrders(…)`) and storage.expireOrders are not in one atomic scope, so status can change in between",
+    );
+    const f = result.findings.find((x) => x.id.endsWith(":from-state:expireMany"));
+    expect(f).toMatchObject({ severity: "warning" });
+    // (`setStatusIf`'s own write is reported too: it isn't bound here.)
+    expect(result.findings.filter((x) => x.id.includes("expire")).map((x) => x.id)).toEqual([
+      f?.id,
+    ]);
+  });
+});
+
+describe("roles in an object argument (`args: [{ id: key }]`)", () => {
+  const roleResult = extract(
+    `${IMPORTS}
+import { getByArgs, savePatch, setStatusWhere } from "./repo";
+export async function ship(id: string) {
+  const order = await getByArgs({ id, tenant: "t1" });
+  if (order?.status !== "paid") throw new Error("not paid");
+  await savePatch({ id, data: { status: "shipped" } });
+}
+export async function refund(orderId: string) {
+  if (!(await setStatusWhere({ id: orderId, from: ["paid"], to: "refunded" }))) {
+    throw new Error("changed");
+  }
+}
+`,
+    [t("ship", "shipped"), t("refund", "refunded")],
+    storageOf({
+      read: [{ fn: "src/repo.ts#getByArgs", args: [{ id: "key" }] }],
+      save: [{ fn: "src/repo.ts#savePatch", args: [{ id: "key", data: "patch" }] }],
+      update: [
+        "src/repo.ts#setStatusIf",
+        { fn: "src/repo.ts#setStatusWhere", args: [{ id: "key", from: "from", to: "to" }] },
+      ],
+    }),
+    true,
+  );
+
+  it("a field of the object is the key, a patch, the from-states or the target", () => {
+    const ship = transitionOf(roleResult, "ship");
+    expect(ship.from).toEqual(["paid"]);
+    expect(ship.sites).toMatchObject({
+      read: { gate: "storage.getByArgs" },
+      commit: { gate: "storage.savePatch" },
+    });
+    expect(ship.sites?.invocation?.entityId).toEqual({ param: 0, path: [] });
+    const refund = transitionOf(roleResult, "refund");
+    expect({ from: refund.from, to: refund.to, atomic: refund.atomic }).toEqual({
+      from: ["paid"],
+      to: "refunded",
+      atomic: true,
+    });
+    expect(refund.sites?.invocation?.entityId).toEqual({ param: 0, path: [] });
+  });
+
+  it("gives no object-argument warning, and nothing else", () => {
+    // (The bound clients `email`, `legacy` and `stripe` are not called here: a warning each.)
+    expect(roleResult.findings.filter((f) => f.id.includes(":binding:storage."))).toEqual([]);
+    expect(roleResult.findings.filter((f) => !f.id.includes(":binding:")).map((f) => f.id)).toEqual(
+      [],
+    );
+  });
+
+  it("warns about a field the argument's type doesn't have", () => {
+    const result = extract(
+      `${IMPORTS}
+import { getByArgs } from "./repo";
+export async function ship(id: string) {
+  const order = await getByArgs({ id, tenant: "t1" });
+  if (order?.status !== "paid") throw new Error("not paid");
+  if (!(await setStatusIf(id, "paid", "shipped"))) throw new Error("changed");
+}
+`,
+      [t("ship", "shipped")],
+      storageOf({
+        read: [{ fn: "src/repo.ts#getByArgs", args: [{ orderId: "key" }] }],
+        update: ["src/repo.ts#setStatusIf"],
+      }),
+      true,
+    );
+    const f = result.findings.find((x) => x.id.endsWith(":binding:storage.getByArgs.args"));
+    expect(f?.message).toBe(
+      "argument 1 of storage read function src/repo.ts#getByArgs has no field `orderId` (its type is { id: string; tenant: string }), which `args` gives a role",
+    );
+  });
+});
+
 describe("helpers", () => {
   const result = extract(
     `${IMPORTS}
@@ -1056,6 +1330,46 @@ export async function shipViaLoader(id: string) {
     const s = transitionOf(result, "shipViaLoader");
     expect(s.sites?.read).toMatchObject({ gate: "storage.getOrder", at: { line: 8 } });
     expect(s.atomic).toBe(true);
+  });
+});
+
+describe("impls a generated test can't call", () => {
+  const result = extract(
+    `${IMPORTS}
+export class Shipper {
+  async run(id: string) {
+    await this.#ship(id);
+  }
+  async #ship(id: string) {
+    if (!(await setStatusIf(id, "paid", "shipped"))) throw new Error("changed");
+  }
+}
+async function refundQuietly(id: string) {
+  if (!(await setStatusIf(id, "paid", "refunded"))) throw new Error("changed");
+}
+export async function refund(id: string) {
+  await refundQuietly(id);
+}
+`,
+    [
+      { name: "ship", impl: "src/impl.ts#Shipper.#ship", to: "shipped" },
+      { name: "refund", impl: "src/impl.ts#refundQuietly", to: "refunded" },
+    ],
+  );
+
+  it("a private method (`Class.#method`) and a function that isn't exported are read as impls", () => {
+    expect(result.findings).toEqual([]);
+    expect(transitionOf(result, "ship")).toMatchObject({ from: ["paid"], atomic: true });
+    expect(transitionOf(result, "ship").sites?.function.name).toBe("Shipper.#ship");
+    expect(transitionOf(result, "refund")).toMatchObject({ from: ["paid"], atomic: true });
+  });
+
+  it("tells `tsverify test` it can't call them, and why", () => {
+    expect(result.model?.hiddenImpls).toEqual({
+      refund:
+        "its impl src/impl.ts#refundQuietly is not exported (refundQuietly is not an export of src/impl.ts), so a generated test can't import it",
+      ship: "its impl src/impl.ts#Shipper.#ship is a private method (#ship), which code outside its class can't call",
+    });
   });
 });
 
@@ -1157,7 +1471,9 @@ export async function ship(id: string) {
     expect(f?.message).toBe(
       "argument 1 of storage read function src/repo.ts#getByArgs is an object ({ id: string; tenant: string }), but its `key` role needs a string or number: tsverify can't tell which of its fields that is",
     );
-    expect(f?.hint).toContain("aren't supported yet");
+    expect(f?.hint).toBe(
+      "Name the field that carries the key: `args: [{ id: key }]` (docs/behavior-format.md, storage roles).",
+    );
     // `from` as a list of states is fine.
     expect(result.findings.some((x) => x.id.includes("setStatusIf.args"))).toBe(false);
   });

@@ -54,7 +54,8 @@ For each behavior file:
     the acting transition's edge marked `▶`
   - a step slider, play/pause, and speeds from 0.5× to 4×
   - one swimlane per worker that acts, showing its phase (`idle`, `checked`, `done`) and the status it read
-  - effect counters with their limit (`/ 1` for an exactly-once effect); on the last step the violated property is
+  - effect counters with their limit (`/ 1` for an exactly-once effect; only effects something checks are
+    counted: exactly-once ones and those a rule counts); on the last step the violated property is
     named and the counter it concerns is marked `✗ violated`
   - the step list from `tsverify check`'s trace text, where each step is clickable
 - **State diagram** of the spec model, and of the code model when one was extracted.

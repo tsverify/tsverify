@@ -21,10 +21,16 @@ export function resolveAlias(sym: TS.Symbol, checker: TS.Checker): TS.Symbol {
   return sym.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(sym) : sym;
 }
 
-/** The symbol an expression (identifier or `a.b` name) refers to, through import aliases. */
+/**
+ * The symbol an expression (identifier or `a.b` name) refers to, through import aliases. The name
+ * of a shorthand property (`id` in `{ id }`) refers to the variable it copies, not the property.
+ */
 export function symbolOf(node: TS.Node, checker: TS.Checker): TS.Symbol | undefined {
   const target = ts.isPropertyAccessExpression(node) ? node.name : node;
-  const sym = checker.getSymbolAtLocation(target);
+  const sym =
+    ts.isShorthandPropertyAssignment(target.parent) && target.parent.name === target
+      ? checker.getShorthandAssignmentValueSymbol(target.parent)
+      : checker.getSymbolAtLocation(target);
   return sym && resolveAlias(sym, checker);
 }
 
@@ -142,7 +148,23 @@ export function isInstanceMember(fn: FunctionLike): boolean {
   return !modifiers.some((m) => m.kind === ts.SyntaxKind.StaticKeyword);
 }
 
-/** `file#symbol` or `file#Class.method` → the symbol. */
+/**
+ * A private member (`#name`) of a class: its symbol has a mangled name, so it is found by its
+ * declaration among the class's members.
+ */
+function privateMember(checker: TS.Checker, cls: TS.Symbol, name: string): TS.Symbol | undefined {
+  for (const d of cls.declarations) {
+    const decl = d.resolve();
+    if (!decl || !ts.isClassLike(decl)) continue;
+    for (const member of decl.members) {
+      const n = (member as { name?: TS.Node }).name;
+      if (n && ts.isPrivateIdentifier(n) && n.text === name) return checker.getSymbolAtLocation(n);
+    }
+  }
+  return undefined;
+}
+
+/** `file#symbol`, `file#Class.method` or `file#Class.#privateMethod` → the symbol. */
 function resolveSymbolPath(ctx: ProjectContext, file: string, symbol: string): Resolved<TS.Symbol> {
   const sf = projectFile(ctx, file);
   if (!sf.ok) return sf;
@@ -150,8 +172,9 @@ function resolveSymbolPath(ctx: ProjectContext, file: string, symbol: string): R
   let sym = topLevelSymbol(ctx, sf.value, head as string);
   if (!sym) return fail(`${file} has no top-level symbol "${head}"`);
   for (const m of members) {
-    const next: TS.Symbol | undefined =
-      sym.getMembers().get(m as TS.__String) ?? propertyOf(ctx.checker, sym, m);
+    const next: TS.Symbol | undefined = m.startsWith("#")
+      ? privateMember(ctx.checker, sym, m)
+      : (sym.getMembers().get(m as TS.__String) ?? propertyOf(ctx.checker, sym, m));
     if (!next) return fail(`${sym.name} has no member "${m}"`);
     sym = next;
   }

@@ -75,7 +75,11 @@ function traceLocal(expr: TS.Expression, checker: TS.Checker, steps = 0): LocalP
   if (steps > MAX_STEPS) return undefined;
   const e = strip(expr);
   if (ts.isIdentifier(e)) {
-    const sym = checker.getSymbolAtLocation(e);
+    // `id` in `{ id }` stands for the variable `id`.
+    const sym =
+      ts.isShorthandPropertyAssignment(e.parent) && e.parent.name === e
+        ? checker.getShorthandAssignmentValueSymbol(e.parent)
+        : checker.getSymbolAtLocation(e);
     const decl = valueDeclarationOf(sym);
     return decl ? fromDeclaration(decl, checker, steps) : undefined;
   }

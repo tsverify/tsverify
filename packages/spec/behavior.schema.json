@@ -313,9 +313,7 @@
                               "description": "Role of each positional argument (default [key])",
                               "type": "array",
                               "items": {
-                                "type": "string",
-                                "enum": ["key", "entity", "patch", "from", "to", "callback", "_"],
-                                "description": "`key`, `entity`, `patch` (some fields), `from` (state or states), `to` (state), `callback`, or `_` (ignored)"
+                                "$ref": "#/$defs/StorageArg"
                               }
                             }
                           },
@@ -344,9 +342,7 @@
                                 "description": "Role of each positional argument (default [key])",
                                 "type": "array",
                                 "items": {
-                                  "type": "string",
-                                  "enum": ["key", "entity", "patch", "from", "to", "callback", "_"],
-                                  "description": "`key`, `entity`, `patch` (some fields), `from` (state or states), `to` (state), `callback`, or `_` (ignored)"
+                                  "$ref": "#/$defs/StorageArg"
                                 }
                               }
                             },
@@ -379,9 +375,7 @@
                               "description": "Role of each positional argument (default [entity])",
                               "type": "array",
                               "items": {
-                                "type": "string",
-                                "enum": ["key", "entity", "patch", "from", "to", "callback", "_"],
-                                "description": "`key`, `entity`, `patch` (some fields), `from` (state or states), `to` (state), `callback`, or `_` (ignored)"
+                                "$ref": "#/$defs/StorageArg"
                               }
                             }
                           },
@@ -410,9 +404,7 @@
                                 "description": "Role of each positional argument (default [entity])",
                                 "type": "array",
                                 "items": {
-                                  "type": "string",
-                                  "enum": ["key", "entity", "patch", "from", "to", "callback", "_"],
-                                  "description": "`key`, `entity`, `patch` (some fields), `from` (state or states), `to` (state), `callback`, or `_` (ignored)"
+                                  "$ref": "#/$defs/StorageArg"
                                 }
                               }
                             },
@@ -445,9 +437,7 @@
                               "description": "Role of each positional argument (default [key, from, to], without the roles a fixed `from` / `to` replaces)",
                               "type": "array",
                               "items": {
-                                "type": "string",
-                                "enum": ["key", "entity", "patch", "from", "to", "callback", "_"],
-                                "description": "`key`, `entity`, `patch` (some fields), `from` (state or states), `to` (state), `callback`, or `_` (ignored)"
+                                "$ref": "#/$defs/StorageArg"
                               }
                             },
                             "returns": {
@@ -502,9 +492,7 @@
                                 "description": "Role of each positional argument (default [key, from, to], without the roles a fixed `from` / `to` replaces)",
                                 "type": "array",
                                 "items": {
-                                  "type": "string",
-                                  "enum": ["key", "entity", "patch", "from", "to", "callback", "_"],
-                                  "description": "`key`, `entity`, `patch` (some fields), `from` (state or states), `to` (state), `callback`, or `_` (ignored)"
+                                  "$ref": "#/$defs/StorageArg"
                                 }
                               },
                               "returns": {
@@ -563,9 +551,7 @@
                               "description": "Role of each positional argument (default [callback])",
                               "type": "array",
                               "items": {
-                                "type": "string",
-                                "enum": ["key", "entity", "patch", "from", "to", "callback", "_"],
-                                "description": "`key`, `entity`, `patch` (some fields), `from` (state or states), `to` (state), `callback`, or `_` (ignored)"
+                                "$ref": "#/$defs/StorageArg"
                               }
                             }
                           },
@@ -594,9 +580,7 @@
                                 "description": "Role of each positional argument (default [callback])",
                                 "type": "array",
                                 "items": {
-                                  "type": "string",
-                                  "enum": ["key", "entity", "patch", "from", "to", "callback", "_"],
-                                  "description": "`key`, `entity`, `patch` (some fields), `from` (state or states), `to` (state), `callback`, or `_` (ignored)"
+                                  "$ref": "#/$defs/StorageArg"
                                 }
                               }
                             },
@@ -634,6 +618,14 @@
                 "type": "string",
                 "minLength": 1,
                 "description": "Exported binding, e.g. `stripe`"
+              },
+              "reads": {
+                "description": "Call paths below the client that only read (`isEnabled`, `prices.retrieve`, or `prices` for every `prices.*`): not effects",
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
               }
             },
             "required": ["module", "export"],
@@ -706,5 +698,27 @@
   "required": ["behavior", "entity", "actors", "transitions"],
   "additionalProperties": false,
   "title": "tsverify behavior spec (v1)",
-  "description": "A `*.behavior.yaml` file. See docs/behavior-format.md."
+  "description": "A `*.behavior.yaml` file. See docs/behavior-format.md.",
+  "$defs": {
+    "StorageArg": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": ["key", "entity", "patch", "from", "to", "callback", "_"],
+          "description": "`key`, `entity`, `patch` (some fields), `from` (state or states), `to` (state), `callback`, or `_` (ignored)"
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/StorageArg"
+          },
+          "description": "An argument that is an object of named arguments: the role of some of its fields, by name, e.g. `{ id: key }` (nested objects as nested maps)"
+        }
+      ]
+    }
+  }
 }

@@ -210,6 +210,12 @@ export type PersistenceKind = "assign" | "prisma" | "drizzle" | "memory" | "func
 export interface ClientBinding {
   module: string;
   export: string;
+  /**
+   * Call paths below the client that only read (`isEnabled`, `prices.retrieve`): a path, or the
+   * start of one (`prices` covers `prices.retrieve`). Calls to them are not effects: no
+   * `undeclared-effect`, no effect counter, nothing in traces.
+   */
+  reads?: string[];
   at?: SourceLocation;
 }
 
@@ -235,14 +241,27 @@ export interface GuardBinding {
 export type StorageRole = "key" | "entity" | "patch" | "from" | "to" | "callback" | "_";
 
 /**
+ * What one positional argument of a storage function carries: a role, or, for an argument that is
+ * an object of named arguments (`findOrder({ tx, id })`), the role of some of its fields, by name
+ * (`{ id: key }`; nested objects as nested maps, `{ where: { id: key } }`). Fields it doesn't
+ * name are ignored, like `_`. `callback` and `_` are not field roles.
+ */
+export type StorageArg = StorageRole | StorageArgFields;
+
+/** The roles of an object argument's fields, by field name (see `StorageArg`). */
+export interface StorageArgFields {
+  readonly [field: string]: StorageArg;
+}
+
+/**
  * One storage function of the app, written `path#symbol` or `{ fn, args, returns?, from?, to? }`.
  * Default `args`: read `[key]`, save `[entity]`, update `[key, from, to]` minus the roles a fixed
  * `from` / `to` replaces, atomic `[callback]`.
  */
 export interface StorageFunction {
   ref: SymbolRef;
-  /** Role of each positional argument. */
-  args: StorageRole[];
+  /** Role of each positional argument (or of the fields of an object argument). */
+  args: StorageArg[];
   /**
    * Update only: what the conditional save returns (default `changed`). On success / when the
    * state check fails: `changed` → `true` / `false`; `count` → `1` / `0`; `entity` → the updated
@@ -386,6 +405,12 @@ export interface BehaviorModel {
    * generated tests can't build yet (`tsverify test` reports them as not generated).
    */
   instanceImpls?: string[];
+  /**
+   * Code models only: spec transitions whose `impl` `tsverify check` reads as usual but a generated
+   * test can't import or call, by transition name, with why: it is not exported from its module,
+   * or it is a private (`#`) method (`tsverify test` reports them as not generated).
+   */
+  hiddenImpls?: Record<string, string>;
   /**
    * Code models only: bindings the generated tests can't replace with a fake, and why: a client
    * bound to a class (replacing the export with an object would break `new`), a storage function

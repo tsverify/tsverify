@@ -203,14 +203,15 @@ describe("bindings.storage: validation", () => {
       "  storage:\n    update: { fn: src/repo.ts#u, args: [key, to] }\n",
       'bindings.storage.update "src/repo.ts#u": a conditional save needs its from-states: a "from" argument, or a fixed "from:" (args: [key, to])',
       [17, 40],
-      'add "from" to args, or write from: [paid]',
+      // In the spec's own states: its first transition's (`pay`: draft → paid).
+      'add "from" to args, or write from: [draft]',
     ],
     [
       "update without target state",
       "  storage:\n    update: { fn: src/repo.ts#u, args: [key, from] }\n",
       'bindings.storage.update "src/repo.ts#u": a conditional save needs its target state: a "to" argument, or a fixed "to:" (args: [key, from])',
       [17, 40],
-      'add "to" to args, or write to: refunded',
+      'add "to" to args, or write to: paid',
     ],
     [
       "update with from-states given twice",
@@ -368,6 +369,41 @@ describe("bindings.storage: validation", () => {
       FILE,
     );
     expect(findings).toEqual([]);
+  });
+
+  it("reads roles in the fields of an object argument", () => {
+    const { model, findings } = parseSpec(
+      `${BASE}  storage:
+    read: { fn: src/a.ts#get, args: [{ id: key }] }
+    save: { fn: src/a.ts#save, args: [{ where: { id: key }, data: patch }] }
+    update: { fn: src/a.ts#setIf, args: [_, { id: key, from: from, to: to }] }
+`,
+      FILE,
+    );
+    expect(findings).toEqual([]);
+    expect(model?.bindings.storage?.read[0]?.args).toEqual([{ id: "key" }]);
+    expect(model?.bindings.storage?.save[0]?.args).toEqual([
+      { where: { id: "key" }, data: "patch" },
+    ]);
+  });
+
+  it("checks field roles like positional ones, and rejects `_`, `callback` and `{}` in fields", () => {
+    const { findings } = parseSpec(
+      `${BASE}  storage:
+    read: { fn: src/a.ts#get, args: [{ id: key, tenant: _ }] }
+    save: { fn: src/a.ts#save, args: [{ id: key, data: from }, {}] }
+    atomic: { fn: src/a.ts#tx, args: [{ run: callback }] }
+`,
+      FILE,
+    );
+    expect(findings.map((f) => f.message.split(": ").slice(1).join(": "))).toEqual([
+      '"_" is not a field role (a field the object argument doesn\'t name is ignored)',
+      'a save function needs an "entity" argument, or "key" and "patch" (args: [{ id: key, data: from }, {}])',
+      'a save function takes no "from" argument (its roles: key, entity, patch, _)',
+      'an object argument names no field (`{}`); give the role of a field, as in `{ id: key }`, or use "_" to ignore the argument',
+      'an atomic function needs a "callback" argument (args: [{ run: callback }])',
+      '"callback" can\'t be a field of an object argument; the callback must be an argument of its own',
+    ]);
   });
 
   it("reports every problem of one function", () => {

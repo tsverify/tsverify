@@ -24,6 +24,12 @@ export interface PersistenceFacts {
   read?: ClientCall;
   /** The client call that persists the write. */
   commit?: ClientCall;
+  /**
+   * The call whose result the code checked the state on before an unconditional update (a bound
+   * read, or a list read): the update is atomic only when this call and the update share one
+   * atomic scope (`functions`; see "Checks before an unconditional update").
+   */
+  checkedRead?: TS.CallExpression;
   /** The scope read and write share, when they do (and it makes them atomic). */
   scope?: ScopeRef;
   /** Read and write (and commit) run inside one atomic scope. */

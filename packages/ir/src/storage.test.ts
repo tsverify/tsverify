@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { defaultStorageArgs, formatStorageFunction, storageFunctions } from "./storage";
+import {
+  defaultStorageArgs,
+  formatStorageArg,
+  formatStorageFunction,
+  storageFunctions,
+  storageRoleAt,
+  storageRoles,
+} from "./storage";
 
 const ref = { file: "src/repo.ts", symbol: "f" };
 
@@ -31,6 +38,21 @@ describe("storage functions", () => {
         returns: "throws",
       }),
     ).toBe("src/repo.ts#f from [a, b] to c returns throws");
+  });
+
+  it("finds a role in a field of an object argument, and formats it as written", () => {
+    const fn = {
+      ref,
+      args: [{ where: { id: "key" as const }, data: "patch" as const }, "_" as const],
+    };
+    expect(storageRoleAt(fn, "key")).toEqual({ index: 0, path: ["where", "id"] });
+    expect(storageRoleAt(fn, "patch")).toEqual({ index: 0, path: ["data"] });
+    expect(storageRoleAt(fn, "entity")).toBeUndefined();
+    expect(storageRoles(fn)).toEqual(["key", "patch", "_"]);
+    expect(formatStorageArg(fn.args[0] as never)).toBe("{ where: { id: key }, data: patch }");
+    expect(formatStorageFunction("save", fn)).toBe(
+      "src/repo.ts#f({ where: { id: key }, data: patch }, _)",
+    );
   });
 
   it("lists every function with its kind", () => {

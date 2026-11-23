@@ -5,7 +5,8 @@
  * unchanged against one in-memory table of the entity, keyed by `binding.key`.
  *
  * Each function honours its argument roles (`key`, `entity`, `patch`, `from`, `to`, `callback`,
- * `_`; positional):
+ * `_`; positional, or, for an argument that is an object of named arguments, by field:
+ * `args: [{ id: key }]` takes the key from `findOrder({ tx, id })`'s `id`):
  *
  * | Kind     | Does                                                                              |
  * |----------|-----------------------------------------------------------------------------------|
@@ -36,10 +37,13 @@ import type { Row } from "./store.js";
 /** `ir.StorageRole`. */
 export type StorageRoleInput = "key" | "entity" | "patch" | "from" | "to" | "callback" | "_";
 
+/** `ir.StorageArg`: a role, or the roles of an object argument's fields, by name. */
+export type StorageArgInput = StorageRoleInput | { readonly [field: string]: StorageArgInput };
+
 /** `ir.StorageFunction` without the source location. */
 export interface StorageFunctionInput {
   ref: { file: string; symbol: string };
-  args: readonly StorageRoleInput[];
+  args: readonly StorageArgInput[];
   returns?: "changed" | "count" | "entity" | "throws";
   from?: readonly string[];
   to?: string;
@@ -157,14 +161,24 @@ export function storage<const E extends string>(
   const functions: Record<string, StorageFunctionImpl> = {};
   for (const { kind, fn } of all) {
     const label = gateOf(fn);
-    const pick = (args: readonly unknown[], role: StorageRoleInput): unknown =>
-      args[fn.args.indexOf(role)];
-    const has = (role: StorageRoleInput) => fn.args.includes(role);
+    const pick = (args: readonly unknown[], role: StorageRoleInput): unknown => {
+      const at = roleAt(fn, role);
+      if (!at) return undefined;
+      let value: unknown = args[at.index];
+      for (const field of at.path) {
+        value =
+          typeof value === "object" && value !== null
+            ? (value as Record<string, unknown>)[field]
+            : undefined;
+      }
+      return value;
+    };
+    const has = (role: StorageRoleInput) => roleAt(fn, role) !== undefined;
     const keyArg = (args: readonly unknown[]): string => {
       const key = pick(args, "key");
       if (typeof key !== "string" && typeof key !== "number") {
         throw new Error(
-          `${label}: argument ${fn.args.indexOf("key") + 1} has the "key" role, but got ${preview(key, 60)} (a string or number)`,
+          `${label}: ${where(fn, "key")} has the "key" role, but got ${preview(key, 60)} (a string or number)`,
         );
       }
       return String(key);
@@ -175,7 +189,7 @@ export function storage<const E extends string>(
       if (role === "patch" && value === undefined) return {};
       if (typeof value !== "object" || value === null || Array.isArray(value)) {
         throw new Error(
-          `${label}: argument ${fn.args.indexOf(role) + 1} has the "${role}" role, but got ${preview(value, 60)} (an object)`,
+          `${label}: ${where(fn, role)} has the "${role}" role, but got ${preview(value, 60)} (an object)`,
         );
       }
       return structuredClone(value as Row);
@@ -248,7 +262,7 @@ export function storage<const E extends string>(
           const callback = pick(args, "callback");
           if (typeof callback !== "function") {
             throw new Error(
-              `${label}: argument ${fn.args.indexOf("callback") + 1} has the "callback" role, but got ${preview(callback, 60)} (a function)`,
+              `${label}: ${where(fn, "callback")} has the "callback" role, but got ${preview(callback, 60)} (a function)`,
             );
           }
           await s.gate(label, []);
@@ -288,6 +302,35 @@ export function storage<const E extends string>(
   };
 }
 
+/** Where `role` is: the positional argument, and the field path inside it. */
+function roleAt(
+  fn: StorageFunctionInput,
+  role: StorageRoleInput,
+): { index: number; path: string[] } | undefined {
+  const find = (arg: StorageArgInput, path: string[]): string[] | undefined => {
+    if (typeof arg === "string") return arg === role ? path : undefined;
+    for (const [field, inner] of Object.entries(arg)) {
+      const found = find(inner, [...path, field]);
+      if (found) return found;
+    }
+    return undefined;
+  };
+  for (const [index, arg] of fn.args.entries()) {
+    const path = find(arg, []);
+    if (path) return { index, path };
+  }
+  return undefined;
+}
+
+/** `argument 2`, or `field id of argument 1` for a field role. */
+function where(fn: StorageFunctionInput, role: StorageRoleInput): string {
+  const at = roleAt(fn, role);
+  if (!at) return "no argument";
+  return at.path.length === 0
+    ? `argument ${at.index + 1}`
+    : `field ${at.path.join(".")} of argument ${at.index + 1}`;
+}
+
 function gateOf(fn: StorageFunctionInput): string {
   return `${STORAGE_CLIENT}.${fn.ref.symbol}`;
 }
@@ -297,6 +340,6 @@ function statesArg(label: string, fn: StorageFunctionInput, value: unknown): str
   if (typeof value === "string") return [value];
   if (Array.isArray(value) && value.every((v) => typeof v === "string")) return [...value];
   throw new Error(
-    `${label}: argument ${fn.args.indexOf("from") + 1} has the "from" role, but got ${preview(value, 60)} (a state or a list of states)`,
+    `${label}: ${where(fn, "from")} has the "from" role, but got ${preview(value, 60)} (a state or a list of states)`,
   );
 }

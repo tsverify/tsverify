@@ -50,7 +50,7 @@ describe("effects", () => {
         // No binding to point at: the transition.
         specAt: { file: "src/orders/order.behavior.yaml", line: 52, column: 3 },
         codeAt: { file: "src/orders/refund.ts", line: 20, column: 3 },
-        hint: "Declare the effect on refund and map it to stripe.charges.create in bindings.effects, or remove the call.",
+        hint: "Declare the effect on refund and map it to stripe.charges.create in bindings.effects, list charges.create under bindings.clients.stripe.reads if it only reads, or remove the call.",
       }),
     ]);
   });
@@ -96,6 +96,28 @@ describe("effects", () => {
         causedBy: [binding],
       },
     ]);
+  });
+
+  it("points at the call in the impl's file before the same call in a helper's file", () => {
+    const spec = specModel();
+    const writes = patchWrite(cleanWrites(), "refund", (w) => ({
+      ...w,
+      effects: [
+        ...w.effects,
+        { effect: "stripe.charges.create", gate: "stripe.charges.create", at: [20, 3] },
+      ],
+    }));
+    const code = buildCodeModel(spec, writes);
+    const refund = code.transitions.find((t) => t.name === "refund");
+    const own = refund?.sites?.effects.find((e) => e.gate === "stripe.charges.create");
+    if (!refund?.sites || !own) throw new Error("no refund site");
+    // The same call, made by a helper in a file that sorts first.
+    refund.sites.effects.unshift({
+      ...own,
+      at: { file: "src/billing/charges.ts", line: 5, column: 7 },
+    });
+    const [f] = compare(spec, code);
+    expect(f?.codeAt).toEqual({ file: "src/orders/refund.ts", line: 20, column: 3 });
   });
 
   it("reports one finding per effect name, however often it is called", () => {

@@ -71,6 +71,10 @@
  * patch typed from the table, whose `status` column has exactly the spec's states. So
  * `c.json({ status: "ok" })` is not a write, `notify({ status: "resolved" })` with a parameter
  * typed `{ status: OrderStatus }` is not either (not an update), and both Drizzle updates are.
+ * The object's own type (or a held variable's inferred one) counts only where the parameter's
+ * type says nothing about it (none, `any`, `unknown`, a type parameter): the metadata of
+ * `logger.warn("…", { id, status: order.status })`, typed `Record<string, unknown>`, is not a
+ * patch, though its `status` holds every state.
  *
  * **Anything else.** A write that no bound save commits (it goes to an unbound data layer), or
  * a patch passed to an unbound function, is `unanalyzable` (`PersistenceFacts.unbound`). A raw
@@ -83,11 +87,13 @@
 import type {
   EntityDecl,
   FromState,
+  StorageArg,
   StorageBinding,
   StorageFunction,
   StorageKind,
   StorageRole,
 } from "@tsverify/ir";
+import { storageRoleAt } from "@tsverify/ir";
 import { type Callees, frameCalls, frameOf, leadsTo, MAX_DEPTH, type Reach } from "../callgraph";
 import { ENTRY, type FunctionLike, inlineCallbackCall, isFunctionLike, reachable } from "../cfg";
 import type { ClientCall } from "../client-calls";
@@ -100,12 +106,15 @@ import {
   blockStatements,
   declaredTypeOfRef,
   literalsOf,
+  type Narrowed,
   typeNames,
 } from "../type-facts";
 import { ts } from "../typescript";
 import {
   heldDeclarationOf,
   oneLine,
+  parentSkippingWrappers,
+  propertyNamed,
   referenceText,
   unwrapArgument,
   type WriteNode,
@@ -165,6 +174,11 @@ function forEachDescendant(node: TS.Node, visit: (n: TS.Node) => void): void {
 export class StorageFunctions {
   private readonly memo = new Map<TS.CallExpression, BoundFunction | null>();
   private readonly byPath = new Map<string, BoundFunction>();
+  /**
+   * By declaration too: a method of a class reached through an instance (`this.locker.lock`) can
+   * resolve to a transient symbol of the same declaration, not the class member's own symbol.
+   */
+  private readonly byDeclaration = new Map<TS.Node, BoundFunction>();
   /** The bound functions' own code, which tsverify never looks into. */
   private readonly bodies: TS.Node[] = [];
 
@@ -175,6 +189,7 @@ export class StorageFunctions {
     for (const [sym, b] of bySymbol) {
       this.byPath.set(b.path, b);
       const decl = primaryDeclarationOf(sym);
+      if (decl) this.byDeclaration.set(decl, b);
       const body = functionOfDeclaration(decl) ?? decl;
       if (body) this.bodies.push(body);
     }
@@ -199,7 +214,8 @@ export class StorageFunctions {
     let found: BoundFunction | undefined;
     if (ts.isIdentifier(callee) || ts.isPropertyAccessExpression(callee)) {
       const sym = symbolOf(callee, this.checker);
-      found = sym && this.bySymbol.get(sym);
+      const decl = sym && primaryDeclarationOf(sym);
+      found = sym && (this.bySymbol.get(sym) ?? (decl && this.byDeclaration.get(decl)));
     }
     this.memo.set(call, found ?? null);
     return found;
@@ -237,20 +253,61 @@ export class StorageFunctions {
   }
 }
 
-/** The argument with `role`, unwrapped (probe commas, parentheses). */
-function argAt(
+/**
+ * The argument with `role`, unwrapped (probe commas, parentheses); for a field role
+ * (`args: [{ id: key }]`), that field of an object literal written into the call (`{ id: runId }`
+ * or `{ id }`). Undefined when the call doesn't have it in that form (`findOrder(where)`).
+ */
+export function argAt(
   call: TS.CallExpression,
   fn: StorageFunction,
   role: StorageRole,
 ): TS.Expression | undefined {
-  const i = fn.args.indexOf(role);
-  const a = i < 0 ? undefined : call.arguments[i];
-  if (!a || ts.isSpreadElement(a)) return undefined;
-  return unwrapArgument(a) as TS.Expression;
+  const at = storageRoleAt(fn, role);
+  const a = at && call.arguments[at.index];
+  if (!at || !a || ts.isSpreadElement(a)) return undefined;
+  let e = unwrapArgument(a) as TS.Expression;
+  for (const field of at.path) {
+    const o = strip(e);
+    const p = ts.isObjectLiteralExpression(o) ? propertyNamed(o, field) : undefined;
+    if (!p) return undefined;
+    e = unwrapArgument(ts.isPropertyAssignment(p) ? p.initializer : p.name) as TS.Expression;
+  }
+  return e;
 }
 
-function argIndexOf(call: TS.CallExpression, node: TS.Node): number {
-  return call.arguments.findIndex((a) => unwrapArgument(a) === node);
+/**
+ * The role of `node` in `call`: of the argument it is, or, for a field of an object literal
+ * argument (`{ id: runId }`), of that field (`args: [{ id: key }]`).
+ */
+function roleIn(
+  call: TS.CallExpression,
+  fn: StorageFunction,
+  node: TS.Node,
+): StorageRole | undefined {
+  const path: string[] = [];
+  let cur: TS.Node = node;
+  for (;;) {
+    const parent = parentSkippingWrappers(cur);
+    if (parent === call) break;
+    if (
+      !parent ||
+      !(ts.isPropertyAssignment(parent) || ts.isShorthandPropertyAssignment(parent)) ||
+      !(ts.isIdentifier(parent.name) || ts.isStringLiteral(parent.name))
+    ) {
+      return undefined;
+    }
+    path.unshift(parent.name.text);
+    const obj = parentSkippingWrappers(parent);
+    if (!obj || !ts.isObjectLiteralExpression(obj)) return undefined;
+    cur = obj;
+  }
+  const index = call.arguments.findIndex((a) => unwrapArgument(a) === cur);
+  let arg: StorageArg | undefined = fn.args[index];
+  for (const field of path) {
+    arg = arg === undefined || typeof arg === "string" ? undefined : arg[field];
+  }
+  return typeof arg === "string" ? arg : undefined;
 }
 
 /** Two references to the same thing: one symbol, or the same `a.b.c` text. */
@@ -512,12 +569,34 @@ interface Held {
 
 // --- the adapter -----------------------------------------------------------------------------
 
+/** The state of an entity reference just before a blind update's call (its narrowing probe). */
+export interface UpdateCheck {
+  /** The probed reference (`order`). */
+  ref: TS.Expression;
+  narrowed: Narrowed;
+}
+
 export interface FunctionsAdapterInput {
   binding: StorageBinding;
   fns: StorageFunctions;
   callees: Callees;
   checker: TS.Checker;
   entity: EntityDecl;
+  /** The narrowing probe at a blind update's call, if it has one (`writes.ts`, `findUpdateProbes`). */
+  narrowAt?: (call: TS.CallExpression) => UpdateCheck | undefined;
+}
+
+/** What the code checked before a blind update (see "Checks before an unconditional update"). */
+interface BlindCheck {
+  /** The call whose result the check reads (a bound read, or the list read). */
+  readCall: TS.CallExpression;
+  /** The bound read, when it is one. */
+  read?: ClientCall;
+  /** The states the check allows; `*` for a check on the rows of a list. */
+  values: string[] | "*";
+  /** How to name what was checked: `order`, or `the rows of runs`. */
+  what: string;
+  list: boolean;
 }
 
 interface Scope {
@@ -526,7 +605,7 @@ interface Scope {
 }
 
 export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapter {
-  const { binding, fns, callees, checker, entity } = input;
+  const { binding, fns, callees, checker, entity, narrowAt } = input;
   const storage = { client: STORAGE_CLIENT, collection: entity.name, key: binding.key };
   const field = entity.stateField;
   const kinds = (b: BoundFunction | undefined) => b?.kind;
@@ -679,7 +758,7 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
       const call = inlineCallbackCall(p);
       if (!call || !ts.isCallExpression(call)) continue;
       const b = fns.of(call);
-      if (b?.kind !== "atomic" || b.fn.args[argIndexOf(call, p)] !== "callback") continue;
+      if (b?.kind !== "atomic" || roleIn(call, b.fn, p) !== "callback") continue;
       return { call, gate: gateOf(b) };
     }
     if (!reach || frame === reach.root || stack.has(frame)) return undefined;
@@ -796,20 +875,31 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
   };
 
   /** Whether a held patch is the entity's (see "Whose patch"). */
+  /**
+   * A parameter type that says nothing about what the argument is: none, `any`, `unknown` or a
+   * type parameter. Only then does the object's own type speak for it (see "Whose patch").
+   */
+  const openType = (type: TS.Type | undefined): boolean =>
+    type === undefined ||
+    (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0;
+
   const heldIsEntity = (h: Held): boolean => {
     if (h.sinks.length === 0) return false;
     const declared = checker.getTypeAtLocation(h.decl.name);
     if (typeNamesEntity(declared)) return true;
-    let exact = exactStates(declared);
+    // An annotated type is the code's word for it; an inferred one only counts where the
+    // parameter's type is open (a logger's `Record<string, unknown>` metadata is not a patch).
+    let exact = h.decl.type !== undefined && exactStates(declared);
+    const ownExact = h.decl.type === undefined && exactStates(declared);
     let update = false;
     for (const { call, arg } of h.sinks) {
       const b = fns.of(call);
-      const role = b?.fn.args[argIndexOf(call, arg)];
+      const role = b && roleIn(call, b.fn, arg);
       if (b?.kind === "save" && (role === "patch" || role === "entity")) return true;
       if (b) continue;
       const contextual = checker.getContextualType(arg);
       if (typeNamesEntity(contextual)) return true;
-      exact ||= exactStates(contextual);
+      exact ||= exactStates(contextual) || (ownExact && openType(contextual));
       update ||= isUpdateLike(call);
     }
     return exact && (update || readBefore(h.decl, h.decl.getStart()));
@@ -819,7 +909,9 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
   const unboundPatchIsEntity = (write: WriteNode, call: TS.CallExpression): boolean => {
     const contextual = checker.getContextualType(write.expr);
     if (typeNamesEntity(contextual)) return true;
-    const exact = exactStates(contextual) || exactStates(checker.getTypeAtLocation(write.expr));
+    const exact =
+      exactStates(contextual) ||
+      (openType(contextual) && exactStates(checker.getTypeAtLocation(write.expr)));
     return exact && (isUpdateLike(call) || readBefore(call, call.getStart()));
   };
 
@@ -841,6 +933,107 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
       reason: `${field} is set in \`${h.name}\`, but ${h.complex}`,
       hint: unreadableHint,
     };
+  };
+
+  /** An array (or tuple) type's element type, when `type` is one. */
+  const elementOf = (type: TS.Type | undefined): TS.Type | undefined => {
+    const t = type && checker.getNonNullableType(type);
+    if (!t || !(checker.isArrayType(t) || checker.isTupleType(t))) return undefined;
+    const args = checker.getTypeArguments(t as Parameters<TS.Checker["getTypeArguments"]>[0]);
+    return args[0];
+  };
+
+  /**
+   * A list of the entity read before `call` in its frame: the closest `const X = await? <call>(…)`
+   * in an enclosing block whose type is an array of the entity (its type names it, or its state
+   * field has exactly the entity's states), and whose rows' state the code reads between the two
+   * (`run.status` on a row, in a loop or a `filter` callback).
+   */
+  const listCheckBefore = (
+    call: TS.CallExpression,
+    frame: FunctionLike,
+  ): BlindCheck | undefined => {
+    let child: TS.Node = call;
+    for (
+      let p: TS.Node | undefined = call.parent;
+      p && p !== frame.parent;
+      child = p, p = p.parent
+    ) {
+      const statements = blockStatements(p);
+      if (!statements) continue;
+      for (let i = statements.indexOf(child as TS.Statement) - 1; i >= 0; i--) {
+        const st = statements[i];
+        if (!st || !ts.isVariableStatement(st)) continue;
+        for (const d of st.declarationList.declarations) {
+          const init = d.initializer && strip(d.initializer);
+          if (!ts.isIdentifier(d.name) || !init || !ts.isCallExpression(init)) continue;
+          const element = elementOf(checker.getTypeAtLocation(d.name));
+          if (!element || !(typeNamesEntity(element) || exactStates(element))) continue;
+          const sameType = (t: TS.Type | undefined) => {
+            const x = t && checker.getNonNullableType(t);
+            return x === element || typeNamesEntity(x) || exactStates(x);
+          };
+          let consulted = false;
+          // Between the declaration and the call: nodes outside that window are skipped.
+          const visit = (n: TS.Node): void => {
+            if (consulted || n.getEnd() <= d.getEnd() || n.getStart() >= call.getStart()) return;
+            if (
+              ts.isPropertyAccessExpression(n) &&
+              n.name.text === field &&
+              sameType(checker.getTypeAtLocation(n.expression))
+            ) {
+              consulted = true;
+              return;
+            }
+            n.forEachChild(visit);
+          };
+          if (frame.body) visit(frame.body);
+          if (!consulted) continue;
+          const read = readThrough(init, 0);
+          return {
+            readCall: init,
+            ...(read ? { read } : {}),
+            values: "*",
+            what: `the rows of \`${d.name.text}\``,
+            list: true,
+          };
+        }
+      }
+    }
+    return undefined;
+  };
+
+  /**
+   * What the code checked before a blind update `call` (key `key`), when it narrows the state:
+   * the narrowed state of a bound read's result of the same key (the probe at the call), else a
+   * check on the rows of a list read before it.
+   */
+  const blindCheckOf = (
+    call: TS.CallExpression,
+    key: TS.Expression | undefined,
+    frame: FunctionLike,
+    reach: Reach | undefined,
+  ): BlindCheck | undefined => {
+    const probe = narrowAt?.(call);
+    if (probe && probe.narrowed.values !== "*") {
+      const read = readOfRef(probe.ref, frame, reach, 0);
+      const readFn = read && fns.of(read.call);
+      const readKey = read && readFn && argAt(read.call, readFn.fn, "key");
+      const sameKey = !key || !readKey || sameRef(readKey, key, checker);
+      if (read && sameKey && elementOf(checker.getTypeAtLocation(probe.ref)) === undefined) {
+        const values = probe.narrowed.values.filter((v) => entity.states.includes(v));
+        if (entity.states.some((st) => !values.includes(st))) {
+          return {
+            readCall: read.call,
+            read,
+            values,
+            what: `\`${referenceText(probe.ref) ?? probe.ref.getText()}\``,
+            list: false,
+          };
+        }
+      }
+    }
+    return listCheckBefore(call, frame);
   };
 
   const readFirstHint = `Read the ${entity.name} with a \`bindings.storage.read\` function into a \`const\` before the write, in the function that writes it (\`const x = await ${binding.read[0]?.ref.symbol ?? "read"}(…)\`), and check \`x.${field}\` there.`;
@@ -881,6 +1074,43 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
             reason: `the \`from\` argument of ${commit.gate} (${fromArg?.getText() ?? "missing"}) is not a literal state or a list of them`,
           };
       const fromStateHint = `Pass the \`from\` states to ${commit.gate} as a literal or a list of literals, or give the binding a fixed \`from:\` list.`;
+      // An unconditional update after a check of the state: the check decides the from-states,
+      // and the transition is atomic only when the check and the update share an atomic scope.
+      const blind = states !== undefined && entity.states.every((st) => states.includes(st));
+      const checked = blind ? blindCheckOf(call, key, frame, reach) : undefined;
+      if (checked) {
+        const scopeHint = `Read and check the ${entity.name}, and call ${commit.gate}, inside one \`bindings.storage.atomic\` function (a lock or a transaction the spec names), or make the update conditional: give it the states its query requires as \`from\` (\`WHERE ${field} = …\`), so it can't overwrite a state that changed (docs/authoring-guide.md §7.6).`;
+        const readText = checked.read?.gate ?? `\`${oneLine(checked.readCall.expression)}(…)\``;
+        return {
+          ...base,
+          ...(checked.read ? { read: checked.read } : {}),
+          commit,
+          checkedRead: checked.readCall,
+          atomic: false,
+          fromState:
+            checked.values === "*"
+              ? {
+                  values: "*",
+                  unconstrained: false,
+                  reason: `${field} is checked on ${checked.what}, read by ${readText}, and tsverify can't tell which of them ${commit.gate} writes`,
+                }
+              : { values: uniqueSorted(checked.values), unconstrained: false },
+          ...(checked.values === "*"
+            ? {
+                fromStateHint: `Check and update one ${entity.name} at a time (read it with a \`bindings.storage.read\` function, check its ${field}, then update it), or make the bulk update conditional: give it the states its query requires as \`from\` (docs/authoring-guide.md §7.6).`,
+              }
+            : {}),
+          notes: [
+            {
+              subject: "check-outside-scope",
+              message: `the check of ${field} on ${checked.what} (read by ${readText}) and ${commit.gate} are not in one atomic scope, so ${field} can change in between`,
+              hint: scopeHint,
+              at: checked.readCall,
+            },
+          ],
+          ...(key ? { entityKey: key } : {}),
+        };
+      }
       // The read that the code checked before the save: the latest one with the same key.
       let read: ClientCall | undefined;
       if (key) {
@@ -915,7 +1145,7 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
       }
       if (h && sink) {
         const b = fns.of(sink.call);
-        const role = b?.fn.args[argIndexOf(sink.call, sink.arg)];
+        const role = b && roleIn(sink.call, b.fn, sink.arg);
         if (b && !(b.kind === "save" && (role === "patch" || role === "entity"))) {
           return {
             ...base,
@@ -1005,8 +1235,7 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
       }
       if (ts.isCallExpression(parent)) {
         const b = fns.of(parent);
-        const index = argIndexOf(parent, write.expr);
-        const role = b?.fn.args[index];
+        const role = b && roleIn(parent, b.fn, write.expr);
         if (b?.kind === "save" && (role === "entity" || role === "patch")) {
           commit = fns.clientCall(parent);
         } else if (!b) unboundCall = parent;
@@ -1057,8 +1286,9 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
       };
     }
     if (facts.atomic) return { atomic: true, ...overrides };
-    if (facts.read && facts.commit) {
-      const r = scopeOf(facts.read.call, reach);
+    const readCall = facts.checkedRead ?? facts.read?.call;
+    if (readCall && facts.commit) {
+      const r = scopeOf(readCall, reach);
       const c = scopeOf(facts.commit.call, reach);
       if (r && c && r.call === c.call) {
         return { atomic: true, kind: "declared", at: r.call, gate: r.gate, ...overrides };
@@ -1252,7 +1482,7 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
       const call = write.call as TS.CallExpression;
       const b = fns.of(call);
       if (b) {
-        const role = b.fn.args[argIndexOf(call, write.expr)];
+        const role = roleIn(call, b.fn, write.expr);
         return b.kind === "save" && (role === "patch" || role === "entity");
       }
       return unboundPatchIsEntity(write, call);

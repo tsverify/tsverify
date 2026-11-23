@@ -78,7 +78,8 @@ tsverify diff --base main     # behavior diff (Markdown + Mermaid) for the PR
 tsverify view                 # local viewer: diagram, matrix, findings, counterexample playback, live reload
 ```
 
-`tsverify test` writes the generated tests to `.tsverify/generated/` and runs them with the project's vitest
+`tsverify test` writes the generated tests to `<project>/.tsverify/generated/<spec-slug>/` (`<project>`: the
+spec's TypeScript project root) and runs them with the project's vitest
 (step 1). To run them in your own `vitest run` too, also add `@tsverify/runtime` (the same version as
 `@tsverify/cli`) as a devDependency.
 

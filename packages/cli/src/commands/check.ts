@@ -111,7 +111,7 @@ export async function runCheck(
   return { report, specs, ...(code && { code }) };
 }
 
-function parseMaxStates(value: unknown): number | undefined {
+export function parseMaxStates(value: unknown): number | undefined {
   if (value === undefined) return undefined;
   const n = typeof value === "number" || typeof value === "string" ? Number(value) : Number.NaN;
   if (!Number.isSafeInteger(n) || n < 1) {

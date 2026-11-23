@@ -2,15 +2,15 @@ import { describe, expect, test } from "vitest";
 import { type Schedule, scheduler } from "../scheduler";
 import { effects } from "./effects";
 import {
+  type StorageArgInput,
   StorageConditionError,
   type StorageFunctionInput,
-  type StorageRoleInput,
   storage,
 } from "./storage";
 
 const fn = (
   symbol: string,
-  args: StorageRoleInput[],
+  args: StorageArgInput[],
   extra: Partial<StorageFunctionInput> = {},
 ): StorageFunctionInput => ({ ref: { file: "src/orders/repo.ts", symbol }, args, ...extra });
 
@@ -34,7 +34,10 @@ type Sym =
   | "patchOrder"
   | "countIf"
   | "refundIf"
-  | "shipOrThrow";
+  | "shipOrThrow"
+  | "findByArgs"
+  | "saveByArgs"
+  | "setStatusWhere";
 // biome-ignore lint/suspicious/noExplicitAny: the tests call the fake as untyped app code would
 type AppFn = (...args: any[]) => Promise<any>;
 
@@ -98,6 +101,24 @@ describe("instrument.storage", () => {
     expect(fake.read("Order", "o1")).toEqual({ ...paid(), note: "hi" });
     await f.patchOrder("o4", null, { status: "pending" });
     expect(fake.read("Order", "o4")).toEqual({ id: "o4", status: "pending" });
+  });
+
+  test("a field role takes its value from that field of an object argument", async () => {
+    const { fake, f } = setup({
+      key: "id",
+      read: [fn("findByArgs", [{ id: "key" }])],
+      save: [fn("saveByArgs", [{ where: { id: "key" }, data: "patch" }])],
+      update: [fn("setStatusWhere", [{ id: "key", from: "from", to: "to" }])],
+      atomic: [],
+    });
+    expect(await f.findByArgs({ tx: {}, id: "o1", tenant: "t" })).toEqual(paid());
+    await f.saveByArgs({ where: { id: "o1" }, data: { note: "hi" } });
+    expect(fake.read("Order", "o1")).toEqual({ ...paid(), note: "hi" });
+    expect(await f.setStatusWhere({ id: "o1", from: ["paid"], to: "refunded" })).toBe(true);
+    expect(fake.read("Order", "o1")?.status).toBe("refunded");
+    await expect(f.findByArgs("o1")).rejects.toThrow(
+      'storage.findByArgs: field id of argument 1 has the "key" role, but got undefined (a string or number)',
+    );
   });
 
   test("a left-out patch merges nothing; other wrong arguments still fail", async () => {

@@ -1,12 +1,19 @@
 import type {
   BehaviorModel,
   GuardRef,
+  StorageArg,
   StorageFunction,
   StorageKind,
   StorageRole,
   Transition,
 } from "@tsverify/ir";
-import { compareStrings, formatSymbolRef, parseGuardRef, storageFunctions } from "@tsverify/ir";
+import {
+  compareStrings,
+  formatStorageArg,
+  formatSymbolRef,
+  parseGuardRef,
+  storageFunctions,
+} from "@tsverify/ir";
 import { type FindingCollector, list, suggest } from "./findings";
 import type { Normalized } from "./normalize";
 import type { Locator, Path } from "./positions";
@@ -24,6 +31,11 @@ export function validate(
   out: FindingCollector,
 ): void {
   new Validator(input, normalized, locator, out).run();
+}
+
+/** Whether a client's `reads` entry covers a call path: the path itself, or the start of it. */
+function readCovers(read: string, path: string): boolean {
+  return path === read || path.startsWith(`${read}.`);
 }
 
 /** The client name of every named storage function's call sites (`CallSite.client`). */
@@ -141,25 +153,55 @@ class Validator {
   private storageRoles(kind: StorageKind, fn: StorageFunction, path: Path, label: string): void {
     const explicit = Array.isArray((this.valueAt(path) as { args?: unknown } | undefined)?.args);
     const argsPath = explicit ? [...path, "args"] : path;
-    const roleAt = (i: number) => this.locator.value(explicit ? [...argsPath, i] : path);
-    const shown = `args: [${fn.args.join(", ")}]`;
+    const roleAt = (at: (string | number)[]) =>
+      this.locator.value(explicit ? [...argsPath, ...at] : path);
+    const shown = `args: [${fn.args.map(formatStorageArg).join(", ")}]`;
     const allowed = ALLOWED_ROLES[kind];
 
     const seen = new Set<StorageRole>();
-    fn.args.forEach((role, i) => {
+    const visit = (arg: StorageArg, at: (string | number)[]) => {
+      if (typeof arg !== "string") {
+        const fields = Object.entries(arg);
+        if (fields.length === 0) {
+          this.out.error(
+            roleAt(at),
+            `${label}: an object argument names no field (\`{}\`); give the role of a field, as in \`{ id: key }\`, or use "_" to ignore the argument`,
+          );
+        }
+        for (const [field, inner] of fields) visit(inner, [...at, field]);
+        return;
+      }
+      const role = arg;
+      const inField = at.length > 1;
+      if (inField && (role === "_" || role === "callback")) {
+        this.out.error(
+          roleAt(at),
+          role === "_"
+            ? `${label}: "_" is not a field role (a field the object argument doesn't name is ignored)`
+            : `${label}: "callback" can't be a field of an object argument; the callback must be an argument of its own`,
+          {
+            hint:
+              role === "_" ? `remove the field "${at[at.length - 1]}"` : "e.g. args: [callback]",
+          },
+        );
+        return;
+      }
       if (!allowed.includes(role)) {
         this.out.error(
-          roleAt(i),
+          roleAt(at),
           `${label}: ${KIND_TEXT[kind]} takes no "${role}" argument (its roles: ${list(allowed)})`,
           { hint: `use "_" for an argument tsverify should ignore` },
         );
       } else if (role !== "_" && seen.has(role)) {
         this.out.error(
-          roleAt(i),
+          roleAt(at),
           `${label}: role "${role}" appears twice in "args" (each role names one argument; "_" ignores one)`,
         );
       }
       seen.add(role);
+    };
+    fn.args.forEach((arg, i) => {
+      visit(arg, [i]);
     });
 
     const need = (message: string, hint: string) =>
@@ -202,9 +244,21 @@ class Validator {
     if (!seen.has("key")) {
       need('a conditional save (update) needs a "key" argument', "e.g. args: [key, from, to]");
     }
+    // Examples in the spec's own states: its first transition's, else its initial and a final one.
+    const { entity, transitions } = this.model;
+    const first = transitions[0];
+    const fromExample =
+      (first && first.from !== "*" ? first.from[0] : undefined) ?? entity.initial ?? "<state>";
+    const toExample = first?.to ?? entity.terminal[0] ?? entity.states.at(-1) ?? "<state>";
     const sides = [
-      { role: "from", fixed: fn.from, what: "from-states", are: "are", example: "from: [paid]" },
-      { role: "to", fixed: fn.to, what: "target state", are: "is", example: "to: refunded" },
+      {
+        role: "from",
+        fixed: fn.from,
+        what: "from-states",
+        are: "are",
+        example: `from: [${fromExample}]`,
+      },
+      { role: "to", fixed: fn.to, what: "target state", are: "is", example: `to: ${toExample}` },
     ] as const;
     for (const { role, fixed, what, are, example } of sides) {
       if (seen.has(role) && fixed !== undefined) {
@@ -467,6 +521,17 @@ class Validator {
         );
       }
       const client = target.split(".")[0] as string;
+      const callPath = target.slice(client.length + 1);
+      const read = this.model.bindings.clients[client]?.reads?.find((r) => readCovers(r, callPath));
+      if (read !== undefined) {
+        this.out.error(
+          this.locator.value(path),
+          `bindings.effects "${key}": ${target} is listed as a read of client "${client}" (reads: ${read}), so tsverify never counts it as an effect`,
+          {
+            hint: `remove "${read}" from bindings.clients.${client}.reads, or map ${key} to a call that changes something`,
+          },
+        );
+      }
       if (clients.length > 0 && !clients.includes(client)) {
         this.out.error(
           this.locator.value(path),

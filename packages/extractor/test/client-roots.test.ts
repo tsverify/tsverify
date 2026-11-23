@@ -205,6 +205,38 @@ describe("a client bound to a class, and bound clients nothing calls", () => {
     ]);
   });
 
+  it("a method that only reads is an effect, no spec effect maps to it, until listed under `reads`", () => {
+    expect(effectSites("ship", result)).toContainEqual([
+      "queue.isPaused",
+      "queue.isPaused",
+      "isPaused",
+    ]);
+    expect(transitionOf(result, "ship").effects).toContainEqual({
+      name: "queue.isPaused",
+      multiplicity: "at-least-once",
+    });
+    const withReads = structuredClone(bindings);
+    (withReads.clients.queue as { reads?: string[] }).reads = ["isPaused"];
+    const read = extractFixture(
+      "injected-class",
+      orderSpec(
+        [
+          {
+            name: "ship",
+            impl: "src/service.ts#Service.ship",
+            to: "shipped",
+            effects: [{ name: "queue.ack_ship", multiplicity: "exactly-once" }],
+          },
+        ],
+        withReads,
+      ),
+    );
+    expect(effectSites("ship", read)).toEqual([
+      ["queue.ack_ship", "queue.ack", "ack"],
+      ["notifier.shipped", "notifier.notify", "notify"],
+    ]);
+  });
+
   it("warns about a bound client that no call resolves to, at its binding", () => {
     expect(result.findings).toEqual([
       expect.objectContaining({
@@ -242,8 +274,10 @@ describe("a client bound to a class, and bound clients nothing calls", () => {
       "audit.shipped",
       "notifier.shipped",
       "queue.ack_ship",
+      "queue.isPaused",
     ]);
     expect(ship.sites?.effects.map((e) => e.effect)).toEqual([
+      "queue.isPaused",
       "queue.ack_ship",
       "notifier.shipped",
     ]);

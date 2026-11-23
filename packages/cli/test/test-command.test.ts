@@ -160,6 +160,20 @@ describe("tsverify test", () => {
     await expect(readdir(join(cwd, ".tsverify"))).rejects.toThrow(/ENOENT/);
   });
 
+  it("takes --max-states, like check: a limit hit is reported under --strict, with that limit", async () => {
+    const cwd = await tempSpecDir(PROJECT);
+    const r = await tsverify(["test", "--strict", "--max-states", "1", "--format", "json"], {
+      cwd,
+    });
+    const doc = JSON.parse(r.stdout) as JsonReport;
+    const limit = doc.findings.find((f) => f.id === "unanalyzable:Light switch:state-limit");
+    expect(limit?.message).toContain("(maxStates: 1)");
+    expect(limit?.hint).toContain("(--max-states, now 1)");
+    const bad = await tsverify(["test", "--max-states", "0"], { cwd });
+    expect(bad.code).toBe(2);
+    expect(bad.stderr).toContain("--max-states must be a positive integer (got 0)");
+  });
+
   it("rejects a bad --format with exit 2", async () => {
     const r = await tsverify(["test", "--format", "xml"]);
     expect(r.code).toBe(2);

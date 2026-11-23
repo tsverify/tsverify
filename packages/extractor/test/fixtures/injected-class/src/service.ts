@@ -17,7 +17,7 @@ export class Service {
       order.status = "shipped";
       await tx.orders.save(order);
     });
-    await this.$.queue.ack(orderId);
+    if (!(await this.$.queue.isPaused())) await this.$.queue.ack(orderId);
     await this.$.notifier.notify(orderId);
   }
 }

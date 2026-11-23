@@ -26,6 +26,8 @@ export type {
   InvocationShape,
   ModelOrigin,
   PersistenceKind,
+  StorageArg,
+  StorageArgFields,
   StorageBinding,
   StorageFunction,
   StorageRole,
@@ -43,13 +45,16 @@ export {
   parseGuardRef,
   parseSymbolRef,
 } from "./refs";
-export type { StorageKind } from "./storage";
+export type { StorageKind, StorageRoleAt } from "./storage";
 export {
   defaultStorageArgs,
+  formatStorageArg,
   formatStorageFunction,
   STORAGE_KINDS,
   STORAGE_ROLES,
   storageFunctions,
+  storageRoleAt,
+  storageRoles,
 } from "./storage";
 export type {
   Trace,
