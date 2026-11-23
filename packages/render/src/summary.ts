@@ -122,7 +122,9 @@ function actorPhrase(
   let phrase: string;
   switch (actor?.trust) {
     case "internal":
-      phrase = `the ${md(name)}`;
+      // `the ttl actor`: an internal actor's name is often a job or a component, not a noun
+      // that reads on its own (`the ttl can move …`).
+      phrase = `the ${md(name)} actor`;
       break;
     case "signed-webhook":
       phrase = `${article(name)} ${md(name)} webhook`;
