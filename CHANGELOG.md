@@ -73,6 +73,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A bound client or `bindings.storage` function that no call in the project resolves to gets an `unanalyzable`
   warning ("bound but never called"); `missing-effect` for an effect on such a client is a warning that says
   tsverify couldn't see the call, instead of an error saying the code never makes it.
+- A client may be bound to an exported interface (`export: RunStore`), like a class: every value typed as it is
+  the client. Such a spec gets no generated tests (`not-generated`, with the reason).
+- Guard bindings take list arguments (`requireRole(["owner", "admin"])`, either quote style), matched against
+  an array literal (or a `const` holding one) among the call's arguments. Arguments that could never match a
+  call (an object, a call) are a spec error.
 
 ### Fixed
 - **No state write is missed silently** with `bindings.storage`. A patch object held in a variable
@@ -116,6 +121,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - No `non-atomic` from an effect before an unconditional update bound with every `from` state, and `returns:
   count` reads a count object (`r.count === 0`).
 - `render --summary` picks `a` / `an` by sound ("a user", "an SMS").
+- `guard-not-dominating` says "is called before the write, but not with …" when the guard's function is called
+  with other literal arguments, instead of "never called".
+- A patch's from-state is read after a bound read whose type lost the entity's name (`z.infer<…>`,
+  `$inferSelect`), instead of "no read … precedes"; the from-state finding's hint follows its cause.
+- A `bindings.storage` function that isn't exported is a `broken-link` error (generated tests mock it by its
+  module); `check` still reads its calls.
+- More writes that were missed silently are read or reported: a bulk update with no read of one entity before it
+  (`tx.update(table).set({ status: "resolved" }).where(…)`), an update's whole argument held in a `const`
+  (`prisma.order.update(args)`), an empty update object or patch filled in afterwards, the state set on a copy
+  of the entity, and an ORM update's `data` with named storage functions.
+- A state check tsverify can't read (a lookup table, the entity passed to a helper that throws) makes the
+  from-state unknown (`unanalyzable`, "the from-state check at … is in a form tsverify can't read") instead of
+  `from-state-unconstrained`.
+- `tsverify test` calls an impl with `fixtures.args` alone; it no longer needs to trace the key and actor
+  arguments then, and says plainly what to give when it can't.
+- Two transitions sharing an impl and a `to` with different `from`: the `from-state-mismatch` says so and the
+  hint says to merge them, instead of widening each.
+- A guard with several arguments in a flow mapping (`{ requires: role(owner, admin) }`) gets a hint to quote it.
+- A `key`, `from` or `to` role on an object parameter (`get({ tx, id })`) gets a warning: object-parameter
+  storage functions aren't supported yet.
+- An undeclared effect reached through several writes of one transition is reported once, and a code-model copy
+  of a spec counterexample (a spec with no transitions) is dropped.
+- No `non-atomic` from an effect that runs only once another conditional save went through, or from a call no
+  spec effect maps to.
+- The state-limit hint on a code model names spec transitions only.
 
 ## [0.1.0-alpha.0]
 
