@@ -35,6 +35,31 @@ export function reportSchemaIssues(
   }
 }
 
+/** The value at `path` in the parsed YAML, if there is one. */
+function valueAt(raw: unknown, path: Path): unknown {
+  let cur = raw;
+  for (const p of path) {
+    if (typeof cur !== "object" || cur === null) return undefined;
+    cur = (cur as Record<string | number, unknown>)[p];
+  }
+  return cur;
+}
+
+/**
+ * The hint for an unknown key that is the tail of a guard with several arguments in a flow
+ * mapping: in `{ trust: authenticated, requires: role(owner, admin) }` the comma ends the value,
+ * so `requires` is `role(owner` and `admin)` becomes a key. Undefined for other keys.
+ */
+function splitGuard(key: string, parent: unknown): string | undefined {
+  if (!/^[^()]*\)$/.test(key.trim())) return undefined;
+  const values =
+    typeof parent === "object" && parent !== null ? Object.entries(parent as object) : [];
+  const head = values.find(([, v]) => typeof v === "string" && v.includes("(") && !v.includes(")"));
+  const guard = head ? `${head[1] as string}, ${key.trim()}` : `name(…, ${key.trim()}`;
+  const field = head ? `${head[0]}: ` : "";
+  return `Inside \`{ … }\` a comma ends the value, so a guard with several arguments is cut in two: quote it, ${field}"${guard}".`;
+}
+
 function isMissing(issue: Issue): boolean {
   return issue.code === "invalid_type" && issue.input === undefined;
 }
@@ -53,8 +78,10 @@ function report(
       const guess = suggest(key, allowed);
       const where = rest.length > 0 ? ` in "${field(rest)}"` : "";
       const tail = guess ? `did you mean "${guess}"?` : `allowed: ${list(allowed)}`;
+      const split = splitGuard(key, valueAt(raw, path));
       out.error(locator.key([...path, key]), `${ctx}: unknown key "${key}"${where} (${tail})`, {
         transition,
+        ...(split ? { hint: split } : {}),
       });
     }
     return;

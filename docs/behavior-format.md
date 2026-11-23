@@ -101,6 +101,11 @@ Code that calls only `requireOwner` on some path and no guard on another does no
 `name` or `name(arg, …)`, e.g. `owner`, `role(admin)`. Canonical form (`GuardRef.raw`) has no inner spaces
 around the parens and `", "` between args. Bindings are keyed by the canonical form.
 
+Inside a flow mapping or list (`{ … }`, `[ … ]`) a comma ends the value, so quote a guard with several
+arguments there: `member: { trust: authenticated, requires: "role(owner, admin)" }`,
+`requires: ["role(owner, admin)", verified]`. Unquoted, the spec is rejected (`unknown key "admin)"`, with a hint
+to quote it). In block style (`requires: role(owner, admin)` on its own line) no quotes are needed.
+
 ## `rules[]`
 
 Each item has `name` plus **exactly one** of `always`, `never`, `eventually`, whose value is an expression:

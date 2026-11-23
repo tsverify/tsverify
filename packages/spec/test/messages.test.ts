@@ -35,6 +35,17 @@ function expectFinding(text: string, message: string, line: number, column: numb
 }
 
 describe("schema errors", () => {
+  it("a guard with several arguments cut in two by a flow mapping: says to quote it", () => {
+    const text = BASE.replace(
+      "{ trust: untrusted }",
+      "{ trust: untrusted, requires: role(owner, admin) }",
+    );
+    const finding = expectFinding(text, 'actor "user": unknown key "admin)"', 9, 51);
+    expect(finding.hint).toBe(
+      'Inside `{ … }` a comma ends the value, so a guard with several arguments is cut in two: quote it, requires: "role(owner, admin)".',
+    );
+  });
+
   it.each([
     [
       "missing required key",
