@@ -162,7 +162,7 @@ function failed(
     severity: "error",
     message: `${what}: ${firstError(errors)}`,
     behavior,
-    hint: `${HINTS[test.kind]} The test is kept in ${file}.`,
+    hint: `${STAND_IN.test(firstError(errors)) ? STAND_IN_HINT : HINTS[test.kind]} The test is kept in ${file}.`,
   };
   if (test.transition !== undefined) finding.transition = test.transition;
   if (test.property !== undefined) finding.property = test.property;
@@ -172,6 +172,12 @@ function failed(
   if (detail !== undefined) finding.detail = detail;
   return finding;
 }
+
+/** The error the atomic fake's stand-in transaction throws when code the spec doesn't bind uses it. */
+const STAND_IN = /^tsverify's stand-in transaction: /;
+
+const STAND_IN_HINT =
+  "A gap in the bindings, not necessarily a bug in the code: code the spec doesn't bind used the transaction the atomic function passes its callback (the stack under detail shows which). Bind that function under `bindings.storage` or `bindings.clients`, so the test replaces it.";
 
 const HINTS: Record<GeneratedTest["kind"], string> = {
   path: "The real code does not perform this allowed transition as the spec declares it (target state and effects).",

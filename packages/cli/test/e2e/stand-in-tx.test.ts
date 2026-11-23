@@ -55,6 +55,7 @@ describe("tsverify test: an atomic function's transaction and a module that need
       expect(failed?.message).toBe(
         "Generated path test \"cancel: paid → canceled (as clerk)\" failed: tsverify's stand-in transaction: `tx.insert` was used by code the spec doesn't bind. storage.withTransaction passes its callback this stand-in in place of the real transaction (or lock handle), and only the functions the spec binds are replaced by fakes; bind the function that uses it (a storage function under `bindings.storage`, or a client under `bindings.clients`), so the test replaces it.",
       );
+      expect(failed?.hint).toMatch(/^A gap in the bindings, not necessarily a bug in the code/);
       // JSON keeps the whole error: here, the stack through the unbound function.
       expect(failed?.detail).toMatch(/^StandInTransactionError: /);
       expect(failed?.detail).toContain("at writeAudit (");
