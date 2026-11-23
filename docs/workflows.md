@@ -47,7 +47,8 @@ Invalid input (2) takes precedence over violations (1).
     `this.order`).
   - `project` (`check`, `test`): the project root, relative to the cwd; `null` with `--spec-only` or without a
     `tsconfig.json`. `declaredAtomic` (`check`): transitions atomic only because the spec declares a function
-    atomic. `generated` (`test`): the generated directory and the test counts; absent when no test was generated.
+    atomic. `generated` (`test`): the generated directory, `<project>/.tsverify/generated/<spec-slug>/` (relative to the
+    cwd), and the test counts; absent when no test was generated.
 - **JSON** (`diff`): `{ version: 1, base: { ref, commit }, head: "working tree", specs: [{ file, enforced?, diff }],
   summary }`, where `diff` is the `BehaviorDiff` from `@tsverify/ir` (field changes as `base` / `head` strings).
 - **SARIF 2.1.0**: one run, tool `tsverify`, one rule per finding category. Each result's primary location is the code

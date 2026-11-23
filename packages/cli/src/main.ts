@@ -105,7 +105,7 @@ function program(io: Io): CAC {
   cli
     .command(
       "test [...paths]",
-      "Generate vitest tests from the specs and the code (paths, forbidden states, guards, counterexample replays) into <project>/.tsverify/generated/ and run them",
+      "Generate vitest tests from the specs and the code (paths, forbidden states, guards, counterexample replays) into <project>/.tsverify/generated/<spec-slug>/ and run them",
     )
     .option("--format <format>", FORMAT_HELP, { default: "pretty" })
     .option("--max-states <n>", "Stop exploring a model after this many states", {

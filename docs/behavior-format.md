@@ -69,7 +69,7 @@ enforced: true
 | `atomic` | no | `false` | state check + write are one indivisible step |
 | `idempotent` | no | `false` | the event may be delivered more than once |
 | `after` | no | | duration like `30m`, `2h`, `7d` (informational) |
-| `impl` | no | | `path/to/file.ts#symbol` |
+| `impl` | no | | `path/to/file.ts#symbol`; also `#Class.method`, `#Class.#privateMethod`, `#obj.method` |
 
 ### Who may perform a transition: `by` and `requires`
 
@@ -145,7 +145,7 @@ states that exist only because the invocation bound ran out (one more invocation
 | Key | Notes |
 |---|---|
 | `storage` | how the entity is stored: a preset, or the app's own storage functions (see below); omitted → auto-detected |
-| `clients` | map name → `{ module, export }`. `export` is a value (an object, a function, an instance), or a class or interface: then every value typed as it is the client (no generated tests for such a spec) |
+| `clients` | map name → `{ module, export, reads? }`. `export` is a value (an object, a function, an instance), or a class or interface: then every value typed as it is the client (no generated tests for such a spec). `reads`: call paths below the client that only read (`isEnabled`, or `prices` for every `prices.*` call); calls to them are not effects. An effect in `effects` mapped to one of them is an error |
 | `guards` | map canonical guard → `path#symbol` or `path#symbol(args)`. Each argument is a string (`"admin"` or `'admin'`), a bare word or number, `true`/`false`, or a list of those (`["owner", "admin"]`); anything else (an object, a call) is a spec error, since it could never match a call |
 | `effects` | map effect name → code call path (`client.member.path`); omitted → name is the path |
 
@@ -209,7 +209,7 @@ save: { fn: src/orders/repo.ts#patchOrder, args: [key, patch] }
 | Long-form key | Kinds | Notes |
 |---|---|---|
 | `fn` | all | `path#symbol` |
-| `args` | all | the role of each positional argument (below); default: read `[key]`, save `[entity]`, update `[key, from, to]` without the roles a fixed `from` / `to` replaces, atomic `[callback]` |
+| `args` | all | the role of each positional argument (below), or, for an argument that is an object of named arguments, a map of its fields' roles (`[{ id: key }]`); default: read `[key]`, save `[entity]`, update `[key, from, to]` without the roles a fixed `from` / `to` replaces, atomic `[callback]` |
 | `returns` | update | what the conditional save returns: `changed` (default: `true`, or `false` when the state check fails), `count` (rows changed: `1` or `0`, or an object with that `count`, as Prisma's `updateMany` returns), `entity` (the updated entity, or `undefined`), `throws` (it throws when the check fails, and returns nothing useful on success) |
 | `from` | update | fixed from-state(s), when no argument has the `from` role; declared states |
 | `to` | update | fixed target state, when no argument has the `to` role; a declared state |
@@ -226,10 +226,21 @@ Argument roles:
 | `callback` | the function the atomic function runs | atomic |
 | `_` | anything tsverify should ignore | all |
 
-Each role is one positional argument. Functions that take one object of named arguments
-(`getOrder({ tx, id })`) aren't supported yet: a `key`, `from` or `to` role on an argument whose type is an
-object gets an `unanalyzable` warning (`…:binding:storage.<symbol>.args`); bind a wrapper that takes it as its own
-argument.
+A role is one positional argument, or a field of one. For a function that takes one object of named arguments
+(`getOrder({ tx, id })`), give the roles of its fields as a map in that argument's place; fields it doesn't name
+are ignored, and a nested object is a nested map:
+
+```yaml
+read:   { fn: src/orders/repo.ts#getOrder, args: [{ id: key }] }                  # getOrder({ tx, id })
+save:   { fn: src/orders/repo.ts#savePatch, args: [{ where: { id: key }, data: patch }] }
+update: { fn: src/orders/repo.ts#setStatusWhere, args: [{ id: key, from: from, to: to }] }
+```
+
+`key`, `entity`, `patch`, `from` and `to` can be fields; `callback` and `_` can't (an empty map `{}` is an
+error too). The code check reads a field of an object written into the call (`getOrder({ tx, id: orderId })`),
+and the generated tests' fake takes the value from that field. A bare `key`, `from` or `to` role on an argument
+whose type is an object, or a field role the parameter's type doesn't have, gets an `unanalyzable` warning
+(`…:binding:storage.<symbol>.args`) whose hint gives the field form.
 
 How the code check and the generated tests see these functions:
 
@@ -243,6 +254,10 @@ How the code check and the generated tests see these functions:
 - a conditional save is atomic on its own (`AtomicScope.kind: "conditional-update"`); a read and save inside the
   `callback` of an `atomic` function, also through helpers, is atomic **as declared** (`kind: "declared"`), and
   `tsverify check` says so (`specs[].declaredAtomic` in JSON); a read outside and a save inside is not atomic
+- an unconditional update (a fixed `from` with every state) after a `read` of the same key whose state the code
+  checks writes from the checked states; it is atomic only when the read and the update run inside one `atomic`
+  function's callback (as declared), else `non-atomic`. A check on the rows of a list read before it gives an
+  unknown from-state (`unanalyzable`) and is not atomic outside such a callback either
 - `returns` tells the code check which branch runs when an update saved nothing: effects only there are not the
   transition's, and an effect that can run before the update's result is checked makes it `non-atomic`
 - a write that no named function saves is `unanalyzable` (`--strict`: an error)
@@ -259,7 +274,8 @@ Errors (`invalid-spec`, at the offending YAML node):
   update without `key`; an atomic function without `callback`
 - an update without its from-states (a `from` argument or a fixed `from:`) or its target (a `to` argument or a
   fixed `to:`), or with either given both ways; a fixed state that isn't declared
-- a role used twice in one function (`_` may repeat), or a role the kind doesn't take
+- a role used twice in one function (`_` may repeat), or a role the kind doesn't take; `_` or `callback` as a
+  field role, or an object argument that names no field (`{}`)
 - the same symbol name twice anywhere in the block (call sites are labelled by name)
 - a `bindings.clients` entry named `storage` (the gates `storage.<symbol>` are the named functions')
 

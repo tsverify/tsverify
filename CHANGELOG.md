@@ -78,8 +78,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Guard bindings take list arguments (`requireRole(["owner", "admin"])`, either quote style), matched against
   an array literal (or a `const` holding one) among the call's arguments. Arguments that could never match a
   call (an object, a call) are a spec error.
+- **Storage roles in an object argument**: `args: [{ id: key }]` for `getOrder({ tx, id })`, nested maps for
+  nested objects (`[{ where: { id: key } }]`), for `key`, `entity`, `patch`, `from` and `to`. The code check
+  reads the field of an object written into the call, and the generated tests' fake takes it from there. A bare
+  role on an object parameter still warns, now with the field form in its hint.
+- **`bindings.clients.<client>.reads`** lists call paths that only read (`isEnabled`, `prices` for every
+  `prices.*`): they are not effects, so no `undeclared-effect` for a flag check on a client bound to a class.
+- `impl` may name a private method: `file.ts#Class.#method`.
+- `tsverify test --max-states`, like `check`.
 
 ### Fixed
+- **A check before an unconditional update counts.** An update bound with every `from` state, after a bound
+  read of the same key and a check of its state, writes from the checked states. It is atomic when the read and
+  the update run inside one bound `atomic` function (as declared), else `non-atomic`: "the check of status on
+  `run` (read by storage.findRun) and storage.expireRun are not in one atomic scope". A check on the rows of a
+  list before a bulk update gives an unknown from-state, and is not atomic outside such a function either.
+- A bound `atomic` (or other storage) method of a class called through an instance (`this.deps.locker.lock(…)`)
+  is recognized; it could resolve to a different symbol of the same declaration and was missed.
+- The model checker counts only effects something checks (exactly-once ones, and those a rule counts): a call no
+  spec effect maps to, or an idempotent ack, no longer multiplies the states or fills every trace line.
+- The state-limit hint never suggests more concurrency (`max_parallel: { t: 2 }` for a `t` at 1): it lowers what
+  is above 1, keeps the non-atomic transitions' own bounds, and says when the effect counters weigh most.
+- Log metadata (`logger.warn("…", { id, status: run.status })`, a `Record<string, unknown>` parameter) is not a
+  state write: an object's own type counts only where the parameter's type says nothing.
+- `undeclared-effect` points at the impl's own call, not the same call in a helper whose file sorts first.
+- An `impl` a generated test can't import or call (not exported, a private method) is `not-generated` with the
+  reason, instead of a test that fails to load; `check` reads it as before.
+- The hint for an update binding without `from` or `to` uses the spec's own states.
 - **No state write is missed silently** with `bindings.storage`. A patch object held in a variable
   (`const patch = { status: input.status }; tx.update(incident).set(patch)`) is now read like a patch written
   into the call, and one built up in a shape tsverify can't read (a `let`, `patch.status = …` afterwards) is an
@@ -139,8 +164,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Two transitions sharing an impl and a `to` with different `from`: the `from-state-mismatch` says so and the
   hint says to merge them, instead of widening each.
 - A guard with several arguments in a flow mapping (`{ requires: role(owner, admin) }`) gets a hint to quote it.
-- A `key`, `from` or `to` role on an object parameter (`get({ tx, id })`) gets a warning: object-parameter
-  storage functions aren't supported yet.
+- A `key`, `from` or `to` role on an object parameter (`get({ tx, id })`) gets a warning.
 - An undeclared effect reached through several writes of one transition is reported once; a warning about one
   write that several transitions' impls reach is reported once, naming them all; and a code-model copy of a spec
   counterexample (a spec with no transitions) is dropped.

@@ -456,7 +456,7 @@ database. It is conservative: when unsure, it reports `unanalyzable` or "unconst
 |---|---|---|
 | **Entity type** | A type named `entity.name`, also behind `Readonly<T>`, `Pick<T, …>`, `Omit<T, …>`, `Partial<T>`, unions and type parameters. Fallback: any type whose state field's union equals `states` exactly, read through a bound client | A differently named type with a different union → not matched. Use the type's name |
 | **State type** | String-literal union (`"a" \| "b"`), string `enum`, Prisma enums (generated const object + union) | `string` / `any` → from-state unknown. Type the field as a union |
-| **`impl`** | `file.ts#fn` (function declaration, `const fn = async () => …`, `const fn = withAuth(async (ctx) => …)`), `file.ts#Class.method`, `file.ts#obj.method` | Functions built at runtime, or picked from a map → export a named function |
+| **`impl`** | `file.ts#fn` (function declaration, `const fn = async () => …`, `const fn = withAuth(async (ctx) => …)`), `file.ts#Class.method`, `file.ts#Class.#privateMethod`, `file.ts#obj.method`; exported or not (`check` reads them all; `tsverify test` can't call a private method or import a function the module doesn't export, [§8](#8-fixtures-for-tsverify-test)) | Functions built at runtime, or picked from a map → export a named function |
 | **Call graph** | Helpers in project files, followed up to 8 levels below the impl | Calls through `node_modules`, dynamic dispatch, callbacks stored and called later |
 | **From-state checks** (narrowing) | `if (x.status !== "a") throw`, early `return`, `switch (x.status)`, `x.status === "a" \|\| x.status === "b"`, assertion functions (`asserts x is Paid`), type predicates (`x is Paid`, incl. inferred `return s === "a"`), ternaries, checks inside the transaction callback; membership on a list of literals, inline or a `const` (`if (!["a", "b"].includes(x.status)) throw`, `ALLOWED.includes(x.status)` with `const ALLOWED = ["a", "b"]`, `OPEN.has(x.status)` with `const OPEN = new Set([…])`), combined with `!`, `&&`, `\|\|` | A lookup table (`NEXT[x.status].includes(to)`), a list that can change (a `let`), `const s = x.status; if (s …)`, `const { status } = x`, `const ok = x.status === "a"; if (!ok)` on a mutable field, `: boolean` helpers, the entity passed to a helper that throws → compare `x.status` directly, or use an assertion function. When the code consults the state in such a form, the write's from-state is reported unknown (`unanalyzable`, "the from-state check at … is in a form tsverify can't read"), not unchecked |
 | **Written value** | A string literal, or a constant with a literal type (`JobStatus.Done`) | A variable or parameter (`x.status = next`) → `unanalyzable`, and the write is not checked: a transition whose impl reaches it is reported as "couldn't confirm", not `missing-transition`. Write the literal at each call site |
@@ -479,6 +479,32 @@ matches, `check` says so: the binding gets a "bound but never called" warning, a
 an error, with the effect taken as specified meanwhile. The same goes for `bindings.storage`: a function bound
 by a path no call resolves to (`DelegatingStore.save` when the code calls `store.save` on a `Store` interface)
 gets the warning; bind the one the code calls (`types.ts#Store.save`).
+
+**Calls that only read.** Binding a whole class or interface makes every method call on it a client call, and
+a client call that no spec effect maps to is an `undeclared-effect` error: a flag check
+(`isStoreRoutingEnabled(org)`) or a lookup (`resolveWaitpointId(run)`) included. List those under the client's
+`reads`, as call paths below the client (`prices` covers every `prices.*` call):
+
+```yaml
+bindings:
+  clients:
+    waitpoints:
+      module: src/waitpoints.ts
+      export: WaitpointService
+      reads: [isStoreRoutingEnabled, resolveWaitpointId, serializeError]
+```
+
+A read is not an effect: no `undeclared-effect`, and nothing to declare. It is still a call on the client, so
+tsverify doesn't look inside it. An effect mapped to a read (`bindings.effects`) is a spec error. There is no
+default: a property or getter (`waitpoints.isEnabled` without a call) is never a call anyway, and a method's
+name (`get…`, `is…`) doesn't say whether it changes something. In generated tests the client's fake has the
+read methods too, recording their calls like the others.
+
+**Which effects the model checker counts.** It keeps a count of an effect only when something checks it: an
+`exactly-once` effect (the default, checked by `effect-multiplicity`) and an effect a rule counts
+(`count(effect …)`). An `idempotent` or `at-least-once` effect no rule names, and a call no spec effect maps to,
+are not counted: they add no states, and traces don't show them. So declare an effect that may run more than
+once (a retried ack, a cleanup) `idempotent` or `at-least-once`: that is both what it does and less to explore.
 
 **Effect identity is the call.** An effect is recognized by its call path, `bindings.effects` maps names to
 paths, and a call is one path. So two effect names bound to the same call (`queue.ack_cancel` and
@@ -630,10 +656,17 @@ How to find them:
   `update(key, from, to)`, `atomic(callback)`), give them with `args`, e.g.
   `{ fn: src/repo.ts#findOrder, args: [_, key] }` for `findOrder(tenantId, id)`. A save that takes the key and
   some fields is `args: [key, patch]`. An update with the states built in (`markPaid(id)`) is
-  `{ fn: …, from: [pending], to: paid }`. Each role is one positional argument: a function that takes one object
-  of named arguments (`getOrder({ tx, id, tenantId })`) isn't supported yet, and binding its object as the
-  `key` gets a warning ("argument 1 … is an object"). Bind a thin wrapper that takes the key as an argument of its
-  own (`getOrderById(tx, tenantId, id)` with `args: [_, _, key]`).
+  `{ fn: …, from: [pending], to: paid }`.
+- **Roles in an object argument.** A function that takes one object of named arguments
+  (`getOrder({ tx, id, tenantId })`) names the role of a field instead of the whole argument:
+  `{ fn: src/repo.ts#getOrder, args: [{ id: key }] }`. Fields the map doesn't name are ignored; a nested object
+  is a nested map (`findOrder({ where: { id } })` is `args: [{ where: { id: key } }]`). `key`, `entity`, `patch`,
+  `from` and `to` can be fields (`setStatusWhere({ id, from, to })` is `args: [{ id: key, from: from, to: to }]`,
+  `savePatch({ id, data: { status: "paid" } })` is `args: [{ id: key, data: patch }]`); a `callback` stays an
+  argument of its own. The code check reads the field of an object written into the call (`{ id }`,
+  `{ id: orderId }`), not one built elsewhere and passed in (`getOrder(where)`), and the generated tests' fake
+  takes the value from that field. Binding the whole object as `key` (`args: [key]`) gets a warning ("argument 1
+  … is an object") whose hint gives the field form; so does a field the parameter's type doesn't have.
 - **`returns`.** Say what an update returns when the state check fails: `changed` (`false`, the default),
   `count` (`0`), `entity` (`undefined`) or `throws`. The code is expected to stop when it does
   (`if (!(await setStatusIf(…))) throw …`, `if (updated === undefined) return`): an effect that can run before
@@ -651,6 +684,31 @@ How to find them:
   for a missing row), and no effect counts as running "although it saved nothing". `check` then reports the
   missing state check honestly, as `from-state-unconstrained` on each transition whose spec `from` is narrower.
   Don't give it the spec's `from`: tsverify trusts a bound `from`, so that would hide the missing check.
+- **A check before a blind update.** When the code reads the entity with a bound `read` of the same key, checks
+  its state and then calls the blind update, the check decides the from-states: the binding's `from` (every
+  state) narrowed to what the check lets through. Whether that is safe depends on where it happens. Inside one
+  `bindings.storage.atomic` function (the read, the check and the update all in its callback: a lock, a
+  transaction), nothing can change the state in between, and the transition is atomic, as declared by that
+  function. Otherwise another request can change the state after the check, and the update overwrites it:
+  `check` reports `non-atomic`, "the check of status on `run` (read by storage.findRun) and storage.expireRun are
+  not in one atomic scope". The fix is the atomic function, or a conditional update (bind it with the states its
+  query requires, `WHERE id = $1 AND status = 'PENDING'`).
+
+  ```ts
+  await locker.lock("expire", [id], async () => {     // bindings.storage.atomic, args: [_, _, callback]
+    const run = await store.findRun({ id });          // read, args: [{ id: key }]
+    if (run?.status !== "PENDING") return;            // the check
+    await store.expireRun(id);                        // blind update: from every state, to EXPIRED
+  });                                                 // → from PENDING, atomic as declared by locker.lock
+  ```
+
+  A check on the rows of a list (`const runs = await findRuns(ids)`, then `runs.filter((r) => r.status ===
+  "PENDING")`, then a bulk update of their ids) doesn't say which rows the update writes: the from-state is
+  unknown (an `unanalyzable` warning), and outside one atomic function the transition is `non-atomic` as above,
+  since a row can change between the read and the bulk update. Make the bulk update conditional
+  (`WHERE id IN (…) AND status = 'PENDING'`, bound with `from: [PENDING]`), or update one entity at a time.
+  A lock method of a class (`RunLocker.lock`, called as `this.locker.lock(…)` through an injected field) works as
+  the `atomic` function like any other: bind `src/locking.ts#RunLocker.lock` with the callback's position.
 - **Pass every argument a role names.** The generated tests' fake reads each role's argument. The one exception
   is a `patch`: leaving it out (`updateStatusIf(id, "paid", "refunded")`) counts as `{}`, so nothing is merged.
 - **`atomic` is declared, not proven.** Name a function only if it really serializes the callback against
@@ -686,8 +744,10 @@ How to find them:
   column has exactly the spec's states. Such a write is reported (its from-state is unknown: it changes
   whichever rows its query matches), never skipped. Other objects with a `status` key are not writes: a response
   body (`c.json({ status: "ok" })`), or an event passed to a function that isn't an update
-  (`bus.publish({ id, status: "resolved" })`), even when its type has exactly the spec's states. An ORM update's
-  `data` (`prisma.order.update({ where, data: { status } })`) is such a patch too.
+  (`bus.publish({ id, status: "resolved" })`), even when its type has exactly the spec's states. The object's own
+  type counts only when the parameter's type says nothing (none, `any`, `unknown`, a type parameter): log metadata
+  (`logger.warn("…", { id, status: order.status })`, a `Record<string, unknown>` parameter) is not a write. An ORM
+  update's `data` (`prisma.order.update({ where, data: { status } })`) is such a patch too.
 - **Use a preset instead** (`storage: assign`, `prisma` or `memory`) when there is no such layer: the `impl`s
   call a Prisma client directly (`prisma`), a repository object on a bound client (`assign`), or in-process
   objects (`memory`, see [§7.2–7.4](#72-assign-repository-objects-the-default)). If the code reads and writes
@@ -711,8 +771,10 @@ Example: [`examples/orders-functions`](../examples/orders-functions/src/orders/o
 
 ## 8. Fixtures for `tsverify test`
 
-`tsverify test` generates vitest tests into `<project>/.tsverify/generated/` (add `.tsverify/` to `.gitignore`) and runs them
-with the project's own vitest (`npm i -D vitest`; versions 3.0.5 and later). It replaces each `bindings.clients` export with an in-memory fake (a store for
+`tsverify test` generates vitest tests into `<project>/.tsverify/generated/<spec-slug>/`, where `<project>` is the
+spec's TypeScript project root (the directory of its `tsconfig.json`, or of the `--project` tsconfig; add
+`.tsverify/` to `.gitignore`), and runs them with the project's own vitest (`npm i -D vitest`; versions 3.0.5 and
+later). It model-checks like `check`, with the same `--max-states`. It replaces each `bindings.clients` export with an in-memory fake (a store for
 `assign`/`prisma` clients, call recorders for effect clients), seeds one entity, and calls each `impl`:
 
 | Test file | One test per | Passes when |
@@ -754,6 +816,10 @@ fixtures:
 - `memory` persistence generates no tests yet.
 - An `impl` that is an instance method (`file.ts#Class.method`, not `static`) gets no test yet (`not-generated`,
   an error under `--strict`): a test would need an object of the class to call it on.
+- An `impl` a test can't import or call gets none either (`not-generated`, saying which): a function its module
+  doesn't export, or a private method (`file.ts#Class.#method`). `check` reads both as usual; a storage function
+  that isn't exported is different, a `broken-link` error, because the tests must replace it. Export the impl,
+  or point `impl` at the exported function that calls it.
 - A binding the generated mocks can't replace means no test for the spec (`not-generated`, with each reason): a
   client bound to a class (an object in its place would break `new`), or a storage function that is a method of
   an interface (a type: there is no value to replace) or of a class.
