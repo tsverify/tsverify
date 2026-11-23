@@ -1532,3 +1532,31 @@ export async function cancel(id: string, from: Parameters<typeof setStatusIf>[1]
     expect(result.findings.some((x) => x.message.includes("~2"))).toBe(false);
   });
 });
+
+describe("call chains", () => {
+  it("record how the impl reaches a write and an effect call in helpers, shortest first", () => {
+    const result = extract(
+      `${IMPORTS}
+async function notify(id: string) {
+  await email.send(id, "refunded");
+}
+async function doRefund(id: string) {
+  if (!(await setStatusIf(id, "paid", "refunded"))) throw new Error("changed");
+  await notify(id);
+}
+export async function refund(id: string) {
+  await doRefund(id);
+}
+`,
+      [t("refund", "refunded", { from: ["paid"] })],
+    );
+    const sites = transitionOf(result, "refund").sites;
+    const doRefund = { name: "doRefund", at: { file: "src/impl.ts", line: 15, column: 9 } };
+    expect(sites?.via).toMatchObject([doRefund]);
+    expect(sites?.effects.find((e) => e.gate === "email.send")?.via).toMatchObject([
+      doRefund,
+      { name: "notify", at: { file: "src/impl.ts", line: 12, column: 9 } },
+    ]);
+    expect(sites?.commit?.via).toMatchObject([doRefund]);
+  });
+});

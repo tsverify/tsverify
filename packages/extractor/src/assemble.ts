@@ -25,6 +25,7 @@ import type {
   ArgPath,
   BehaviorModel,
   CallSite,
+  CallStep,
   CodeSites,
   EffectDecl,
   Finding,
@@ -38,7 +39,7 @@ import type {
 } from "@tsverify/ir";
 import { compareStrings, parseGuardRef } from "@tsverify/ir";
 import type { AtomicityNote, PersistenceAdapter, PersistenceFacts } from "./adapters/types";
-import { frameNaming, frameOf, type Reach } from "./callgraph";
+import { chainTo, frameNaming, frameOf, type Reach } from "./callgraph";
 import type { FunctionLike } from "./cfg";
 import type { ClientCall, ClientCalls } from "./client-calls";
 import type { Dominance } from "./dominance";
@@ -155,13 +156,22 @@ function callSite(
   reachOf: Reach,
 ): CallSite {
   const frame = frameOf(cc.call);
+  const via = frame && viaOf(ctx, reachOf, frame);
   return {
     at: ctx.loc(cc.call),
     client: cc.client,
     path: cc.path,
     gate: cc.gate,
     occurrence: frame ? occurrenceOf(cc.call, frame, cc.gate, reachOf, calls) : 0,
+    ...(via ? { via } : {}),
   };
+}
+
+/** The calls from the reach's root to `frame` (`CallSite.via`); undefined for the root itself. */
+function viaOf(ctx: ProjectContext, reachOf: Reach, frame: FunctionLike): CallStep[] | undefined {
+  const chain = chainTo(reachOf, frame);
+  if (chain === undefined || chain.length === 0) return undefined;
+  return chain.map((e) => ({ name: frameNaming(e.callee).name, at: ctx.loc(e.call) }));
 }
 
 function implRefOf(ctx: ProjectContext, d: Draft): SymbolRef | undefined {
@@ -398,6 +408,7 @@ function buildTransition(
   const note = atomic ? undefined : (escaped ?? p.notes?.[0]);
 
   const invocation = invocationOf(env, d, p, guardCalls);
+  const writeVia = viaOf(ctx, d.reach, m.frame);
   const sites: CodeSites = {
     persistence: env.persistence,
     write: m.at,
@@ -406,6 +417,7 @@ function buildTransition(
       name: naming.name,
       at: ctx.loc(naming.node),
     },
+    ...(writeVia ? { via: writeVia } : {}),
     ...(t ? { specTransition: t.name } : {}),
     fromState,
     ...(p.read ? { read: callSite(ctx, calls, p.read, d.reach) } : {}),

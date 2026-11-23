@@ -1,4 +1,10 @@
-import { compareStrings, type Finding, type SourceLocation } from "@tsverify/ir";
+import {
+  type CallStep,
+  compareStrings,
+  type Finding,
+  type SourceLocation,
+  shortLocation,
+} from "@tsverify/ir";
 import { earliest, type Pairing, pairingFinding } from "./finding";
 
 /** The client an effect gate calls: `queue` for `queue.acknowledgeMessage`, `notify` for `notify`. */
@@ -22,6 +28,22 @@ function nearest(
     if (own.length > 0) return earliest(own);
   }
   return earliest(locations);
+}
+
+/**
+ * How the impl reaches a call or a write in a helper, compactly: `cancelOrder → writeAudit
+ * (ship.ts:20) → email.send (audit.ts:5)`, each function with where it is called. Undefined
+ * when there is no helper on the way (`via` absent or empty).
+ */
+export function callChain(
+  entry: string,
+  via: readonly CallStep[] | undefined,
+  end: string,
+  at: SourceLocation,
+): string | undefined {
+  if (via === undefined || via.length === 0) return undefined;
+  const steps = via.map((s) => `${s.name} (${shortLocation(s.at)})`);
+  return [entry, ...steps, `${end} (${shortLocation(at)})`].join(" → ");
 }
 
 function uniqueSorted(names: string[]): string[] {
@@ -64,14 +86,17 @@ export function checkEffects(p: Pairing): Finding[] {
     );
     const gate = callSites[0]?.gate ?? gateOf(name);
     const unmapped = !known.has(name);
+    const site = callSites.find((e) => e.at === at);
+    const chain = site && callChain(entry, site.via, site.gate, site.at);
+    const how = chain === undefined ? "" : ` Call chain: ${chain}.`;
     findings.push(
       pairingFinding(p, {
         category: "undeclared-effect",
         severity: "error",
         subject: name,
         message: unmapped
-          ? `${t.name}: ${entry} calls ${name}, a gate no spec effect maps to (not in bindings.effects).`
-          : `${t.name}: ${entry} calls ${name}${gate === name ? "" : ` (${gate})`}, which the spec does not declare for ${t.name}.`,
+          ? `${t.name}: ${entry} calls ${name}, a gate no spec effect maps to (not in bindings.effects).${how}`
+          : `${t.name}: ${entry} calls ${name}${gate === name ? "" : ` (${gate})`}, which the spec does not declare for ${t.name}.${how}`,
         hint: unmapped
           ? `Declare the effect on ${t.name} and map it to ${name} in bindings.effects, list ${gate.slice(clientOfGate(gate).length + 1) || gate} under bindings.clients.${clientOfGate(gate)}.reads if it only reads, or remove the call.`
           : `Declare ${name} under ${t.name}.effects, or remove the call.`,
@@ -100,12 +125,13 @@ export function checkEffects(p: Pairing): Finding[] {
       continue;
     }
     if (called.includes(name)) continue;
+    const chain = callChain(entry, sites.via, "the write", sites.write);
     findings.push(
       pairingFinding(p, {
         category: "missing-effect",
         severity: "error",
         subject: name,
-        message: `${t.name}: ${entry} never calls ${name}${gate === name ? "" : ` (${gate})`} when it writes ${t.to}.`,
+        message: `${t.name}: ${entry} never calls ${name}${gate === name ? "" : ` (${gate})`} when it writes ${t.to}.${chain === undefined ? "" : ` The write is reached as ${chain}.`}`,
         hint: `Call ${gate} after the write in ${entry}, or remove ${name} from ${t.name}.effects.`,
         ...(declaration === undefined ? {} : { specAt: declaration }),
         codeAt: sites.write,

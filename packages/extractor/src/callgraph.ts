@@ -214,3 +214,30 @@ export function leadsTo(
   };
   return (fn) => leads(fn, new Set());
 }
+
+/**
+ * The shortest chain of calls from `root.root` to `frame` in `root` (breadth-first over its
+ * edges, in source order): `[]` for the root itself, undefined when the walk didn't reach it.
+ */
+export function chainTo(root: Reach, frame: FunctionLike): CallEdge[] | undefined {
+  if (frame === root.root) return [];
+  const via = new Map<FunctionLike, CallEdge>();
+  const queue: FunctionLike[] = [root.root];
+  for (let i = 0; i < queue.length; i++) {
+    const caller = queue[i] as FunctionLike;
+    for (const e of root.edges) {
+      if (e.caller !== caller || e.callee === root.root || via.has(e.callee)) continue;
+      via.set(e.callee, e);
+      if (e.callee === frame) {
+        const chain: CallEdge[] = [];
+        for (let edge: CallEdge | undefined = e; edge; edge = via.get(edge.caller)) {
+          chain.unshift(edge);
+          if (edge.caller === root.root) break;
+        }
+        return chain;
+      }
+      queue.push(e.callee);
+    }
+  }
+  return undefined;
+}

@@ -14,6 +14,7 @@ export type {
   BehaviorModel,
   Bindings,
   CallSite,
+  CallStep,
   ClientBinding,
   CodeSites,
   EffectDecl,

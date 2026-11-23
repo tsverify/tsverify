@@ -73,6 +73,41 @@ describe("effects", () => {
     ]);
   });
 
+  it("gives the call chain from the impl when the call or the write is in a helper", () => {
+    const spec = specModel();
+    const at = (file: string, line: number) => ({ file, line, column: 3 });
+    // refund calls an undeclared email.send from a helper in another file.
+    const writes = patchWrite(cleanWrites(), "refund", (w) => ({
+      ...w,
+      effects: [...w.effects, { effect: "email.receipt", gate: "email.send", at: [9, 3] }],
+    }));
+    const noReceipt = patchWrite(writes, "payment_succeeded", (w) => ({ ...w, effects: [] }));
+    const code = buildCodeModel(spec, noReceipt);
+    for (const t of code.transitions) {
+      const sites = t.sites;
+      if (t.name === "refund" && sites) {
+        const call = sites.effects.find((e) => e.effect === "email.receipt");
+        if (call) {
+          call.at = at("src/notify/receipts.ts", 9);
+          call.via = [
+            { name: "notifyRefund", at: at("src/orders/refund.ts", 30) },
+            { name: "sendReceipt", at: at("src/notify/index.ts", 4) },
+          ];
+        }
+      }
+      if (t.name === "payment_succeeded" && sites) {
+        sites.via = [{ name: "markPaid", at: at("src/payments/webhook.ts", 12) }];
+      }
+    }
+    const messages = compare(spec, code).map((f) => f.message);
+    expect(messages).toContain(
+      "refund: refundOrder calls email.receipt (email.send), which the spec does not declare for refund. Call chain: refundOrder → notifyRefund (refund.ts:30) → sendReceipt (index.ts:4) → email.send (receipts.ts:9).",
+    );
+    expect(messages).toContain(
+      "payment_succeeded: onPaymentSucceeded never calls email.receipt (email.send) when it writes paid. The write is reached as onPaymentSucceeded → markPaid (webhook.ts:12) → the write (webhook.ts:22).",
+    );
+  });
+
   it("says it couldn't confirm an effect on a client no call resolves to, as a warning", () => {
     const spec = specModel();
     // The extractor takes the effect as specified (in `effects`, no call site).

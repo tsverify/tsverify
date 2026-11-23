@@ -56,6 +56,20 @@ export interface CallSite {
   gate: string;
   /** 0-based occurrence of `gate` within one invocation of the impl (repeated calls). */
   occurrence: number;
+  /**
+   * Code models: how the impl reaches this call when it is in a helper, not in the impl itself:
+   * each function called on the way (shortest chain), with where it is called. Absent for a
+   * call in the impl.
+   */
+  via?: CallStep[];
+}
+
+/** One call on the way from an impl to a call site or a write (`CallSite.via`, `CodeSites.via`). */
+export interface CallStep {
+  /** The function called, as findings name functions (`refundOrder`, `Repo.save`). */
+  name: string;
+  /** Where it is called. */
+  at: SourceLocation;
 }
 
 /**
@@ -114,6 +128,8 @@ export interface CodeSites {
   write: SourceLocation;
   /** Function containing the write (may be a helper called by the impl). */
   function: { file: string; name: string; at: SourceLocation };
+  /** How the impl reaches `function` when the write is in a helper (see `CallSite.via`). */
+  via?: CallStep[];
   /** Name of the spec transition whose `impl` reaches this write; absent for unlinked writes. */
   specTransition?: string;
   fromState: FromState;
