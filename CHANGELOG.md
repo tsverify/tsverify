@@ -141,8 +141,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A guard with several arguments in a flow mapping (`{ requires: role(owner, admin) }`) gets a hint to quote it.
 - A `key`, `from` or `to` role on an object parameter (`get({ tx, id })`) gets a warning: object-parameter
   storage functions aren't supported yet.
-- An undeclared effect reached through several writes of one transition is reported once, and a code-model copy
-  of a spec counterexample (a spec with no transitions) is dropped.
+- An undeclared effect reached through several writes of one transition is reported once; a warning about one
+  write that several transitions' impls reach is reported once, naming them all; and a code-model copy of a spec
+  counterexample (a spec with no transitions) is dropped.
 - No `non-atomic` from an effect that runs only once another conditional save went through, or from a call no
   spec effect maps to.
 - The state-limit hint on a code model names spec transitions only.

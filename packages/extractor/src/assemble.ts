@@ -338,7 +338,8 @@ function buildTransition(
       : spec.entity.states.filter((s) => (fromState.values as string[]).includes(s));
   // Every `*` from-state (a `string` field, an unprobeable reference, an adapter's `OR`) gets
   // exactly this one finding, `unanalyzable:<behavior>:from-state:<transition>`: it is the
-  // report for that cause, so a consumer need not add a second one.
+  // report for that cause, so a consumer need not add a second one. (When several transitions'
+  // impls reach one write, their copies become one finding naming them all: `mergeSharedWrites`.)
   if (fromState.values === "*") {
     env.findings.push(
       unanalyzable(

@@ -637,6 +637,39 @@ export async function announce(id: string) {
   });
 });
 
+describe("one write that several transitions reach", () => {
+  const result = extract(
+    `${IMPORTS}
+async function cancelAll(id: string) {
+  await qb.update("orders").set({ status: "cancelled" }).where(id);
+}
+export async function cancelOnPause(id: string) {
+  await cancelAll(id);
+}
+export async function cancelOnDelete(id: string) {
+  await cancelAll(id);
+}
+`,
+    [
+      t("cancelOnPause", "cancelled", { from: ["pending_payment"] }),
+      t("cancelOnDelete", "cancelled", { from: ["pending_payment"] }),
+    ],
+  );
+
+  it("is reported once per kind of warning, naming every transition", () => {
+    expect(result.findings.map((f) => [f.id, f.message])).toEqual([
+      [
+        "unanalyzable:Fixture orders:from-state:cancelOnDelete",
+        "cancelOnDelete and cancelOnPause: the from-state of this write is unknown: no read of the Order precedes the call",
+      ],
+      [
+        "unanalyzable:Fixture orders:storage:cancelOnDelete",
+        'cancelOnDelete and cancelOnPause: Order.status is written in a patch passed to `qb.update("orders").set`, which is not a `bindings.storage.save` function',
+      ],
+    ]);
+  });
+});
+
 describe("a read whose type doesn't name the entity", () => {
   // The row type of a query builder or a schema library (\`z.infer<…>\`, \`$inferSelect\`) is
   // an anonymous object type: its name is lost, but it is what a bound read returned.
