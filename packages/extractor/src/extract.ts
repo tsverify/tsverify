@@ -21,6 +21,7 @@ import type {
   Finding,
   PersistenceKind,
   SourceLocation,
+  StorageFunction,
   UnreadWrite,
 } from "@tsverify/ir";
 import { compareStrings, formatSymbolRef, storageFunctions } from "@tsverify/ir";
@@ -38,12 +39,16 @@ import { assemble, type Draft, type MatchedWrite } from "./assemble";
 import { Callees, frameCalls, frameNaming, frameOf, type Reach, reach } from "./callgraph";
 import type { FunctionLike } from "./cfg";
 import { ClientCalls } from "./client-calls";
-import { Dominance } from "./dominance";
+import { primaryDeclarationOf } from "./declarations";
+import { Dominance, type GuardMiss } from "./dominance";
 import { matchesEntity, writtenValue } from "./entity";
-import { brokenLink, sortFindings, unanalyzable, uniqueIds } from "./findings";
+import { brokenLink, mergeSharedWrites, sortFindings, unanalyzable, uniqueIds } from "./findings";
+import { guardArgs } from "./guard-args";
 import { loadTypeScript, TypeScriptSetupError } from "./load-typescript";
 import { type LoadedProject, loadProject, ProjectContext } from "./project";
 import {
+  functionOfDeclaration,
+  isExportedPath,
   isInstanceMember,
   pathHeadKind,
   resolveClient,
@@ -60,12 +65,17 @@ import {
   type Narrowed,
   type NarrowHandle,
   type NarrowRequest,
-  singleLiteralOf,
   typeNames,
   withMembershipGuards,
 } from "./type-facts";
 import { type TypeScript, ts, useTypeScript } from "./typescript";
-import { findCandidateWrites, type PatchOptions, rebindWrites, type WriteNode } from "./writes";
+import {
+  findCandidateWrites,
+  oneLine,
+  type PatchOptions,
+  rebindWrites,
+  type WriteNode,
+} from "./writes";
 
 export interface ExtractOptions {
   /** Project root; `impl` and binding paths are relative to it. */
@@ -157,21 +167,6 @@ const ADAPTERS: Partial<Record<PersistenceKind, PersistenceAdapter>> = {
   memory: memoryAdapter,
   prisma: prismaAdapter,
 };
-
-function literalArgs(call: TS.CallExpression, checker: TS.Checker): string[] {
-  const out: string[] = [];
-  for (const a of call.arguments) {
-    if (ts.isStringLiteral(a) || ts.isNoSubstitutionTemplateLiteral(a) || ts.isNumericLiteral(a)) {
-      out.push(a.text);
-    } else if (a.kind === ts.SyntaxKind.TrueKeyword) out.push("true");
-    else if (a.kind === ts.SyntaxKind.FalseKeyword) out.push("false");
-    else {
-      const v = singleLiteralOf(checker.getTypeAtLocation(a), checker);
-      if (v !== undefined) out.push(v);
-    }
-  }
-  return out;
-}
 
 function unprobedTypes(write: WriteNode, checker: TS.Checker): Narrowed {
   const fieldType = declaredFieldType(write.ref, write.field, checker);
@@ -328,8 +323,41 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
               : `${fn.ref.symbol} is a method of the class ${head}, which would have to be replaced as a whole`,
         });
       }
-      if (r.ok) bound.set(r.value, { kind: fnKind, fn, path: fn.ref.symbol });
-      else {
+      if (r.ok) {
+        bound.set(r.value, { kind: fnKind, fn, path: fn.ref.symbol });
+        const objectArg = objectRoleArgument(ctx, r.value, fn);
+        if (objectArg) {
+          const at = fn.at ?? storageBinding.at;
+          findings.push({
+            ...unanalyzable(
+              behavior,
+              "binding",
+              `${STORAGE_CLIENT}.${fn.ref.symbol}.args`,
+              `argument ${objectArg.index + 1} of storage ${fnKind} function ${formatSymbolRef(fn.ref)} is an object (${objectArg.text}), but its \`${objectArg.role}\` role needs ${objectArg.role === "key" ? "a string or number" : "a state, or a list of states"}: tsverify can't tell which of its fields that is`,
+              {
+                hint: `Bind a function that takes the ${objectArg.role} as an argument of its own: a thin wrapper such as \`(tx, id) => ${head}({ tx, id, … })\`, bound with \`args: [_, ${objectArg.role}]\`. Functions that take one object of named arguments aren't supported yet.`,
+              },
+            ),
+            ...(at ? { specAt: at } : {}),
+          });
+        }
+        // Still read as bound, so the rest of the check stays accurate; but generated tests
+        // replace storage functions by mocking the module that exports them.
+        if (!isExportedPath(ctx, fn.ref)) {
+          findings.push(
+            brokenLink(
+              behavior,
+              "storage",
+              fn.ref.symbol,
+              `storage ${fnKind} function ${formatSymbolRef(fn.ref)} is not exported: \`tsverify test\` replaces storage functions by mocking the module that exports them, so it can't replace this one`,
+              fn.at ?? storageBinding.at,
+              {
+                hint: `Export ${head} from ${fn.ref.file} (and keep the impls that call it in another module, so the mock reaches their calls), or bind the exported function that calls it.`,
+              },
+            ),
+          );
+        }
+      } else {
         findings.push(
           brokenLink(
             behavior,
@@ -382,6 +410,11 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
           binding: `clients.${name}`,
           reason: `client ${name} is the class ${binding.export}, and a fake object in its place would break \`new ${binding.export}(…)\``,
         });
+      } else if (!(r.value.flags & ts.SymbolFlags.Value)) {
+        unfakeable.push({
+          binding: `clients.${name}`,
+          reason: `client ${name} is the interface ${binding.export}, a type: there is no module export to replace with a fake, and the code gets its instances from elsewhere`,
+        });
       }
     } else {
       findings.push(
@@ -425,16 +458,22 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
   );
   const guardSyms = new Set(guards.map((g) => g.sym));
   const calleeSym = (call: TS.CallExpression) => symbolOf(call.expression, checker);
+  const argsMatch = (g: (typeof guards)[number], lits: readonly string[]) =>
+    g.args.length === lits.length && g.args.every((a, i) => a === lits[i]);
   const match = (call: TS.CallExpression): string[] => {
     const sym = calleeSym(call);
     if (!sym || !guardSyms.has(sym)) return [];
-    const lits = literalArgs(call, checker);
+    const lits = guardArgs(call, checker);
+    return guards.filter((g) => g.sym === sym && argsMatch(g, lits)).map((g) => g.key);
+  };
+  // A call of a guard's function whose literal arguments differ from the binding's.
+  const miss = (call: TS.CallExpression): GuardMiss[] => {
+    const sym = calleeSym(call);
+    if (!sym || !guardSyms.has(sym)) return [];
+    const lits = guardArgs(call, checker);
     return guards
-      .filter(
-        (g) =>
-          g.sym === sym && g.args.length === lits.length && g.args.every((a, i) => a === lits[i]),
-      )
-      .map((g) => g.key);
+      .filter((g) => g.sym === sym && !argsMatch(g, lits))
+      .map((g) => ({ key: g.key, args: lits }));
   };
   const isStop = (call: TS.CallExpression): boolean => {
     if (calls.classify(call)) return true;
@@ -446,6 +485,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
     isStop,
     match,
     guards.map((g) => g.key),
+    miss,
   );
 
   const reachMemo = new Map<FunctionLike, Reach>();
@@ -533,8 +573,10 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
       });
       return persistence;
     };
-    // The exact-union fallback needs a recognized read: DTOs and events share the union.
-    if (match === "union" && (!frame || !analyze(frame).read)) return;
+    // The exact-union fallback needs a recognized read: DTOs and events share the union. An
+    // object built up before it is saved (`writes.ts`, `held`) is reported, never dropped.
+    const builtUp = write.held?.issue !== undefined && write.kind === "assign";
+    if (match === "union" && !builtUp && (!frame || !analyze(frame).read)) return;
     const at = ctx.loc(write.site);
     const subject = frame ? frameNaming(frame).name : moduleName(ctx, write.expr);
     const value = write.fixedValue ?? writtenValue(write.value, checker);
@@ -553,7 +595,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
     // An object held in a variable that tsverify can't follow to the call (`writes.ts`).
     if (write.held?.issue !== undefined) {
       const target = write.call
-        ? `, an object later passed to \`${write.call.expression.getText()}\``
+        ? `, an object later passed to \`${oneLine(write.call.expression)}\``
         : "";
       notExtracted(
         "write-shape",
@@ -646,7 +688,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
   if (Object.keys(uncalled).length > 0) model.uncalledClients = uncalled;
   if (instanceImpls.length > 0) model.instanceImpls = instanceImpls;
   if (unfakeable.length > 0) model.unfakeable = unfakeable;
-  const sorted = sortFindings(uniqueIds(findings));
+  const sorted = sortFindings(uniqueIds(mergeSharedWrites(findings)));
   // After `uniqueIds`: each unread write names its finding by its final id.
   const unreadWrites: Record<string, UnreadWrite[]> = {};
   for (const impl of impls) {
@@ -658,6 +700,43 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
   if (Object.keys(unreadWrites).length > 0) model.unreadWrites = unreadWrites;
   assumeUnconfirmed(spec, model);
   return { spec: behavior, model, findings: sorted };
+}
+
+/**
+ * The first argument of a bound storage function whose role is `key`, `from` or `to` but whose
+ * parameter is an object (`getOrder({ tx, id, tenantId })` bound with `args: [key]`): the
+ * code check would take the whole object as the key, and the generated tests' fake too.
+ */
+function objectRoleArgument(
+  ctx: ProjectContext,
+  sym: TS.Symbol,
+  fn: StorageFunction,
+): { index: number; role: string; text: string } | undefined {
+  const decl = primaryDeclarationOf(sym);
+  const params =
+    decl && "parameters" in decl
+      ? (decl as { parameters: readonly TS.ParameterDeclaration[] }).parameters
+      : functionOfDeclaration(decl)?.parameters;
+  if (!params) return undefined;
+  for (const [index, role] of fn.args.entries()) {
+    if (role !== "key" && role !== "from" && role !== "to") continue;
+    const param = params[index];
+    if (!param || param.dotDotDotToken) continue;
+    const type = ctx.checker.getTypeAtLocation(param);
+    if (!type) continue;
+    const parts = type.isUnionType() ? type.getTypes() : [type];
+    // An array or tuple of states (`from`) has an index signature; a plain object has none.
+    const isObject = (t: TS.Type) =>
+      (t.flags & ts.TypeFlags.Object) !== 0 && ctx.checker.getIndexInfosOfType(t).length === 0;
+    if (!parts.some(isObject)) continue;
+    const text = ts.isObjectBindingPattern(param.name)
+      ? oneLine(param.name)
+      : param.type
+        ? oneLine(param.type)
+        : ctx.checker.typeToString(type);
+    return { index, role, text: text.length > 40 ? `${text.slice(0, 39)}…` : text };
+  }
+  return undefined;
 }
 
 /**
@@ -691,7 +770,7 @@ function reportUncalled(
         name,
         `client "${name}" (${binding.module}#${binding.export}) is bound but never called: no call in the project resolves to it, so tsverify sees none of its calls`,
         {
-          hint: `Check \`module\` and \`export\`: tsverify matches calls on the exported value itself, and on variables, parameters and fields typed as it (for a class, as its instances), so a client the code holds as another type (an interface, \`any\`) is never matched. Bind what the code calls, or remove the binding.`,
+          hint: `Check \`module\` and \`export\`: tsverify matches calls on the exported value itself, and on variables, parameters and fields typed as it (for a class or an interface, as its instances), so a client the code holds as another type (an interface when the class is bound, \`any\`) is never matched. Bind the type the code holds it as, or remove the binding.`,
         },
       ),
       ...(binding.at ? { specAt: binding.at } : {}),

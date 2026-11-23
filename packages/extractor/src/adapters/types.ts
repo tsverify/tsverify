@@ -35,6 +35,11 @@ export interface PersistenceFacts {
   atomicAt?: { kind: AtomicScope["kind"]; call: TS.CallExpression; gate: string };
   /** The from-state when the persistence call itself decides it (an update's `where`). */
   fromState?: FromState;
+  /**
+   * When `fromState.values` is `*`: what to do about it, for the hint of the `unanalyzable`
+   * from-state finding (default: restructure the check, docs/authoring-guide.md §7.5).
+   */
+  fromStateHint?: string;
   storage?: { client: string; collection: string; key: string };
   /**
    * The expression carrying the entity's id, when there is no read call whose first argument

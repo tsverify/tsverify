@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { formatGuardRef, parseGuardBinding, parseGuardRef, parseSymbolRef } from "./refs";
+import {
+  formatGuardArgList,
+  formatGuardRef,
+  parseGuardArgs,
+  parseGuardBinding,
+  parseGuardRef,
+  parseSymbolRef,
+} from "./refs";
 
 describe("parseSymbolRef", () => {
   it("parses file#symbol", () => {
@@ -44,5 +51,31 @@ describe("parseGuardBinding", () => {
   });
   it("parses a binding without args", () => {
     expect(parseGuardBinding("src/auth/guards.ts#requireOwner")?.args).toEqual([]);
+  });
+  it("reads a list argument the same whatever the quotes and spacing", () => {
+    const canonical = ['["owner", "admin"]'];
+    expect(parseGuardBinding('src/a.ts#requireRole(["owner", "admin"])')?.args).toEqual(canonical);
+    expect(parseGuardBinding("src/a.ts#requireRole(['owner','admin'])")?.args).toEqual(canonical);
+    expect(parseGuardBinding("src/a.ts#requireRole([owner, admin])")?.args).toEqual(canonical);
+    expect(parseGuardBinding("src/a.ts#requireRole([])")?.args).toEqual(["[]"]);
+  });
+  it("reads scalars and lists side by side", () => {
+    expect(parseGuardArgs(`'admin', 2, ["a,b", 'c'], true`)).toEqual([
+      "admin",
+      "2",
+      '["a,b", "c"]',
+      "true",
+    ]);
+    expect(formatGuardArgList(["owner", "admin"])).toBe('["owner", "admin"]');
+  });
+  it.each([
+    'src/a.ts#requireRole({ role: "admin" })',
+    "src/a.ts#requireRole(roles())",
+    'src/a.ts#requireRole("admin)',
+    "src/a.ts#requireRole([[a]])",
+    "src/a.ts#requireRole([a b] c)",
+    "src/a.ts#requireRole(a,,b)",
+  ])("rejects arguments it can't match: %s", (t) => {
+    expect(parseGuardBinding(t)).toBeUndefined();
   });
 });

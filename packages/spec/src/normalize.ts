@@ -221,6 +221,9 @@ class Normalizer {
         this.out.error(
           this.locator.value(path),
           `bindings.guards "${key}": malformed binding "${target}" (expected "path/to/file.ts#symbol" or "path/to/file.ts#symbol(args)")`,
+          {
+            hint: `Each argument is a string ("admin" or 'admin'), a number, true/false, or a list of those (["owner", "admin"]): tsverify matches them against the literal arguments of the call. An object, a call or a variable can't be matched; bind a wrapper function without that argument instead (e.g. requireAdmin).`,
+          },
         );
         continue;
       }

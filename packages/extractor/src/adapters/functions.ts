@@ -64,9 +64,13 @@
  * passed to any other function is the entity's when its type says so, as for every other write
  * (`entity.ts`): its type, or the parameter's, names the entity (`Partial<Order>`), or its state
  * field's literal states are exactly the entity's states (ignoring `undefined` and non-literal
- * members, such as a query builder's `SQL`) **and** a bound read of the entity comes before it in
- * the same function. So `c.json({ status: "ok" })` is not a write, and Drizzle's
- * `tx.update(incident).set({ status: "resolved" })` after `getIncident(…)` is.
+ * members, such as a query builder's `SQL`) **and** either a bound read of the entity comes
+ * before it in the same function, or the call saves changed fields (`isUpdateLike`: an `update`
+ * method, or `set` on what one returned). The second covers bulk updates with no read of one
+ * entity before them: Drizzle's `tx.update(table).set({ status: "resolved" }).where(…)` takes a
+ * patch typed from the table, whose `status` column has exactly the spec's states. So
+ * `c.json({ status: "ok" })` is not a write, `notify({ status: "resolved" })` with a parameter
+ * typed `{ status: OrderStatus }` is not either (not an update), and both Drizzle updates are.
  *
  * **Anything else.** A write that no bound save commits (it goes to an unbound data layer), or
  * a patch passed to an unbound function, is `unanalyzable` (`PersistenceFacts.unbound`). A raw
@@ -85,9 +89,10 @@ import type {
   StorageRole,
 } from "@tsverify/ir";
 import { type Callees, frameCalls, frameOf, leadsTo, MAX_DEPTH, type Reach } from "../callgraph";
-import { type FunctionLike, inlineCallbackCall, isFunctionLike } from "../cfg";
+import { ENTRY, type FunctionLike, inlineCallbackCall, isFunctionLike, reachable } from "../cfg";
 import type { ClientCall } from "../client-calls";
 import { primaryDeclarationOf, valueDeclarationOf } from "../declarations";
+import { cfgOf } from "../dominance";
 import { functionOfDeclaration, symbolOf } from "../resolve";
 import type * as TS from "../ts-types";
 import {
@@ -98,7 +103,13 @@ import {
   typeNames,
 } from "../type-facts";
 import { ts } from "../typescript";
-import { heldDeclarationOf, referenceText, unwrapArgument, type WriteNode } from "../writes";
+import {
+  heldDeclarationOf,
+  oneLine,
+  referenceText,
+  unwrapArgument,
+  type WriteNode,
+} from "../writes";
 import { returnedExpressions, throughLocal } from "./assign";
 import type {
   AdapterInput,
@@ -111,6 +122,15 @@ import type {
 } from "./types";
 
 export const STORAGE_CLIENT = "storage";
+
+/** Method names that save changed fields (see `isUpdateLike` in `functionsAdapter`). */
+const UPDATE_METHODS: ReadonlySet<string> = new Set([
+  "update",
+  "updateMany",
+  "updateOne",
+  "updateTable",
+  "upsert",
+]);
 
 /** One bound storage function. */
 export interface BoundFunction {
@@ -753,12 +773,35 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
       : undefined;
   };
 
+  /**
+   * Whether `call` saves changed fields of a table or model it names: an update method
+   * (`knex("orders").update({ … })`, `orders.updateOne(…)`), or `set` called on what an
+   * `update` call returned (Drizzle's `tx.update(table).set({ … })`, Kysely's
+   * `db.updateTable("t").set({ … })`). See "Whose patch".
+   */
+  const isUpdateLike = (call: TS.CallExpression): boolean => {
+    const callee = strip(call.expression);
+    if (!ts.isPropertyAccessExpression(callee)) return false;
+    const method = callee.name.text;
+    if (UPDATE_METHODS.has(method)) return true;
+    if (method !== "set") return false;
+    for (let e = strip(callee.expression); ; ) {
+      if (ts.isCallExpression(e)) {
+        const c = strip(e.expression);
+        if (ts.isPropertyAccessExpression(c) && UPDATE_METHODS.has(c.name.text)) return true;
+        e = c;
+      } else if (ts.isPropertyAccessExpression(e)) e = strip(e.expression);
+      else return false;
+    }
+  };
+
   /** Whether a held patch is the entity's (see "Whose patch"). */
   const heldIsEntity = (h: Held): boolean => {
     if (h.sinks.length === 0) return false;
     const declared = checker.getTypeAtLocation(h.decl.name);
     if (typeNamesEntity(declared)) return true;
     let exact = exactStates(declared);
+    let update = false;
     for (const { call, arg } of h.sinks) {
       const b = fns.of(call);
       const role = b?.fn.args[argIndexOf(call, arg)];
@@ -767,8 +810,9 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
       const contextual = checker.getContextualType(arg);
       if (typeNamesEntity(contextual)) return true;
       exact ||= exactStates(contextual);
+      update ||= isUpdateLike(call);
     }
-    return exact && readBefore(h.decl, h.decl.getStart());
+    return exact && (update || readBefore(h.decl, h.decl.getStart()));
   };
 
   /** A patch passed straight to an unbound function is the entity's (see "Whose patch"). */
@@ -776,14 +820,14 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
     const contextual = checker.getContextualType(write.expr);
     if (typeNamesEntity(contextual)) return true;
     const exact = exactStates(contextual) || exactStates(checker.getTypeAtLocation(write.expr));
-    return exact && readBefore(call, call.getStart());
+    return exact && (isUpdateLike(call) || readBefore(call, call.getStart()));
   };
 
   const unreadableHint = `Save the ${entity.name}'s ${field} through a \`bindings.storage\` function, one call per target state, with the state as a literal: a conditional save (\`update\`), or a \`const\` patch passed straight to a bound \`save\` (docs/authoring-guide.md, "Restructuring unanalyzable code").`;
 
   /** A held patch (or a field set on one) that can't be read as a patch write. */
   const unreadableHeld = (write: WriteNode, h: Held): PersistenceFacts["unreadable"] => {
-    const target = h.sinks[0] && `\`${h.sinks[0].call.expression.getText()}\``;
+    const target = h.sinks[0] && `\`${oneLine(h.sinks[0].call.expression)}\``;
     const passed = target ? `, an object later passed to ${target}` : "";
     if (write.kind === "assign") {
       return {
@@ -798,6 +842,10 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
       hint: unreadableHint,
     };
   };
+
+  const readFirstHint = `Read the ${entity.name} with a \`bindings.storage.read\` function into a \`const\` before the write, in the function that writes it (\`const x = await ${binding.read[0]?.ref.symbol ?? "read"}(…)\`), and check \`x.${field}\` there.`;
+
+  const bulkHint = `Nothing reads one ${entity.name} before this update, so it changes whichever rows its query matches, from whatever state they are in: move it into a function named under \`bindings.storage.update\`, with the states its query requires as \`from\` (docs/authoring-guide.md §7.6).`;
 
   const noRead = (what: string): string =>
     `no read of \`${what}\` through a \`bindings.storage.read\` function was found before this write, so whether it is atomic cannot be decided (not checked)`;
@@ -832,6 +880,7 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
             unconstrained: false,
             reason: `the \`from\` argument of ${commit.gate} (${fromArg?.getText() ?? "missing"}) is not a literal state or a list of them`,
           };
+      const fromStateHint = `Pass the \`from\` states to ${commit.gate} as a literal or a list of literals, or give the binding a fixed \`from:\` list.`;
       // The read that the code checked before the save: the latest one with the same key.
       let read: ClientCall | undefined;
       if (key) {
@@ -849,6 +898,7 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
         atomic: true,
         atomicAt: { kind: "conditional-update", call, gate: commit.gate },
         fromState,
+        ...(states ? {} : { fromStateHint }),
         ...(key ? { entityKey: key } : {}),
       };
     }
@@ -882,13 +932,18 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
       }
     }
 
+    if (write.kind === "data") return factsOf({ ...write, kind: "patch" }, frame, reach);
+
     if (write.kind === "patch") {
       const call = write.call as TS.CallExpression;
       const b = fns.of(call);
-      // The probe (chosen by syntax) counts only when it reads an entity.
+      // The probe (chosen by syntax) counts only when it reads an entity: its type names the
+      // entity, or it holds what a bound read returned. A type the entity's name doesn't survive
+      // (`z.infer<…>`, `typeof table.$inferSelect`, behind `| undefined`) still has the read.
       const probed =
         write.probed === true &&
-        typeNames(declaredTypeOfRef(write.ref, checker), checker).includes(entity.name);
+        (typeNamesEntity(declaredTypeOfRef(write.ref, checker)) ||
+          readOfRef(write.ref, frame, reach, 0) !== undefined);
       if (b?.kind !== "save") {
         return {
           ...base,
@@ -901,9 +956,10 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
                   unconstrained: false,
                   reason: `no read of the ${entity.name} precedes the call`,
                 },
+                fromStateHint: isUpdateLike(call) ? bulkHint : readFirstHint,
               }),
           unbound: unbound(
-            `${entity.name}.${field} is written in a patch passed to \`${call.expression.getText()}\`, which is not a \`bindings.storage.save\` function`,
+            `${entity.name}.${field} is written in a patch passed to \`${oneLine(call.expression)}\`, which is not a \`bindings.storage.save\` function`,
           ),
         };
       }
@@ -973,7 +1029,7 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
     if (!commit) {
       facts.unbound = unbound(
         unboundCall
-          ? `${entity.name}.${field} is written in an object passed to \`${unboundCall.expression.getText()}\`, which is not a \`bindings.storage.save\` function`
+          ? `${entity.name}.${field} is written in an object passed to \`${oneLine(unboundCall.expression)}\`, which is not a \`bindings.storage.save\` function`
           : `no \`bindings.storage.save\` call saves \`${refText}\` after this write, so tsverify cannot tell where it is stored`,
       );
     }
@@ -1021,12 +1077,12 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
     const returns = bound.returns ?? "changed";
     const leads = leadsTo(reach, frame, write.expr);
 
-    const subjectOf =
-      (subject: TS.CallExpression) =>
+    const subjectFor =
+      (subject: TS.CallExpression, kind: StorageFunction["returns"]) =>
       (e: TS.Expression): boolean => {
         let s = strip(e);
         // `returns: count` may be a count object, as Prisma's `updateMany` returns: `r.count`.
-        if (returns === "count" && ts.isPropertyAccessExpression(s) && s.name.text === "count") {
+        if (kind === "count" && ts.isPropertyAccessExpression(s) && s.name.text === "count") {
           s = strip(s.expression);
         }
         if (s === subject) return true;
@@ -1039,6 +1095,34 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
           strip(decl.initializer) === subject
         );
       };
+    const subjectOf = (subject: TS.CallExpression) => subjectFor(subject, returns);
+
+    /**
+     * Whether `node` (in `fn`) runs only once another conditional save in `fn` went through: one
+     * that can't find the state changed (`returns: throws`, or `from` every state) on every path
+     * to `node`, or one whose "saved" branch `node` is in. Such an effect is that write's (it
+     * follows a state change that did happen), so it doesn't run "although this save found the
+     * state changed": `if (await reserve(id)) { await email.send(…); return; }` before
+     * `await cancel(id)`.
+     */
+    const afterAnotherWrite = (node: TS.Node, fn: FunctionLike): boolean => {
+      for (const c of frameCalls(fn)) {
+        if (c === save || c.getEnd() > node.getStart()) continue;
+        const other = fns.of(c);
+        if (other?.kind !== "update") continue;
+        const kind = other.fn.returns ?? "changed";
+        const blind = other.fn.from && entity.states.every((s) => other.fn.from?.includes(s));
+        if (kind === "throws" || blind) {
+          const cfg = cfgOf(fn);
+          const ids = cfg.idsOf(node);
+          const seen = reachable(cfg, [ENTRY], new Set(cfg.idsOf(c)));
+          if (ids.length > 0 && !ids.some((id) => seen[id] === 1)) return true;
+          continue;
+        }
+        if (branchOutcome(node, fn, subjectFor(c, kind), kind) === "success") return true;
+      }
+      return false;
+    };
 
     /** How `fn` (on the path to the save, through `lead`) reports a failed save to its callers. */
     const propagationMemo = new Map<FunctionLike, Propagation>();
@@ -1100,6 +1184,7 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
       stack: Set<FunctionLike>,
     ): EffectOutcome => {
       const groups = leads(fn);
+      if (afterAnotherWrite(node, fn)) return "attributed";
       if (groups.length === 0) {
         // A frame called from attributed call sites: as those call sites.
         if (stack.has(fn)) return "attributed";
@@ -1134,7 +1219,7 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
 
   return {
     kind: "functions",
-    writeKinds: new Set(["assign", "spread", "patch", "held", "update"]),
+    writeKinds: new Set(["assign", "spread", "patch", "held", "update", "data"]),
     scopeAliasParam: -1,
     readHint: `Read the ${entity.name} with a \`bindings.storage.read\` function in the same function as the write, or in a helper that returns it.`,
 
@@ -1154,6 +1239,14 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
       if (write.kind === "assign") {
         const h = heldOfRef(write.ref);
         return h === undefined ? undefined : heldIsEntity(h);
+      }
+      // An ORM update's `data` (`prisma.order.update({ where, data: { status } })`): a patch
+      // passed to a function the binding doesn't name.
+      if (write.kind === "data" && write.call) {
+        return (
+          typeNamesEntity(declaredTypeOfRef(write.ref, checker)) ||
+          unboundPatchIsEntity(write, write.call)
+        );
       }
       if (write.kind !== "patch") return undefined;
       const call = write.call as TS.CallExpression;

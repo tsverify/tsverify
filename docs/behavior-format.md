@@ -101,6 +101,11 @@ Code that calls only `requireOwner` on some path and no guard on another does no
 `name` or `name(arg, …)`, e.g. `owner`, `role(admin)`. Canonical form (`GuardRef.raw`) has no inner spaces
 around the parens and `", "` between args. Bindings are keyed by the canonical form.
 
+Inside a flow mapping or list (`{ … }`, `[ … ]`) a comma ends the value, so quote a guard with several
+arguments there: `member: { trust: authenticated, requires: "role(owner, admin)" }`,
+`requires: ["role(owner, admin)", verified]`. Unquoted, the spec is rejected (`unknown key "admin)"`, with a hint
+to quote it). In block style (`requires: role(owner, admin)` on its own line) no quotes are needed.
+
 ## `rules[]`
 
 Each item has `name` plus **exactly one** of `always`, `never`, `eventually`, whose value is an expression:
@@ -121,8 +126,12 @@ STATE   := identifier (must be a declared state)
 EFFECT  := dotted identifier (must be an effect declared on some transition)
 ```
 
-Semantics: `always` holds in every reachable state; `never` holds in none; `eventually` means from every reachable
-state a satisfying state is reachable (AG EF — weaker than LTL with fairness).
+Semantics: `always` holds in every reachable state; `never` holds in none; `eventually` means that from every
+reachable state, a state where it holds can still be reached (AG EF: it need not happen on every run, only stay
+possible). The explored states have no cycles (each invocation runs at most once, up to `concurrency`), so every
+run ends in an **end state**, where no transition can fire any more, and AG EF comes down to: the expression holds
+in every end state. That is how it is checked and reported ("can end in status `x` where it never holds"). End
+states that exist only because the invocation bound ran out (one more invocation could still move) are skipped.
 
 ## `concurrency`
 
@@ -136,12 +145,15 @@ state a satisfying state is reachable (AG EF — weaker than LTL with fairness).
 | Key | Notes |
 |---|---|
 | `storage` | how the entity is stored: a preset, or the app's own storage functions (see below); omitted → auto-detected |
-| `clients` | map name → `{ module, export }` |
-| `guards` | map canonical guard → `path#symbol` or `path#symbol(args)` |
+| `clients` | map name → `{ module, export }`. `export` is a value (an object, a function, an instance), or a class or interface: then every value typed as it is the client (no generated tests for such a spec) |
+| `guards` | map canonical guard → `path#symbol` or `path#symbol(args)`. Each argument is a string (`"admin"` or `'admin'`), a bare word or number, `true`/`false`, or a list of those (`["owner", "admin"]`); anything else (an object, a call) is a spec error, since it could never match a call |
 | `effects` | map effect name → code call path (`client.member.path`); omitted → name is the path |
 
-`persistence: assign | prisma | drizzle | memory` is still accepted as an alias of the preset form, so existing
-specs keep working. It can't be combined with `storage`.
+`persistence: assign | prisma | memory` is still accepted as an alias of the preset form, so existing specs keep
+working. It can't be combined with `storage`. `drizzle` (in either form) is a reserved name: the spec is valid,
+but there is no Drizzle preset yet, so `tsverify check` reports one `unanalyzable` warning and extracts no code
+model. A project that imports `drizzle-orm` without `bindings.storage` is treated the same way. Name the app's
+own storage functions instead (the named-function form below), which works whatever the database.
 
 ### `bindings.storage`
 
@@ -214,6 +226,11 @@ Argument roles:
 | `callback` | the function the atomic function runs | atomic |
 | `_` | anything tsverify should ignore | all |
 
+Each role is one positional argument. Functions that take one object of named arguments
+(`getOrder({ tx, id })`) aren't supported yet: a `key`, `from` or `to` role on an argument whose type is an
+object gets an `unanalyzable` warning (`…:binding:storage.<symbol>.args`); bind a wrapper that takes it as its own
+argument.
+
 How the code check and the generated tests see these functions:
 
 - a call to one is recognised by the callee's resolved symbol (imports, renamed re-exports, namespace imports
@@ -230,7 +247,8 @@ How the code check and the generated tests see these functions:
   transition's, and an effect that can run before the update's result is checked makes it `non-atomic`
 - a write that no named function saves is `unanalyzable` (`--strict`: an error)
 - `tsverify test` replaces each named function with an in-memory version (`instrument.storage`) by mocking its
-  module; the module's other exports stay real
+  module; the module's other exports stay real. So each must be exported (or be a method of an export): one
+  that isn't is a `broken-link` error, although `check` still reads its calls
 
 Errors (`invalid-spec`, at the offending YAML node):
 

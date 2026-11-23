@@ -114,6 +114,32 @@ describe("effects", () => {
     ]);
   });
 
+  it("reports an undeclared effect once when several writes of the transition reach it", () => {
+    // refund's impl reaches three writes of `refunded` (refund, refund~2, refund~3), on paths
+    // that all call the unmapped gate: one finding, naming the other call site.
+    const refund = cleanWrites().find((w) => w.name === "refund") as Write;
+    const charge = (line: number) => ({
+      effect: "stripe.charges.create",
+      gate: "stripe.charges.create",
+      at: [line, 3] as [number, number],
+    });
+    const writes = [
+      ...patchWrite(cleanWrites(), "refund", (w) => ({
+        ...w,
+        effects: [...w.effects, charge(20)],
+      })),
+      { ...refund, name: "refund~2", write: [30, 5] as [number, number], effects: [charge(20)] },
+      { ...refund, name: "refund~3", write: [40, 5] as [number, number], effects: [charge(44)] },
+    ];
+    const findings = run(writes).filter((f) => f.category === "undeclared-effect");
+    expect(findings.map((f) => [f.id, f.message])).toEqual([
+      [
+        "undeclared-effect:Order lifecycle:refund:stripe.charges.create",
+        "refund: refundOrder calls stripe.charges.create, a gate no spec effect maps to (not in bindings.effects) (also called at src/orders/refund.ts:44).",
+      ],
+    ]);
+  });
+
   it("falls back to the transition when the spec has no effect locations", () => {
     const located = specModel();
     const { effectsAt: _, ...bindings } = located.bindings;

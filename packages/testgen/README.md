@@ -82,7 +82,7 @@ without `tsverifyReplay` could not run at all.
 ## Skipped (info findings)
 
 No `fixtures`; `memory` persistence (no fakes or replay support yet) or another persistence
-without fakes (`drizzle`); a transition without `impl`, linked write, invocation shape or storage site; no actor
+without fakes (`drizzle`); a transition without `impl`, linked write or storage site, or arguments it can't trace (key and actor) without `fixtures.args`; no actor
 fixture for a transition whose impl takes an actor; guard tests for impls that take no actor; a
 counterexample with nothing drivable left to replay.
 

@@ -165,9 +165,14 @@ describe("a client bound to a class, and bound clients nothing calls", () => {
   bindings.clients = {
     db: bindings.clients.db as (typeof bindings.clients)[string],
     queue: { module: "src/queue.ts", export: "Queue" },
+    notifier: { module: "src/queue.ts", export: "Notifier" },
     audit: { module: "src/queue.ts", export: "audit", at: specAt },
   };
-  bindings.effects = { "queue.ack_ship": "queue.ack", "audit.shipped": "audit.log" };
+  bindings.effects = {
+    "queue.ack_ship": "queue.ack",
+    "audit.shipped": "audit.log",
+    "notifier.shipped": "notifier.notify",
+  };
   const result = extractFixture(
     "injected-class",
     orderSpec(
@@ -179,6 +184,7 @@ describe("a client bound to a class, and bound clients nothing calls", () => {
           effects: [
             { name: "audit.shipped", multiplicity: "at-least-once" },
             { name: "queue.ack_ship", multiplicity: "exactly-once" },
+            { name: "notifier.shipped", multiplicity: "at-least-once" },
           ],
         },
       ],
@@ -188,7 +194,15 @@ describe("a client bound to a class, and bound clients nothing calls", () => {
   );
 
   it("a call on an instance typed as the class (`this.$.queue.ack`) is a call on the client", () => {
-    expect(effectSites("ship", result)).toEqual([["queue.ack_ship", "queue.ack", "ack"]]);
+    expect(effectSites("ship", result)).toContainEqual(["queue.ack_ship", "queue.ack", "ack"]);
+  });
+
+  it("a client bound to an interface: a call on a value typed as it is a call on the client", () => {
+    expect(effectSites("ship", result)).toContainEqual([
+      "notifier.shipped",
+      "notifier.notify",
+      "notify",
+    ]);
   });
 
   it("warns about a bound client that no call resolves to, at its binding", () => {
@@ -210,6 +224,11 @@ describe("a client bound to a class, and bound clients nothing calls", () => {
     expect(result.model?.instanceImpls).toEqual(["ship"]);
     expect(result.model?.unfakeable).toEqual([
       {
+        binding: "clients.notifier",
+        reason:
+          "client notifier is the interface Notifier, a type: there is no module export to replace with a fake, and the code gets its instances from elsewhere",
+      },
+      {
         binding: "clients.queue",
         reason:
           "client queue is the class Queue, and a fake object in its place would break `new Queue(…)`",
@@ -219,7 +238,14 @@ describe("a client bound to a class, and bound clients nothing calls", () => {
 
   it("takes the effects on that client as specified (they can't be seen)", () => {
     const ship = transitionOf(result, "ship");
-    expect(ship.effects.map((e) => e.name)).toEqual(["audit.shipped", "queue.ack_ship"]);
-    expect(ship.sites?.effects.map((e) => e.effect)).toEqual(["queue.ack_ship"]);
+    expect(ship.effects.map((e) => e.name)).toEqual([
+      "audit.shipped",
+      "notifier.shipped",
+      "queue.ack_ship",
+    ]);
+    expect(ship.sites?.effects.map((e) => e.effect)).toEqual([
+      "queue.ack_ship",
+      "notifier.shipped",
+    ]);
   });
 });

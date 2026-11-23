@@ -70,5 +70,38 @@ export function compare(spec: BehaviorModel, code: BehaviorModel): Finding[] {
       compareStrings(a.category, b.category) ||
       compareStrings(a.id, b.id),
   );
-  return [...findings, ...unlinked.map((c) => checkUnlinked(spec, c))];
+  return [...mergeRepeats(findings), ...unlinked.map((c) => checkUnlinked(spec, c))];
+}
+
+/**
+ * One finding per repeated message. A transition whose impl reaches several writes of its `to`
+ * (`t`, `t~2`, …) is checked once per write, and an undeclared effect those paths share is the
+ * same finding each time: it is kept once (the first by id, the canonical one), and the other
+ * places it is called from, when they differ, are listed in its message. Findings that are
+ * identical apart from their id are kept once too.
+ */
+function mergeRepeats(findings: Finding[]): Finding[] {
+  const out: Finding[] = [];
+  const kept = new Map<string, { finding: Finding; also: string[] }>();
+  const where = (f: Finding) =>
+    f.codeAt === undefined ? "" : `${f.codeAt.file}:${f.codeAt.line}:${f.codeAt.column}`;
+  for (const f of findings) {
+    const merge = f.category === "undeclared-effect";
+    const key = [f.category, f.transition ?? "", f.message, merge ? "" : where(f)].join("\u0000");
+    const first = kept.get(key);
+    if (first === undefined) {
+      kept.set(key, { finding: f, also: [] });
+      out.push(f);
+      continue;
+    }
+    const at = f.codeAt && `${f.codeAt.file}:${f.codeAt.line}`;
+    const firstAt =
+      first.finding.codeAt && `${first.finding.codeAt.file}:${first.finding.codeAt.line}`;
+    if (at !== undefined && at !== firstAt && !first.also.includes(at)) first.also.push(at);
+  }
+  for (const { finding, also } of kept.values()) {
+    if (also.length === 0) continue;
+    finding.message = `${finding.message.replace(/\.$/, "")} (also called at ${also.join(", ")}).`;
+  }
+  return out;
 }

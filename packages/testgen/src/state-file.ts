@@ -36,7 +36,7 @@ export function stateFile(
   input: StateFileInput,
 ): { file: GeneratedFile; tests: GeneratedTest[] } | undefined {
   if (input.cases.length === 0) return undefined;
-  const impls = input.cases.map((c) => c.linked.invocation.impl);
+  const impls = input.cases.map((c) => c.linked.impl);
   const p = prelude(ctx, {
     header: { specFile: ctx.specFile, behavior: ctx.behavior, source: input.source },
     runtime: [],
@@ -45,7 +45,7 @@ export function stateFile(
   });
 
   const bodies = input.cases.map((c) => {
-    const impl = p.impls.get(`${c.linked.invocation.impl.file}#${c.linked.invocation.impl.symbol}`);
+    const impl = p.impls.get(`${c.linked.impl.file}#${c.linked.impl.symbol}`);
     if (impl === undefined) throw new Error(`testgen: impl of ${c.linked.spec.name} not imported`);
     return c.body(impl);
   });

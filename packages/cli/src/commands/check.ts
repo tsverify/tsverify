@@ -6,7 +6,14 @@ import { type LoadedSpec, loadSpecs, resolveSpecFiles, selectEnforced } from "..
 import type { Io } from "../io";
 import { formatReport, parseFormat } from "../output/format";
 import { type ProjectRef, resolveProject } from "../project-root";
-import { allFindings, applyStrict, dedupeFindings, type Report, type SpecReport } from "../report";
+import {
+  allFindings,
+  applyStrict,
+  dedupeFindings,
+  dropSpecRepeats,
+  type Report,
+  type SpecReport,
+} from "../report";
 
 export interface CheckCommandOptions {
   /** Raw from cac; validated by `parseFormat`. */
@@ -95,7 +102,7 @@ export async function runCheck(
       if (declared.length > 0) r.declaredAtomic = declared;
     });
   }
-  for (const r of reports) r.findings = dedupeFindings(r.findings);
+  for (const r of reports) r.findings = dropSpecRepeats(dedupeFindings(r.findings));
   const report: Report = {
     specs: reports,
     ...(specOnly ? { specOnly } : {}),

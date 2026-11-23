@@ -429,6 +429,35 @@ describe("state limit", () => {
   });
 });
 
+describe("state-limit hint on a code model", () => {
+  it("names the spec's transitions, never a code write's name", () => {
+    const m = orderModel();
+    m.origin = "code";
+    const sites = (specTransition?: string) =>
+      ({ ...(specTransition ? { specTransition } : {}) }) as Transition["sites"];
+    const checkout = transition(m, "checkout");
+    checkout.atomic = false;
+    checkout.sites = sites("checkout");
+    for (const t of m.transitions) t.sites ??= sites(t.name);
+    m.transitions.push(
+      { ...checkout, name: "checkout~2", sites: sites("checkout") },
+      { ...checkout, name: "sweepOrders", sites: sites() },
+    );
+    m.concurrency["checkout~2"] = 2;
+    m.concurrency.sweepOrders = 2;
+    const [limit] = check(m, { maxStates: 10 }).findings.filter(
+      (f) => f.category === "unanalyzable",
+    );
+    const lines = limit?.hint?.split("\n") ?? [];
+    expect(lines[0]).toBe(
+      "The explored states multiply: 6 states × 7 writes of 5 spec transitions at concurrency 2 (14 invocations that can each run at any point; 3 non-atomic (writes of checkout; 1 no spec transition reaches), also pause between read and write) × 2 effect counters (0–2 each).",
+    );
+    expect(lines).toContain("    max_parallel: { checkout: 2 }");
+    expect(limit?.hint).not.toContain("~2");
+    expect(limit?.hint).not.toContain("sweepOrders");
+  });
+});
+
 describe("rule metadata", () => {
   it("carries the rule location and a stable id", () => {
     const m = orderModel();

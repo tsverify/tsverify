@@ -72,6 +72,36 @@ describe("from-states", () => {
     expect(run(withFrom("ship", "*", true), spec)).toEqual([]);
   });
 
+  it("says when the extra states belong to another transition with the same impl and to", () => {
+    // ship: paid → shipped, and reship: refunded → shipped, both with impl shipOrder. The one
+    // write is linked to both, and each sees both from-states.
+    const base = specModel();
+    const ship = base.transitions.find((t) => t.name === "ship");
+    if (!ship) throw new Error("no ship");
+    const spec = {
+      ...base,
+      transitions: [...base.transitions, { ...ship, name: "reship", from: ["refunded"] }],
+      concurrency: { ...base.concurrency, reship: 2 },
+    };
+    const both = { values: ["paid", "refunded"], unconstrained: false };
+    const shipWrite = cleanWrites().find((w) => w.name === "ship") as Write;
+    const writes = [
+      ...patchWrite(cleanWrites(), "ship", (w) => ({ ...w, fromState: both })),
+      { ...shipWrite, name: "reship", specTransition: "reship", fromState: both },
+    ];
+    const findings = run(writes, spec).filter((f) => f.category === "from-state-mismatch");
+    expect(findings.map((f) => [f.id, f.severity])).toEqual([
+      ["from-state-mismatch:Order lifecycle:reship:paid", "error"],
+      ["from-state-mismatch:Order lifecycle:ship:refunded", "error"],
+    ]);
+    expect(findings[1]?.message).toBe(
+      "ship: shipOrder also writes shipped from refunded, which ship does not allow (from: paid) but reship does: ship and reship share the impl shipOrder and `to: shipped`, so tsverify can't tell which of the write's from-states is whose.",
+    );
+    expect(findings[1]?.hint).toBe(
+      "Merge ship and reship into one transition (from: {paid, refunded}), or give each its own impl (one function per from-state, each checking only its own).",
+    );
+  });
+
   it("reports extra source states as an error", () => {
     const findings = run(withFrom("checkout", ["cancelled", "draft"]));
     expect(findings).toEqual([

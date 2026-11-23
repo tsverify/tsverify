@@ -78,7 +78,7 @@ export function check(model: BehaviorModel, options: CheckOptions = {}): CheckRe
       severity: "warning",
       message: `State limit reached: explored ${result.store.size} states (maxStates: ${maxStates}) without finishing; results are incomplete.`,
       behavior: model.name,
-      hint: stateLimitHint(layout, maxStates),
+      hint: stateLimitHint(layout, maxStates, model),
     });
   }
 

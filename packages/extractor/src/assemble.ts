@@ -44,11 +44,13 @@ import type { ClientCall, ClientCalls } from "./client-calls";
 import type { Dominance } from "./dominance";
 import { effectCalls, effectNameOf, multiplicityOf } from "./effects";
 import { unanalyzable } from "./findings";
+import { guardArgOf } from "./guard-args";
 import { traceToRoot } from "./invocation";
 import { occurrenceOf } from "./occurrence";
 import type { ProjectContext } from "./project";
 import type * as TS from "./ts-types";
-import { type Narrowed, singleLiteralOf } from "./type-facts";
+import type { Narrowed } from "./type-facts";
+import { unreadCheckOf } from "./unread-check";
 import { referenceText, type WriteNode } from "./writes";
 
 export interface MatchedWrite {
@@ -99,27 +101,51 @@ function baseName(d: Draft, functionName: string): string {
   return d.linked.to === d.write.value ? d.linked.name : `${d.linked.name}->${d.write.value}`;
 }
 
-function fromStateOf(spec: BehaviorModel, m: MatchedWrite): FromState {
+/** The hint of the `unanalyzable` from-state finding for a check tsverify can't read. */
+const UNREAD_CHECK_HINT =
+  'Check the state in a form tsverify reads, before the write: `if (x.status !== "a") throw`, a `switch`, `.includes` on a list of literals, or a helper declared as an assertion function (`function assertOpen(x): asserts x is Open`). See docs/authoring-guide.md §7.5, "Restructuring unanalyzable code".';
+
+/** The hint of the `unanalyzable` from-state finding when the adapter gave none. */
+const RESTRUCTURE_HINT =
+  'Check the state with a comparison tsverify reads (`if (x.status !== "a") throw`, a `switch`, `.includes` on a list of literals) before the write (docs/authoring-guide.md §7.5).';
+
+function fromStateOf(spec: BehaviorModel, m: MatchedWrite): FromState & { hint: string } {
   const n = m.narrowed;
   const ref = referenceText(m.write.ref) ?? m.write.ref.getText();
   const target = `${ref}.${m.write.field}`;
   if (n.values === "*") {
-    let reason: string;
-    if (!m.probed)
-      reason = `${target} is not a plain reference (identifier, this or a property chain), so it cannot be probed`;
-    else if (n.declared === "*")
-      reason = `${spec.entity.name}.${m.write.field} is typed ${n.declaredText}`;
-    else reason = `the type of ${target} at the write is ${n.typeText}`;
-    return { values: "*", unconstrained: false, reason };
+    if (!m.probed) {
+      return {
+        values: "*",
+        unconstrained: false,
+        reason: `${target} is not a plain reference (identifier, this or a property chain), so it cannot be probed`,
+        hint: `Hold the ${spec.entity.name} in a local \`const\` or a parameter and write its ${m.write.field} through that name, so its state at the write can be read.`,
+      };
+    }
+    if (n.declared === "*") {
+      return {
+        values: "*",
+        unconstrained: false,
+        reason: `${spec.entity.name}.${m.write.field} is typed ${n.declaredText}`,
+        hint: `Type ${spec.entity.name}.${m.write.field} as a union of string literals so narrowing can be read.`,
+      };
+    }
+    return {
+      values: "*",
+      unconstrained: false,
+      reason: `the type of ${target} at the write is ${n.typeText}`,
+      hint: RESTRUCTURE_HINT,
+    };
   }
   if (n.unconstrained) {
     return {
       values: [...n.values],
       unconstrained: true,
       reason: `nothing narrows ${target} before the write: its type there is the full declared union ${n.declaredText}`,
+      hint: RESTRUCTURE_HINT,
     };
   }
-  return { values: [...n.values], unconstrained: false };
+  return { values: [...n.values], unconstrained: false, hint: RESTRUCTURE_HINT };
 }
 
 function callSite(
@@ -146,7 +172,7 @@ function implRefOf(ctx: ProjectContext, d: Draft): SymbolRef | undefined {
 }
 
 function isLiteralArg(a: TS.Expression, checker: TS.Checker): boolean {
-  return singleLiteralOf(checker.getTypeAtLocation(a), checker) !== undefined;
+  return guardArgOf(a, checker) !== undefined;
 }
 
 function invocationOf(
@@ -222,6 +248,16 @@ function buildTransition(
     guards.push({ guard: s.key, at, dominates: guardFacts.dominating.has(s.key) });
   }
   guards.sort((a, b) => compareLoc(a.at, b.at) || compareStrings(a.guard, b.guard));
+  const seenMiss = new Set<string>();
+  const guardMisses: NonNullable<CodeSites["guardMisses"]> = [];
+  for (const s of guardFacts.misses) {
+    const at = ctx.loc(s.call);
+    const key = `${s.key}@${at.file}:${at.line}:${at.column}`;
+    if (seenMiss.has(key)) continue;
+    seenMiss.add(key);
+    guardMisses.push({ guard: s.key, at, args: [...s.args] });
+  }
+  guardMisses.sort((a, b) => compareLoc(a.at, b.at) || compareStrings(a.guard, b.guard));
   const guardCalls = [...guardFacts.sites]
     .sort(
       (a, b) => Number(guardFacts.dominating.has(b.key)) - Number(guardFacts.dominating.has(a.key)),
@@ -231,6 +267,10 @@ function buildTransition(
   // Effects that run only after a failed conditional save are not the transition's; ones that
   // can run although it failed escape the atomic step.
   let unchecked: ClientCall | undefined;
+  const specEffects = new Set([
+    ...Object.keys(spec.bindings.effects),
+    ...spec.transitions.flatMap((x) => x.effects.map((e) => e.name)),
+  ]);
   const attributed = effectCalls(
     d.reach,
     m.frame,
@@ -246,7 +286,10 @@ function buildTransition(
         reach: d.reach,
         checker: ctx.checker,
       }) ?? "attributed";
-    if (outcome === "unchecked") unchecked ??= cc;
+    // Only an effect the spec knows of escapes the atomic step: another call is reported as
+    // `undeclared-effect`, "a gate no spec effect maps to", and can break no spec rule.
+    if (outcome === "unchecked" && specEffects.has(effectNameOf(cc.gate, spec, t)))
+      unchecked ??= cc;
     return outcome !== "excluded";
   });
   const effects: (CallSite & { effect: string })[] = attributed
@@ -265,25 +308,51 @@ function buildTransition(
     multiplicity: multiplicityOf(e, spec, t),
   }));
 
-  const fromState = p.fromState ?? fromStateOf(spec, m);
+  const decided = p.fromState
+    ? { ...p.fromState, hint: p.fromStateHint ?? RESTRUCTURE_HINT }
+    : fromStateOf(spec, m);
+  // Nothing narrows the state before the write, but the code consults it in a form tsverify
+  // can't read (`unread-check.ts`): the from-state is unknown, not unchecked.
+  const unread =
+    !p.fromState && decided.unconstrained
+      ? unreadCheckOf(
+          m.write,
+          m.frame,
+          ctx.checker,
+          (call) => calls.classify(call) !== undefined || dominance.keysOfCall(call).length > 0,
+        )
+      : undefined;
+  const unreadAt = unread && ctx.loc(unread.at);
+  const { hint: fromStateHint, ...fromState } =
+    unread && unreadAt
+      ? {
+          values: "*" as const,
+          unconstrained: false,
+          reason: `the from-state check at ${unreadAt.file}:${unreadAt.line} is in a form tsverify can't read: \`${unread.text}\``,
+          hint: UNREAD_CHECK_HINT,
+        }
+      : decided;
   const from =
     fromState.values === "*"
       ? "*"
       : spec.entity.states.filter((s) => (fromState.values as string[]).includes(s));
   // Every `*` from-state (a `string` field, an unprobeable reference, an adapter's `OR`) gets
   // exactly this one finding, `unanalyzable:<behavior>:from-state:<transition>`: it is the
-  // report for that cause, so a consumer need not add a second one.
+  // report for that cause, so a consumer need not add a second one. (When several transitions'
+  // impls reach one write, their copies become one finding naming them all: `mergeSharedWrites`.)
   if (fromState.values === "*") {
     env.findings.push(
       unanalyzable(
         spec.name,
         "from-state",
         name,
-        `${name}: the from-state of this write is unknown: ${fromState.reason}`,
+        unread
+          ? `${name}: ${fromState.reason}, so the from-state of this write is unknown`
+          : `${name}: the from-state of this write is unknown: ${fromState.reason}`,
         {
           transition: name,
           codeAt: m.at,
-          hint: `Type ${spec.entity.name}.${m.write.field} as a union of string literals so narrowing can be read.`,
+          hint: fromStateHint,
         },
       ),
     );
@@ -348,6 +417,7 @@ function buildTransition(
     ...(atomicUnknown !== undefined ? { atomicUnknown } : {}),
     guards,
     ...(guardFacts.sets ? { guardSets: guardFacts.sets } : {}),
+    ...(guardMisses.length > 0 ? { guardMisses } : {}),
     effects,
     ...(invocation ? { invocation } : {}),
     ...(p.storage ? { storage: p.storage } : {}),

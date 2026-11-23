@@ -333,6 +333,49 @@ describe("guard argument mismatch", () => {
   it("a constant with a literal type matches", () => {
     expect(guardKeys(transitionOf(result, "admin_const"))).toEqual(["role(admin)"]);
   });
+
+  it("records the call with other arguments, for a 'called, but not with' message", () => {
+    expect(transitionOf(result, "support").sites?.guardMisses).toEqual([
+      { guard: "role(admin)", at: expect.objectContaining({ line: 9 }), args: ["support"] },
+    ]);
+  });
+});
+
+describe("guard with a list argument", () => {
+  const bindings = libBindings();
+  bindings.guards["role(owner, admin)"] = {
+    file: "src/roles.ts",
+    symbol: "requireRoles",
+    args: ['["owner", "admin"]'],
+    raw: "src/roles.ts#requireRoles(['owner', 'admin'])",
+  };
+  const result = extractFixture(
+    "guard-arg-mismatch",
+    orderSpec(
+      [
+        { name: "staff", impl: "src/roles.ts#shipAsStaff", to: "shipped" },
+        { name: "staff_const", impl: "src/roles.ts#shipAsStaffConst", to: "shipped" },
+        { name: "owner_only", impl: "src/roles.ts#shipAsOwnerOnly", to: "shipped" },
+      ],
+      bindings,
+    ),
+  );
+
+  it("matches an array literal among other arguments, whatever its quotes", () => {
+    expect(guardKeys(transitionOf(result, "staff"))).toEqual(["role(owner, admin)"]);
+  });
+
+  it("matches a const array literal", () => {
+    expect(guardKeys(transitionOf(result, "staff_const"))).toEqual(["role(owner, admin)"]);
+  });
+
+  it("another list is a call with other arguments, not a match", () => {
+    const t = transitionOf(result, "owner_only");
+    expect(guardKeys(t)).toEqual([]);
+    expect(t.sites?.guardMisses).toEqual([
+      { guard: "role(owner, admin)", at: expect.anything(), args: ['["owner"]'] },
+    ]);
+  });
 });
 
 describe("effect mapping", () => {
@@ -649,10 +692,54 @@ describe("membership guards (`.includes` / `.has`)", () => {
     expect(t.sites?.fromState).toEqual({ values: [...from].sort(), unconstrained: false });
   });
 
-  it.each(["mutableList", "otherEntity", "noExit"])("%s: not a guard, unconstrained", (name) => {
+  it.each(["otherEntity", "noExit"])("%s: not a guard, unconstrained", (name) => {
     const t = transitionOf(result, name);
     expect(t.from).toEqual(ALL);
     expect(t.sites?.fromState.unconstrained).toBe(true);
+  });
+
+  it("mutableList: a check on a list that can change is one tsverify can't read, not no check", () => {
+    const t = transitionOf(result, "mutableList");
+    expect(t.from).toBe("*");
+    expect(t.sites?.fromState.reason).toMatch(
+      /^the from-state check at src\/orders\.ts:\d+ is in a form tsverify can't read: `!mutable\.includes\(order\.status\)`$/,
+    );
+  });
+});
+
+describe("a from-state check tsverify can't read", () => {
+  const result = extractFixture(
+    "unread-check",
+    orderSpec([
+      { name: "table", impl: "src/refund.ts#refundByTable", to: "refunded" },
+      { name: "helper", impl: "src/refund.ts#refundByHelper", to: "refunded" },
+      { name: "unchecked", impl: "src/refund.ts#refundUnchecked", to: "refunded" },
+    ]),
+  );
+  const finding = (t: string) =>
+    result.findings.find((f) => f.id === `unanalyzable:Fixture orders:from-state:${t}`);
+
+  it("a lookup table: the from-state is unknown, with where the check is and what to do", () => {
+    expect(transitionOf(result, "table").from).toBe("*");
+    expect(finding("table")).toMatchObject({
+      severity: "warning",
+      message:
+        'table: the from-state check at src/refund.ts:16 is in a form tsverify can\'t read: `!NEXT[order.status].includes("refunded")`, so the from-state of this write is unknown',
+    });
+    expect(finding("table")?.hint).toContain("Restructuring unanalyzable code");
+  });
+
+  it("the entity passed to a helper that may check it: unknown too", () => {
+    expect(transitionOf(result, "helper").from).toBe("*");
+    expect(finding("helper")?.message).toContain(
+      'the from-state check at src/refund.ts:28 is in a form tsverify can\'t read: `assertTransition(order, "refunded")`',
+    );
+  });
+
+  it("a state that is never consulted (only in a message) is still unconstrained", () => {
+    const t = transitionOf(result, "unchecked");
+    expect(t.sites?.fromState.unconstrained).toBe(true);
+    expect(finding("unchecked")).toBeUndefined();
   });
 });
 
@@ -688,6 +775,8 @@ describe("spread-to-save write held in a variable", () => {
     orderSpec([
       { name: "refund", impl: "src/refund.ts#refundOrder", to: "refunded" },
       { name: "ship", impl: "src/refund.ts#shipTwice", to: "shipped" },
+      { name: "cancel", impl: "src/refund.ts#cancelFilled", to: "cancelled" },
+      { name: "cancel_patch", impl: "src/refund.ts#cancelPatch", to: "cancelled" },
     ]),
   );
 
@@ -700,12 +789,32 @@ describe("spread-to-save write held in a variable", () => {
   });
 
   it("reports one saved twice, instead of extracting it", () => {
-    expect(result.findings.map((f) => [f.id, f.severity])).toEqual([
-      ["unanalyzable:Fixture orders:write-shape:shipTwice", "warning"],
-    ]);
-    expect(result.findings[0]?.message).toBe(
+    const f = result.findings.find(
+      (x) => x.id === "unanalyzable:Fixture orders:write-shape:shipTwice",
+    );
+    expect(f?.severity).toBe("warning");
+    expect(f?.message).toBe(
       "Order.status is set in `next`, an object later passed to `db.orders.save`, but `next` is passed to 2 calls; the write is not extracted",
     );
+  });
+
+  it("reports a copy or an empty patch whose state is set afterwards, instead of reading it wrong", () => {
+    expect(result.findings.map((f) => f.id)).toEqual([
+      "unanalyzable:Fixture orders:write-shape:cancelFilled",
+      "unanalyzable:Fixture orders:write-shape:cancelPatch",
+      "unanalyzable:Fixture orders:write-shape:shipTwice",
+    ]);
+    const message = (id: string) => result.findings.find((f) => f.id.endsWith(id))?.message;
+    expect(message(":cancelFilled")).toBe(
+      "Order.status is set in `next`, an object later passed to `tx.orders.save`, but `next.status` is set after the object is built; the write is not extracted",
+    );
+    expect(message(":cancelPatch")).toContain(
+      "but `patch.status` is set after the object is built",
+    );
+    // Not extracted: no transition read from every state, or silently dropped.
+    for (const name of ["cancel", "cancel_patch"]) {
+      expect(transitionOf(result, name).sites).toBeUndefined();
+    }
   });
 });
 

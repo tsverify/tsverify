@@ -1,6 +1,6 @@
 /**
  * Everything the emitters share for one spec: which spec transitions can be driven (linked code
- * transition with an invocation shape and storage, `assign`, `prisma` or `functions` persistence,
+ * transition with traced arguments (`CodeSites.invocation`) or `fixtures.args`, and storage, `assign`, `prisma` or `functions` persistence,
  * actor fixtures, an impl that is a function or a static method), the fake configurations derived
  * from every code transition's `CodeSites` (and, for `functions`, from the spec's
  * `bindings.storage`), and the fixtures. No test is generated when a bound export can't be
@@ -17,6 +17,7 @@ import {
   type InvocationShape,
   STORAGE_KINDS,
   type StorageBinding,
+  type SymbolRef,
   type Transition,
 } from "@tsverify/ir";
 import { buildArgs, mentions } from "./invoke";
@@ -34,7 +35,13 @@ export interface Linked {
   /** The code transition named after `spec` (the write of `spec.to` reached from its impl). */
   code: Transition;
   sites: CodeSites;
-  invocation: InvocationShape;
+  /** The impl the tests call (`t.impl`). */
+  impl: SymbolRef;
+  /**
+   * Which of the impl's arguments carry the entity's key and the actor, as the extractor traced
+   * them (`CodeSites.invocation`). Not needed when `fixtureArgs` gives the arguments.
+   */
+  invocation?: InvocationShape;
   /** Explicit `fixtures.args` for this transition, if any. */
   fixtureArgs?: readonly unknown[];
   /** Whether the impl receives an actor (`InvocationShape.actor` or `$actor` in the fixture args). */
@@ -192,9 +199,11 @@ export function buildContext(input: ContextInput): { ctx?: Context; skipped: Fin
       );
       continue;
     }
-    if (sites.invocation === undefined) {
+    // With `fixtures.args`, the arguments are given: no need to know where the key goes.
+    if (sites.invocation === undefined && !Object.hasOwn(fixtures.args, t.name)) {
       skip(
-        `the extractor could not tell how to call ${formatSymbolRef(t.impl)} (no invocation shape)`,
+        `tsverify can't tell which arguments of ${formatSymbolRef(t.impl)} carry the ${spec.entity.name}'s key and the actor (it couldn't trace the key the code reads the ${spec.entity.name} with back to a parameter)`,
+        `Give the arguments under \`fixtures.args.${t.name}\`, with \`$id\` where the key goes and \`$actor\` where the actor goes (docs/authoring-guide.md §8).`,
       );
       continue;
     }
@@ -223,7 +232,8 @@ export function buildContext(input: ContextInput): { ctx?: Context; skipped: Fin
   // 2. Invocation per candidate, acting as the first permitted actor that has a fixture.
   const linked = new Map<string, Linked>();
   for (const { spec: t, code: c, sites } of candidates) {
-    const invocation = sites.invocation as InvocationShape;
+    const invocation = sites.invocation;
+    const impl = t.impl as SymbolRef;
     const skip = (message: string, hint?: string) =>
       skipped.push(
         skipFinding(
@@ -250,12 +260,12 @@ export function buildContext(input: ContextInput): { ctx?: Context; skipped: Fin
     }
     const fixtureArgs = Object.hasOwn(fixtures.args, t.name) ? fixtures.args[t.name] : undefined;
     const takesActor =
-      invocation.actor !== undefined ||
+      invocation?.actor !== undefined ||
       (fixtureArgs !== undefined && mentions(fixtureArgs, "$actor"));
     const actor = takesActor ? t.by.find((a) => Object.hasOwn(fixtures.actors, a)) : undefined;
     if (takesActor && actor === undefined) {
       skip(
-        `${formatSymbolRef(invocation.impl)} takes an actor, but none of the actors allowed to perform it (${t.by.join(", ")}) has a fixture`,
+        `${formatSymbolRef(impl)} takes an actor, but none of the actors allowed to perform it (${t.by.join(", ")}) has a fixture`,
         `Add a value for one of them under \`fixtures.actors\`.`,
       );
       continue;
@@ -269,7 +279,8 @@ export function buildContext(input: ContextInput): { ctx?: Context; skipped: Fin
       spec: t,
       code: c,
       sites,
-      invocation,
+      impl,
+      ...(invocation === undefined ? {} : { invocation }),
       ...(fixtureArgs === undefined ? {} : { fixtureArgs }),
       takesActor,
       ...(actor === undefined ? {} : { actor }),

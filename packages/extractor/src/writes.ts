@@ -39,7 +39,13 @@
  *   object written into the call; anything else (a `let`, several such uses, the state field set
  *   afterwards, other uses) is recorded in `WriteNode.held.issue`, and the write is reported as
  *   `unanalyzable` instead of extracted. (With named storage functions, such objects are `held`
- *   writes, above, unless they go to an update call's `data`.)
+ *   writes, above, unless they go to an update call's `data`.) An update's whole argument held
+ *   first (`const args = { where, data: { status } }; prisma.order.update(args)`) is followed the
+ *   same way (`heldArgsContext`, `updateArgsOf`). Objects whose state is set after they are built
+ *   are never read, only reported (`held.issue`): an empty update object filled in
+ *   (`const data = {}; data.status = "paid"`, then `data` of an update: a `data` write,
+ *   `matchFilledDataWrite`), and, without named storage functions, the state set on a copy or an
+ *   empty patch (`const next = { ...order }; next.status = …`: `builtUp`).
  *
  * A conditional save (`setStatusIf(id, from, to)`, kind `update`) is a state write with no field
  * written in the code: the named-function adapter finds those in phase 2, by symbol, since they
@@ -220,15 +226,146 @@ export function propertyNamed(
   return undefined;
 }
 
-/** `data`-write context of an object literal: the update call and its first argument. */
-function dataContext(
-  n: TS.ObjectLiteralExpression,
-): { call: TS.CallExpression; args: TS.ObjectLiteralExpression } | undefined {
+/**
+ * `data`-write context of an object literal: the update call and its first argument. `held` is
+ * set when that argument is held in a local variable first (`heldArgsContext`).
+ */
+function dataContext(n: TS.ObjectLiteralExpression):
+  | {
+      call: TS.CallExpression;
+      args: TS.ObjectLiteralExpression;
+      held?: NonNullable<WriteNode["held"]>;
+    }
+  | undefined {
   const prop = parentSkippingWrappers(n);
   if (!prop || !ts.isPropertyAssignment(prop) || unwrapArgument(prop.initializer) !== n) {
     return undefined;
   }
-  return dataContextOf(prop);
+  return dataContextOf(prop) ?? heldArgsContext(prop);
+}
+
+/** Whether `call`'s callee is `<chain>.<method>` with `key` an update-object key of `method`. */
+function isDataCall(call: TS.CallExpression, key: string): boolean {
+  const callee = skipParens(call.expression);
+  return (
+    ts.isPropertyAccessExpression(callee) &&
+    ts.isIdentifier(callee.name) &&
+    DATA_WRITE_KEYS.get(callee.name.text)?.includes(key) === true
+  );
+}
+
+/**
+ * An update call's whole argument held in a local variable first:
+ * `const args = { where: { id }, data: { status: "paid" } }; await prisma.order.update(args)`.
+ * The context is the call that takes the variable as its first argument; a `let`, several such
+ * calls, other uses, or `args.data` / `args.where` set afterwards are `held.issue`s (as for an
+ * update object held in a variable), so the write is reported instead of read.
+ */
+function heldArgsContext(prop: TS.PropertyAssignment):
+  | {
+      call: TS.CallExpression;
+      args: TS.ObjectLiteralExpression;
+      held: NonNullable<WriteNode["held"]>;
+    }
+  | undefined {
+  const key = propertyName(prop);
+  const args = prop.parent;
+  if (key === undefined || !ts.isObjectLiteralExpression(args)) return undefined;
+  const decl = heldDeclarationOf(args);
+  if (!decl) return undefined;
+  const name = (decl.name as TS.Identifier).text;
+  const uses = heldUses(decl, new Set(["where", "data", "update"]));
+  const calls = uses.args.filter((c) => {
+    const first = c.arguments[0];
+    const e = first && skipParens(unwrapArgument(first));
+    return e !== undefined && ts.isIdentifier(e) && e.text === name && isDataCall(c, key);
+  });
+  const [call] = calls;
+  if (!call) return undefined;
+  const issues = [...uses.issues];
+  if (calls.length > 1) issues.push(`\`${name}\` is the argument of ${calls.length} update calls`);
+  for (const c of uses.args) {
+    if (!calls.includes(c)) {
+      issues.push(`\`${name}\` is also passed to \`${excerpt(c.expression.getText())}\``);
+    }
+  }
+  for (const c of uses.data) {
+    issues.push(`\`${name}\` is also used in \`${excerpt(c.expression.getText())}\``);
+  }
+  return { call, args, held: heldInfo(decl, issues) ?? { name } };
+}
+
+/**
+ * The object literal an update call's first argument is: written into the call, or held in a
+ * `const` declared before it in an enclosing block (`heldArgsContext`). Syntax only.
+ */
+export function updateArgsOf(call: TS.CallExpression): TS.ObjectLiteralExpression | undefined {
+  const first = call.arguments[0];
+  if (!first) return undefined;
+  const a = stripValue(unwrapArgument(first) as TS.Expression);
+  if (ts.isObjectLiteralExpression(a)) return a;
+  return ts.isIdentifier(a) ? heldObjectNamed(call, a.text)?.object : undefined;
+}
+
+/**
+ * The closest variable named `name` declared before `at` in an enclosing block of its function
+ * (inline callbacks included), when an object literal initializes it. Syntax only.
+ */
+function heldObjectNamed(
+  at: TS.Node,
+  name: string,
+): { decl: TS.VariableDeclaration; object: TS.ObjectLiteralExpression } | undefined {
+  let child: TS.Node = at;
+  for (let p: TS.Node | undefined = at.parent; p; child = p, p = p.parent) {
+    if (ts.isFunctionLike(p) && !isInlineCallback(p)) return undefined;
+    if (!ts.isBlock(p) && !ts.isSourceFile(p) && !ts.isCaseClause(p) && !ts.isDefaultClause(p)) {
+      continue;
+    }
+    const statements: readonly TS.Statement[] = p.statements;
+    for (let i = statements.indexOf(child as TS.Statement) - 1; i >= 0; i--) {
+      const st = statements[i];
+      if (!st || !ts.isVariableStatement(st)) continue;
+      for (const d of st.declarationList.declarations) {
+        if (!ts.isIdentifier(d.name) || d.name.text !== name || !d.initializer) continue;
+        const init = stripValue(unwrapArgument(d.initializer) as TS.Expression);
+        return ts.isObjectLiteralExpression(init) ? { decl: d, object: init } : undefined;
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * An assignment `data.<field> = v` to an object held in a local variable that the function then
+ * uses as an update call's update object (`const data: Prisma.OrderUpdateInput = {};
+ * data.status = "paid"; await prisma.order.update({ where: { id }, data })`): a `data` write of
+ * that call whose object is built up before it, so always a `held.issue` (reported, not read).
+ */
+function matchFilledDataWrite(
+  n: TS.BinaryExpression & { left: TS.PropertyAccessExpression },
+  fields: ReadonlySet<string>,
+): WriteNode | undefined {
+  const target = skipParens(n.left.expression);
+  if (!ts.isIdentifier(target)) return undefined;
+  const held = heldObjectNamed(n, target.text);
+  // An object that has the field already is a held `data` write itself (`matchHeldDataWrite`).
+  if (!held || propertyNamed(held.object, n.left.name.text)) return undefined;
+  const uses = heldUses(held.decl, fields);
+  const [call] = uses.data;
+  if (!call) return undefined;
+  const issues = [...uses.issues];
+  const set = `\`${target.text}.${n.left.name.text}\` is set after the object is built`;
+  if (!issues.includes(set)) issues.unshift(set);
+  return {
+    kind: "data",
+    field: n.left.name.text,
+    expr: n,
+    site: n,
+    ref: n.left.expression,
+    value: n.right,
+    call,
+    held: heldInfo(held.decl, issues) ?? { name: target.text },
+  };
 }
 
 /**
@@ -396,8 +533,8 @@ function closestConstCall(at: TS.Node, names: ReadonlySet<string> | undefined): 
 
 /** Phase 1: the entity reference a `data` write's probe reads (see the module comment). */
 function dataRefText(call: TS.CallExpression): string | undefined {
-  const args = unwrapArgument(call.arguments[0] as TS.Node);
-  if (!ts.isObjectLiteralExpression(args)) return undefined;
+  const args = updateArgsOf(call);
+  if (!args) return undefined;
   const model = modelOf(call);
   return whereRef(args) ?? (model === undefined ? undefined : precedingFind(call, model));
 }
@@ -433,6 +570,7 @@ function matchDataWrite(
       value,
       call: context.call,
       probed: probe !== undefined,
+      ...(context.held ? { held: context.held } : {}),
     };
   }
   return undefined;
@@ -502,6 +640,14 @@ function scopeOf(decl: TS.Node): TS.Node {
     if (ts.isFunctionLike(p) || ts.isSourceFile(p)) return p;
   }
   return decl.getSourceFile();
+}
+
+/** A node's source on one line (a call chain split over lines joined back), for a message. */
+export function oneLine(node: TS.Node): string {
+  return node
+    .getText()
+    .replace(/\s*\n\s*(?=\??\.)/g, "")
+    .replace(/\s+/g, " ");
 }
 
 /** `text` on one line, cut to `max` characters, for a message. */
@@ -707,6 +853,34 @@ function matchHeldSpreadWrite(
   };
 }
 
+/**
+ * An assignment to a field of a fresh object the function builds before saving it: a copy
+ * (`const next = { ...order }; next.status = "cancelled"`) or an empty patch filled afterwards
+ * (`const patch: Partial<Order> = {}; patch.status = "cancelled"`). The state is not set on
+ * the entity a read returned, so the write can't be read as a transition: `held.issue` (reported
+ * as `unanalyzable`), with the call that takes the object, if any. (Named storage functions
+ * handle such objects themselves, `adapters/functions.ts`.)
+ */
+function builtUp(n: TS.BinaryExpression & { left: TS.PropertyAccessExpression }): {
+  held?: NonNullable<WriteNode["held"]>;
+  call?: TS.CallExpression;
+} {
+  const target = skipParens(n.left.expression);
+  if (!ts.isIdentifier(target)) return {};
+  const held = heldObjectNamed(n, target.text);
+  if (!held) return {};
+  const { properties } = held.object;
+  if (properties.length > 0 && !properties.some((p) => ts.isSpreadAssignment(p))) return {};
+  const uses = heldUses(held.decl, new Set([n.left.name.text]));
+  const set = `\`${target.text}.${n.left.name.text}\` is set after the object is built`;
+  const issues = uses.issues.includes(set) ? uses.issues : [set, ...uses.issues];
+  const [call] = uses.args;
+  return {
+    held: heldInfo(held.decl, issues) ?? { name: target.text },
+    ...(call ? { call } : {}),
+  };
+}
+
 /** Matches one node; shared by both phases so they find identical writes in identical order. */
 function matchWrite(
   n: TS.Node,
@@ -721,6 +895,11 @@ function matchWrite(
     fields.has(n.left.name.text) &&
     !isConstructorInit(n.left)
   ) {
+    const filled = matchFilledDataWrite(
+      n as TS.BinaryExpression & { left: TS.PropertyAccessExpression },
+      fields,
+    );
+    if (filled) return filled;
     return {
       kind: "assign",
       field: n.left.name.text,
@@ -728,6 +907,7 @@ function matchWrite(
       site: n,
       ref: n.left.expression,
       value: n.right,
+      ...(patch ? {} : builtUp(n as TS.BinaryExpression & { left: TS.PropertyAccessExpression })),
     };
   }
   if (ts.isObjectLiteralExpression(n)) {
@@ -806,7 +986,15 @@ export function findCandidateWrites(
         readNames ??= readNamesOf(sf, patch?.readSymbols ?? []);
         const decl = heldDeclarationOf(w.expr as TS.ObjectLiteralExpression);
         ref = decl && patchRefText(decl, readNames);
-      } else ref = w.kind === "data" && w.call ? dataRefText(w.call) : referenceText(w.ref);
+      } else if (w.kind === "data" && w.call) {
+        ref = dataRefText(w.call);
+        // With named storage functions, an ORM update is a patch to an unbound call: its
+        // reference may also be what a bound read returned.
+        if (ref === undefined && patch) {
+          readNames ??= readNamesOf(sf, patch.readSymbols);
+          ref = patchRefText(w.call, readNames);
+        }
+      } else ref = referenceText(w.ref);
       out.push({
         kind: w.kind,
         field: w.field,

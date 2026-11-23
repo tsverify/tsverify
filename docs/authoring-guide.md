@@ -157,8 +157,10 @@ rules:
 
 The grammar is `status == S`, `status != S`, `status in [S, …]`, `count(effect E) <op> N`, `true`, `false`,
 `and`, `or`, `not`, `implies` and parentheses ([format reference](behavior-format.md#rules)). `always` and `never`
-are checked in every reachable state. `eventually` is checked in every **end state**, where no transition can
-fire any more: "the entity can't come to rest while this is false". A rule that only restates an `exactly-once`
+are checked in every reachable state. `eventually` means "from anywhere, a state where it holds can still be
+reached" (AG EF); with no cycles in the explored states, that is the same as holding in every **end state**,
+where no transition can fire any more: "the entity can't come to rest while this is false"
+([format reference](behavior-format.md#rules)). A rule that only restates an `exactly-once`
 effect (`count(effect E) <= 1`) adds nothing; the built-in check already covers it.
 
 ---
@@ -244,7 +246,7 @@ generated test at all, and a spec that got none. Use it wherever `tsverify` bloc
 | 4 | **One transition per entry point** | Name it after the business event (`refund`, not `refundOrder`). `impl` = the exported function that callers invoke (route handler, job, webhook handler, service method: `file.ts#Class.method`). Helpers it calls (up to 8 levels deep) are followed. One entry point serving two kinds of caller (`cancelBooking(user, id, { support })`) becomes two transitions with the same `impl`, one per actor, so each gets its own guards |
 | 5 | **Read the from-states off the guards** | The checks before the write: `if (x.status !== "paid") throw` → `from: paid`. The inventory from step 3 shows what the code currently allows. Write what it *should* allow. A write with no check at all gets the intended `from`, and `tsverify check` will report `from-state-unconstrained` |
 | 6 | **Identify actors and trust** | Who calls each entry point: a logged-in end user (`untrusted`), staff (`authenticated` + a role guard in the actor's `requires`), a verified webhook (`signed-webhook`), a job or worker (`internal`). One actor per kind of caller |
-| 7 | **Guards** | Functions that throw unless the caller is allowed, called before the write: `requireOwner(actor, order)`, `requireRole(actor, "admin")`. Guards for one actor go in its `requires`; guards for one transition go in the transition's `requires` (both take one guard or a list). A guard without arguments is just a name (`staff: src/auth.ts#assertStaff`). A guard that *should* run but doesn't still goes in the spec. A caller-supplied flag that skips a guard (`if (!opts.admin) requireOwner(…)`) is a bypass: specify the guard anyway |
+| 7 | **Guards** | Functions that throw unless the caller is allowed, called before the write: `requireOwner(actor, order)`, `requireRole(actor, "admin")`. Guards for one actor go in its `requires`; guards for one transition go in the transition's `requires` (both take one guard or a list). A guard without arguments is just a name (`staff: src/auth.ts#assertStaff`). Quote a guard with several arguments inside `{ … }` or `[ … ]` (`requires: "role(owner, admin)"`): there a comma ends the value. A guard that *should* run but doesn't still goes in the spec. A caller-supplied flag that skips a guard (`if (!opts.admin) requireOwner(…)`) is a bypass: specify the guard anyway |
 | 8 | **Effects and their multiplicity** | Calls on external clients on the transition's path: payments, email, queues, HTTP APIs. Name each effect by its meaning (`email.receipt`, `email.shipped`) and map names to calls in `bindings.effects`. The call path starts with a `bindings.clients` key (`email.send`), and the effect name is free. Two names may map to the same call. Multiplicity: `exactly-once` (default; money, emails) means at most once per entity, over its whole life; `at-least-once` means repeats are fine; `idempotent` means the receiver deduplicates |
 | 9 | **`atomic`** | `atomic: true` when the read, the state check and the write must not interleave with another request. That is almost every transition that checks the state. Code that achieves it: a transaction callback, a conditional update (`updateMany({ where: { id, status: "paid" } })`), or, in memory, no `await` between the check and the write ([§7](#7-code-shapes-tsverify-understands)). Set it when the code *should* be atomic, even if it isn't |
 | 10 | **`idempotent`** | `idempotent: true` for transitions that can be delivered more than once (webhooks, queues with retries). The code must make redelivery harmless, usually through the from-state check |
@@ -397,12 +399,12 @@ a redelivered `idempotent` event.
 | Category | Severity (exit) | Means | Do this |
 |---|---|---|---|
 | `invalid-spec` | error (2), or warning | The spec doesn't parse or validate: unknown key, unknown state or actor, rule syntax, unbound guard. Warnings: a terminal state with an outgoing transition, an unused guard binding | Fix the YAML at the location. Most messages carry a "did you mean" |
-| `broken-link` | error (2) | `impl`, a client or a guard binding doesn't resolve: missing file, file not in the tsconfig, missing export, not a function with a body, no `tsconfig.json` | Fix the path (project-root relative) or the symbol (`file.ts#name`, `file.ts#Class.method`) |
+| `broken-link` | error (2) | `impl`, a client, a guard or a storage function binding doesn't resolve: missing file, file not in the tsconfig, missing export, not a function with a body, no `tsconfig.json`. Also a `bindings.storage` function that isn't exported (generated tests can't replace it) | Fix the path (project-root relative) or the symbol (`file.ts#name`, `file.ts#Class.method`); export the storage function |
 | `spec-property` | error (1), or warning | The **spec** breaks a property, as a design bug. See [§6.2](#62-built-in-properties) | Fix the design (`atomic`, `from`, `idempotent`, a missing transition). Don't delete the rule |
 | `implementation-property` | error (1) | The **code's** model breaks a property, with a trace. Usually a `↳ consequence` of a conformance finding | Fix the root cause. If it stands alone, the code reaches a bad state the spec forbids. Fix the code |
 | `undeclared-transition` | error (1) | The code writes a state change that no transition declares, or a linked function writes a different `to` | A legit transition: declare it with that `impl`. A bug (B1 "reopen"): remove the write. Test or seed code: keep it out of the tsconfig `include` |
 | `missing-transition` | error (1) | A transition has `impl`, but nothing reached from it writes `state = to`. When the impl reaches a state write `tsverify` can't read, it says "couldn't confirm" instead (an `unanalyzable` warning) | Wrong `impl`, a write `tsverify` doesn't see at all (a raw query), or the code really doesn't do it |
-| `from-state-unconstrained` | error (1) | The code writes `to` from **any** state: no check narrows the state before the write. (A field typed `string` is reported once, as `unanalyzable`, instead) | Add the check (`if (x.status !== "paid") throw`) in the same atomic scope, or put the state in the update's `where`. If a check exists (a copy into a local), it's in a shape `tsverify` can't read, although the message says "nothing narrows": restructure it ([§7.1](#71-all-persistences)). A passing `forbidden` test from `tsverify test` is a sign of this |
+| `from-state-unconstrained` | error (1) | The code writes `to` from **any** state: nothing before the write consults the state. (A field typed `string` is reported once, as `unanalyzable`, instead; so is a state the code does consult in a form `tsverify` can't read: "the from-state check at … is in a form tsverify can't read", see below) | Add the check (`if (x.status !== "paid") throw`) in the same atomic scope, or put the state in the update's `where`. A passing `forbidden` test from `tsverify test` means a check exists that `tsverify` can't see: restructure it ([§7.5](#75-restructuring-unanalyzable-code)) |
 | `from-state-mismatch` | error (1), or warning | Error: the code allows extra from-states. Warning: the code is stricter than the spec | Error: tighten the code's check. Warning: confirm which is intended. Narrow the spec only if the stricter code is the intent |
 | `guard-not-dominating` | error (1) | A guard in the transition's `requires` is never called, or is skipped on some path (an early return, a flag) before the write: "`ship: role(admin) (requireRole) is called on some paths but not all before the write`". With several actors in `by`: some path passes none of the listed actors' guards in full: "`cancel: cancelOrder reaches the write on a path that passes only {verified}; it must pass owner to act as customer, or role(admin) to act as admin.`" (one finding per such path) | Call the guards on every path before the write: on each path, those of the actor the caller acts as. Don't remove them from the spec |
 | `undeclared-effect` | error (1) | The code calls a bound client on the transition's path that the transition doesn't declare | An intended effect: declare it with the right multiplicity. Not intended (B5: a refund on expiry): remove the call |
@@ -412,7 +414,7 @@ a redelivered `idempotent` event.
 | `replay-confirmed` | error (1) | The real code reproduced a counterexample: the bug is confirmed | Fix the code. The test in `.tsverify/generated/` fails until you do |
 | `replay-disagrees` | warning (0) | The real code did not reproduce a counterexample (it threw, or took another path) | Check that the "Observed" line is a real rejection, not a setup error. If the code is right, the extracted model over-approximates. Mention it in the PR |
 | `unanalyzable` | warning or info (0); with `--strict`, warnings are errors (1) | `tsverify` couldn't tell: from-state of a `string` field, a write of a non-literal value or in a shape it can't read (then each transition it would confirm says "couldn't confirm that … writes …", as a `↳ consequence`), a read it can't see, a write saved outside `bindings.storage`, a client or storage function that is bound but never called (the binding most likely points at the wrong export), a transition without `impl` (info), an unsupported persistence, the state limit (the hint names what makes the search large, and how to lower `concurrency`) | Restructure the code ([§7.5](#75-restructuring-unanalyzable-code)) or add `impl`. Unanalyzable code is unchecked code. Don't leave new ones unexplained |
-| `not-generated` | info (0); with `--strict`, a transition with `impl` that got no test at all, or a spec that got none, is an error (1) | `tsverify test` generated no test for a transition or actor: no `fixtures`, no `impl`, `memory` persistence, unknown invocation shape, an actor without a fixture. With several actors in `by`: a caller acting as one of them but failing its guards (one fixture per actor can't express it; the static check covers it) | Add fixtures, or accept it (e.g. `memory` has no test support yet) |
+| `not-generated` | info (0); with `--strict`, a transition with `impl` that got no test at all, or a spec that got none, is an error (1) | `tsverify test` generated no test for a transition or actor: no `fixtures`, no `impl`, `memory` persistence, an impl whose key and actor arguments tsverify can't trace ("can't tell which arguments of … carry the key": give them under `fixtures.args`), an actor without a fixture. With several actors in `by`: a caller acting as one of them but failing its guards (one fixture per actor can't express it; the static check covers it) | Add fixtures, or accept it (e.g. `memory` has no test support yet) |
 
 ### 6.2 Built-in properties
 
@@ -456,18 +458,22 @@ database. It is conservative: when unsure, it reports `unanalyzable` or "unconst
 | **State type** | String-literal union (`"a" \| "b"`), string `enum`, Prisma enums (generated const object + union) | `string` / `any` → from-state unknown. Type the field as a union |
 | **`impl`** | `file.ts#fn` (function declaration, `const fn = async () => …`, `const fn = withAuth(async (ctx) => …)`), `file.ts#Class.method`, `file.ts#obj.method` | Functions built at runtime, or picked from a map → export a named function |
 | **Call graph** | Helpers in project files, followed up to 8 levels below the impl | Calls through `node_modules`, dynamic dispatch, callbacks stored and called later |
-| **From-state checks** (narrowing) | `if (x.status !== "a") throw`, early `return`, `switch (x.status)`, `x.status === "a" \|\| x.status === "b"`, assertion functions (`asserts x is Paid`), type predicates (`x is Paid`, incl. inferred `return s === "a"`), ternaries, checks inside the transaction callback | `ALLOWED.includes(x.status)`, `set.has(x.status)`, `const s = x.status; if (s …)`, `const { status } = x`, `const ok = x.status === "a"; if (!ok)` on a mutable field, `: boolean` helpers → compare `x.status` directly, or use a type predicate |
+| **From-state checks** (narrowing) | `if (x.status !== "a") throw`, early `return`, `switch (x.status)`, `x.status === "a" \|\| x.status === "b"`, assertion functions (`asserts x is Paid`), type predicates (`x is Paid`, incl. inferred `return s === "a"`), ternaries, checks inside the transaction callback; membership on a list of literals, inline or a `const` (`if (!["a", "b"].includes(x.status)) throw`, `ALLOWED.includes(x.status)` with `const ALLOWED = ["a", "b"]`, `OPEN.has(x.status)` with `const OPEN = new Set([…])`), combined with `!`, `&&`, `\|\|` | A lookup table (`NEXT[x.status].includes(to)`), a list that can change (a `let`), `const s = x.status; if (s …)`, `const { status } = x`, `const ok = x.status === "a"; if (!ok)` on a mutable field, `: boolean` helpers, the entity passed to a helper that throws → compare `x.status` directly, or use an assertion function. When the code consults the state in such a form, the write's from-state is reported unknown (`unanalyzable`, "the from-state check at … is in a form tsverify can't read"), not unchecked |
 | **Written value** | A string literal, or a constant with a literal type (`JobStatus.Done`) | A variable or parameter (`x.status = next`) → `unanalyzable`, and the write is not checked: a transition whose impl reaches it is reported as "couldn't confirm", not `missing-transition`. Write the literal at each call site |
-| **Guards** | A call to the bound function, with literal arguments equal to the binding's (`requireRole(actor, "admin")` = `role(admin)`), on every path before the write. A project function that calls the guard on every path counts as that guard | Middleware registered elsewhere (route-level `app.use(auth)`), decorators → call the guard (or a wrapper) inside the impl's reach |
-| **Clients** (database, effects) | Calls on an exported object or function, imported directly (also aliased, re-exported or through a namespace import): `stripe.refunds.create(…)`, or `sendMail(…)` for `export async function sendMail` (map its effect to the client name, [§8](#8-fixtures-for-tsverify-test)); the transaction alias `tx`; a client injected as a parameter or field typed as the export (`constructor(private prisma: PrismaClient)`, `deps: { db: typeof db }`); and, for a client bound to an exported **class**, any instance of it held that way (see "Injected clients" below) | Destructured (`const { orders } = db`), element access (`db["orders"]`), a call's result as the root, an injected client typed `any`, as an interface, or with a type several clients share → import the bound export, or type the parameter as the export's type. A bound client that no call resolves to gets an `unanalyzable` warning ("bound but never called") |
+| **Guards** | A call to the bound function, with literal arguments equal to the binding's (`requireRole(actor, "admin")` = `role(admin)`), on every path before the write. Arguments that aren't literals (`actor`, `{ ownerId }`) are skipped, so `requireRole(tx, ctx, ["owner", "admin"], { ownerId })` matches the binding `requireRole(["owner", "admin"])`; a list matches an array literal (or a `const` holding one) with the same items, whatever the quotes. A call with other literal arguments is reported as "called, but not with …". A project function that calls the guard on every path counts as that guard | Middleware registered elsewhere (route-level `app.use(auth)`), decorators → call the guard (or a wrapper) inside the impl's reach. Arguments built at runtime (`requireRole(actor, roles)` with a parameter) → pass the literals, or bind a wrapper (`requireAdmin`) |
+| **Clients** (database, effects) | Calls on an exported object or function, imported directly (also aliased, re-exported or through a namespace import): `stripe.refunds.create(…)`, or `sendMail(…)` for `export async function sendMail` (map its effect to the client name, [§8](#8-fixtures-for-tsverify-test)); the transaction alias `tx`; a client injected as a parameter or field typed as the export (`constructor(private prisma: PrismaClient)`, `deps: { db: typeof db }`); and, for a client bound to an exported **class** or **interface**, any value of that type held that way (see "Injected clients" below) | Destructured (`const { orders } = db`), element access (`db["orders"]`), a call's result as the root, an injected client typed `any`, as another interface than the one bound, or with a type several clients share → import the bound export, or type the parameter as the export's type. A bound client that no call resolves to gets an `unanalyzable` warning ("bound but never called") |
 | **Effects** | A bound-client call that can run on a path that performs the write and completes normally (before the write, or after the commit) | A call only on a path that throws or returns before the write is not attributed. That is correct |
 
 **Injected clients.** Code that receives its clients (a constructor, a resources object such as `this.$`) is
 matched by the declared type of what holds them. Bind the export that type names: for `this.$.runQueue` with
 `runQueue: RunQueue`, bind the class, `queue: { module: src/run-queue/index.ts, export: RunQueue }`; every
 instance typed `RunQueue` (a field, a parameter, a property of an injected object) is then the `queue` client,
-and `this.$.runQueue.acknowledgeMessage(…)` is the call `queue.acknowledgeMessage`. Types compare by identity:
-an instance held as an interface the class implements, as a subclass or as `any` is not matched. When nothing
+and `this.$.runQueue.acknowledgeMessage(…)` is the call `queue.acknowledgeMessage`. When the code only knows
+the client by an interface (`orders: OrderStore`), bind the interface the same way
+(`store: { module: …, export: OrderStore }`): every value typed `OrderStore` is then the client. Types compare by
+identity: an instance held as an interface the class implements (with the class bound), as a subclass or as
+`any` is not matched. `tsverify test` can't replace a class or an interface with a fake by mocking a module, so
+a spec binding one gets no generated tests (`not-generated`, naming the binding); `check` is unaffected. When nothing
 matches, `check` says so: the binding gets a "bound but never called" warning, and each effect on it a
 `missing-effect` **warning** ("couldn't confirm … no call in the project resolves to client queue") instead of
 an error, with the effect taken as specified meanwhile. The same goes for `bindings.storage`: a function bound
@@ -492,8 +498,10 @@ transitions' impls reach it, the ones whose `to` is the written state win. Trans
 *and* a `to` are each compared with every write of that state the impl reaches: each gets all of them. Their
 from-states are checked together (a `from-state-mismatch` warning only for a state none of the writes accepts),
 but the transitions themselves can't be told apart, so a write meant for one is checked against the other's
-`from`, `requires` and `effects` too. Declare them as one transition with the union of their `from` (comment
-which code path covers which state), or point each at the function that only does its part.
+`from`, `requires` and `effects` too: `retry` (failed → pending) and `resume` (paused → pending) with one impl
+each get a `from-state-mismatch` error for the other's state, which says that they share the impl and `to`.
+Declare them as one transition with the union of their `from` (comment which code path covers which state), or
+point each at the function that only does its part. Don't widen each one's `from` to the union.
 
 ### 7.2 `assign`: repository objects (the default)
 
@@ -511,7 +519,7 @@ await stripe.refunds.create({ charge });       // effect, after the commit
 |---|---|
 | Detected | When no Prisma or Drizzle import is found. Set `persistence: assign` to be explicit |
 | Read | A call on a bound client (or on `tx`) whose result initializes the entity reference, also through a helper (`const o = await loadOrder(tx, id)`) |
-| Write | `ref.<state> = "literal"`, or `{ ...ref, <state>: "literal" }` passed to a call, directly or as a `const` only that call takes (`const next = { ...order, status: "refunded" }; await tx.orders.save(next)`); anything else done with such a `const` (a `let`, two saves, the state set on it afterwards) is reported as `unanalyzable` |
+| Write | `ref.<state> = "literal"`, or `{ ...ref, <state>: "literal" }` passed to a call, directly or as a `const` only that call takes (`const next = { ...order, status: "refunded" }; await tx.orders.save(next)`); anything else done with such a `const` (a `let`, two saves, the state set on it afterwards) is reported as `unanalyzable`, and so is the state set on a copy or an empty patch built in the function (`const next = { ...order }; next.status = "refunded"`, `const patch: Partial<Order> = {}; patch.status = …`) |
 | Atomic | Read, write and commit inside one `<client>.transaction(async (tx) => …)` callback, all through `tx`. The method must be called `transaction`, with the callback as its first argument. A `db.…` call inside the callback bypasses the transaction |
 | Not a write | `this.status = …` in a constructor, and new object literals (`{ id, status: "draft" }`) |
 | `tsverify test` | Supported (in-memory fake store) |
@@ -537,8 +545,10 @@ await stripe.refunds.create({ charge: order.chargeId });
 | Blind update: no state in `where`, and no read | every state (`from-state-unconstrained`) | yes (the bug is the missing check) |
 
 The update object may be held in a `const` first (`const data = { status: "refunded" }; await
-prisma.order.update({ where: { id }, data })`): one used only as that update's `data` is read as if written into
-the call. A `let`, one object for several updates, the state set on it afterwards (`data.status = …`) or any
+prisma.order.update({ where: { id }, data })`), and so may the update's whole argument (`const args = { where:
+{ id }, data: { status: "refunded" } }; await prisma.order.update(args)`): one used only by that update is read
+as if written into the call. A `let`, one object for several updates, the state set on it afterwards
+(`data.status = …`, also on an empty `const data: Prisma.OrderUpdateInput = {}`), `args.data` replaced, or any
 other use is reported as `unanalyzable`, and the transitions reaching it as "couldn't confirm".
 
 The entity is matched by model delegate, ignoring case: `prisma.order` is `entity.name: Order`. Bind the client
@@ -581,8 +591,10 @@ Prefer a small, behavior-preserving refactor that makes the code checkable over 
 | "assigned a value that is not a single literal" (`setStatus(order, next)`), and "couldn't confirm that … writes …" on the transitions it serves | One function per transition, each writing a literal (`order.status = "paid"`). A generic verb that takes the target state (`setStatus(id, input.status)`) can stay as the entry point if it calls one of those per target state, or a conditional save with literal states (`setStatusIf(id, "open", "mitigated")`, bound as `update`) |
 | "is set in `patch` …" / "is set on `patch` … after the object is built" | Build the patch as one `const` object literal with the state as a literal (`const patch = { status: "resolved", resolvedAt: now }`) and pass it to one bound save. Setting other fields on it afterwards is fine; setting the state field is not |
 | "written in a patch passed to `tx.update(…).set`, which is not a `bindings.storage.save` function" | Move the query into a named function (`setIncidentStatusIf(tx, id, from, to)`) and bind it in `bindings.storage` (`update` for a conditional save, `save` otherwise) |
+| "Nothing reads one … before this update" (a bulk `update(…).set({ status })` over the rows a query matches) | Move it into a named function, bound as an `update` with the states its query requires as `from` (`cancelStaleOrders(tx, customerIds)` with `from: [draft, pending_payment]`, `to: cancelled`) |
 | "the from-state of this write is unknown: … is typed string" | `status: OrderStatus` with `type OrderStatus = "draft" \| …` |
-| `from-state-unconstrained`, although a check exists | Compare the field directly in an `if`/`switch` (or `.includes` / `Set.has` on a list of literals), or use a type predicate. No copy to a local |
+| "the from-state check at … is in a form tsverify can't read" (a lookup table `NEXT[x.status].includes(to)`, the entity passed to a helper that throws, `assertTransition(x, to)`, a copy `const { status } = x`, a list that can change) | Compare the field directly in an `if`/`switch` (or `.includes` / `Set.has` on a `const` list of literals), or declare the helper as an assertion function (`function assertPaid(x: Order): asserts x is Order & { status: "paid" }`). tsverify doesn't follow a helper's body. Until then the write's from-state is unknown (a warning), not unchecked |
+| `from-state-unconstrained`, although a check exists | The check compares the field with a literal but doesn't stop the write on the other branch (no `throw` or `return`), or it checks another variable. Make it exit |
 | "no read of `x` through a bound client was found" | Read the entity through the bound client (or `tx`) in the impl or a helper it calls. Don't pass the entity in from outside |
 | `missing-effect`, although the call exists | Call it on an imported module-level object that is bound in `bindings.clients`. Map the effect to that call path in `bindings.effects` |
 | `guard-not-dominating`, although a middleware checks it | Call the guard (or a wrapper that calls it) inside the impl, before the write |
@@ -618,13 +630,20 @@ How to find them:
   `update(key, from, to)`, `atomic(callback)`), give them with `args`, e.g.
   `{ fn: src/repo.ts#findOrder, args: [_, key] }` for `findOrder(tenantId, id)`. A save that takes the key and
   some fields is `args: [key, patch]`. An update with the states built in (`markPaid(id)`) is
-  `{ fn: …, from: [pending], to: paid }`.
+  `{ fn: …, from: [pending], to: paid }`. Each role is one positional argument: a function that takes one object
+  of named arguments (`getOrder({ tx, id, tenantId })`) isn't supported yet, and binding its object as the
+  `key` gets a warning ("argument 1 … is an object"). Bind a thin wrapper that takes the key as an argument of its
+  own (`getOrderById(tx, tenantId, id)` with `args: [_, _, key]`).
 - **`returns`.** Say what an update returns when the state check fails: `changed` (`false`, the default),
   `count` (`0`), `entity` (`undefined`) or `throws`. The code is expected to stop when it does
   (`if (!(await setStatusIf(…))) throw …`, `if (updated === undefined) return`): an effect that can run before
   that check (or before the update) fires even when nothing was saved, and `check` reports the transition as
-  `non-atomic`. An effect only in the "nothing saved" branch is not the transition's. A `count` may also be a
-  count object (`r.count === 0`), as Prisma's `updateMany` returns.
+  `non-atomic`. An effect only in the "nothing saved" branch is not the transition's. An effect that runs only
+  once another conditional save went through (in its "saved" branch, or after one bound with `returns: throws`)
+  is that save's, not one that runs "although nothing was saved" (`if (await reserve(id)) { await
+  email.send(…); return; }` before `await cancel(id)`). Only spec effects (named in `bindings.effects` or
+  declared on a transition) count: another call is reported as `undeclared-effect` instead. A `count` may also be
+  a count object (`r.count === 0`), as Prisma's `updateMany` returns.
 - **An unconditional ("blind") update** writes its state whatever the stored one is (`update({ where: { id } })`
   with a fixed status, a store method such as `startAttempt(id, …)` that sets `EXECUTING` unconditionally). Bind
   it with `from` **every state** (a YAML anchor helps: `from: &ALL [DELAYED, PENDING, …]`, then `from: *ALL`) and
@@ -637,9 +656,10 @@ How to find them:
 - **`atomic` is declared, not proven.** Name a function only if it really serializes the callback against
   other requests (a database transaction at a sufficient isolation level, or a lock). tsverify trusts the
   declaration and can't check what happens inside; the generated replay tests still run the race through it.
-- **In their own module.** Generated tests replace the functions by mocking the module that exports them, so a
-  call from inside that same module (an `impl` next to `getOrder` in `repo.ts`) still reaches the real one.
-  Keep the `impl`s in other files.
+- **Exported, in their own module.** Generated tests replace the functions by mocking the module that exports
+  them, so each must be exported (a function that isn't is a `broken-link` error; `check` still reads its calls),
+  and a call from inside that same module (an `impl` next to `getOrder` in `repo.ts`) still reaches the real one.
+  Keep the `impl`s in other files. Guards need not be exported: tests run them as they are.
 - **Only the functions the transitions call.** One read, one save and the conditional saves and atomic
   wrappers that the `impl`s use are enough; list several of a kind if the code uses several.
 - **Calls are matched by symbol**, through imports, renamed re-exports, namespace imports and helpers, never by
@@ -658,9 +678,16 @@ How to find them:
     gives no `non-atomic` verdict on it either. Name that function in `bindings.storage`, or move the query into one.
 - **Whose patch it is.** A patch passed to a bound save is the entity's. One passed to another function is the
   entity's when its type, or the parameter's, names the entity (`Partial<Order>`), or when its state field allows
-  exactly the spec's states (ignoring `undefined` and non-literal members, as in Drizzle's column types) and a bound
-  `read` of the entity comes before it in the same function. Other objects with a `status` key
-  (`c.json({ status: "ok" })`) are not writes.
+  exactly the spec's states (ignoring `undefined` and non-literal members, as in Drizzle's column types) and
+  either a bound `read` of the entity comes before it in the same function, or the call is an update: a method
+  named `update`, `updateMany`, `updateOne`, `updateTable` or `upsert`, or `set` called on what one returned.
+  That last rule catches bulk updates with no read of one entity before them: Drizzle's
+  `tx.update(orders).set({ status: "cancelled" }).where(…)` takes a patch typed from the table, whose `status`
+  column has exactly the spec's states. Such a write is reported (its from-state is unknown: it changes
+  whichever rows its query matches), never skipped. Other objects with a `status` key are not writes: a response
+  body (`c.json({ status: "ok" })`), or an event passed to a function that isn't an update
+  (`bus.publish({ id, status: "resolved" })`), even when its type has exactly the spec's states. An ORM update's
+  `data` (`prisma.order.update({ where, data: { status } })`) is such a patch too.
 - **Use a preset instead** (`storage: assign`, `prisma` or `memory`) when there is no such layer: the `impl`s
   call a Prisma client directly (`prisma`), a repository object on a bound client (`assign`), or in-process
   objects (`memory`, see [§7.2–7.4](#72-assign-repository-objects-the-default)). If the code reads and writes
@@ -711,9 +738,13 @@ fixtures:
 - One entity fixture serves every state. If an effect depends on a field (a refund only when `depositId` is
   set), set the field so that the effect happens: path tests expect each `exactly-once` effect exactly once.
 - `args` are used for every actor's test of that transition, including the guard tests.
-- Without `args`, `tsverify` builds the arguments from the impl's parameters: the entity id and the actor go where the
-  code reads them (`(ctx: { actor }, orderId)`). Use `args` when the impl needs more (an event payload). Inside
-  `args`, `$id` is the seeded entity's key and `$actor` is the acting actor's fixture.
+- Without `args`, `tsverify` builds the arguments from the impl's parameters: it traces the key the code reads
+  the entity with, and the actor its guards get, back to the impl's parameters, and puts the entity id and the
+  actor there (`(ctx: { actor }, orderId)`). Use `args` when the impl needs more (an event payload, a
+  `{ ctx, input }` object with other fields), or when the trace fails ("can't tell which arguments of … carry the
+  key": a key read from a parsed input, or through a helper). With `args`, nothing is traced. Inside `args`,
+  `$id` is the seeded entity's key and `$actor` is the acting actor's fixture, e.g.
+  `refund: [{ ctx: { tenant: t1, actor: $actor }, input: { orderId: $id } }]`.
 - Only the bound export of a client module is replaced; its other exports (a guard or helper next to `db`) stay
   real. A client may be a bare exported function (`email: { module: src/mail.ts, export: sendMail }`): map its
   effect to the client name (`bindings.effects: { email.welcome: email }`) and the fake is a recording function.

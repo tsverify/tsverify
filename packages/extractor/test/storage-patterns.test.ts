@@ -68,6 +68,10 @@ export async function cancelOrThrow(id: string): Promise<void> {
   if (!(await setStatusIf(id, "pending_payment", "cancelled"))) throw new Error("changed");
 }
 export const repo = { get: getOrder, save: saveOrder };
+/** One object of named arguments: no argument of its own carries the key. */
+export async function getByArgs(args: { id: string; tenant: string }): Promise<Order | undefined> {
+  return getOrder(args.id);
+}
 /** A storage interface the app injects (\`deps.orders.get(id)\`). */
 export interface OrderStore { get(id: string): Promise<Order | undefined> }
 `;
@@ -99,6 +103,14 @@ export const qb = {
   },
 };
 export const http = { json(_body: unknown) {} };
+// An event whose type has exactly the entity's states: not an update, so not a write.
+// An ORM call the binding doesn't name, in Prisma's shape.
+export const orm = {
+  order: {
+    async update(_a: { where: { id: string }; data: { status?: import("./repo").Status } }) {},
+  },
+};
+export const bus = { async publish(_e: { id: string; status: import("./repo").Status }) {} };
 `;
 
 type FnSpec = string | ({ fn: string; args?: StorageRole[] } & Partial<StorageFunction>);
@@ -193,7 +205,7 @@ const IMPORTS = `
 import { getOrder, findOrder, saveOrder, patchOrder, setStatusIf, markShipped, refundIf, cancelOrThrow, repo } from "./repo";
 import { loadOrder, updateIf, store } from "./index";
 import { withTransaction } from "./db";
-import { stripe, email, legacy, qb, http } from "./clients";
+import { stripe, email, legacy, qb, http, bus, orm } from "./clients";
 `;
 
 function t(name: string, to: string, extra: Partial<TransitionSpec> = {}): TransitionSpec {
@@ -476,6 +488,14 @@ export async function reply(id: string) {
   http.json(body);
   http.json({ status: "ok" });
 }
+export async function ormUpdate(id: string) {
+  const order = await getOrder(id);
+  if (order?.status !== "paid") throw new Error("not paid");
+  await orm.order.update({ where: { id }, data: { status: "shipped" } });
+}
+export async function announce(id: string) {
+  await bus.publish({ id, status: "cancelled" });
+}
 `,
     [
       t("heldConst", "cancelled", { from: ["pending_payment"] }),
@@ -486,15 +506,21 @@ export async function reply(id: string) {
       t("builderHeld", "cancelled", { from: ["pending_payment"] }),
       t("builderInline", "cancelled", { from: ["pending_payment"] }),
       t("builderNoRead", "cancelled", { from: ["pending_payment"] }),
+      t("ormUpdate", "shipped", { from: ["paid"] }),
     ],
   );
   const finding = (id: string) => result.findings.find((f) => f.id === id);
 
   it("reports every write it can't read, and nothing for objects that aren't the entity's", () => {
     expect(result.findings.map((f) => f.id)).toEqual([
+      "unanalyzable:Fixture orders:from-state:builderNoRead",
+      "unanalyzable:Fixture orders:from-state:builderNoRead~2",
       "unanalyzable:Fixture orders:storage:builderHeld",
       "unanalyzable:Fixture orders:storage:builderInline",
+      "unanalyzable:Fixture orders:storage:builderNoRead",
+      "unanalyzable:Fixture orders:storage:builderNoRead~2",
       "unanalyzable:Fixture orders:storage:heldUnbound",
+      "unanalyzable:Fixture orders:storage:ormUpdate",
       "unanalyzable:Fixture orders:write-shape:heldLater",
       "unanalyzable:Fixture orders:write-shape:heldLet",
       "unanalyzable:Fixture orders:write-value:heldValue",
@@ -529,7 +555,7 @@ export async function reply(id: string) {
     );
     // Not extracted: the code model has each unconfirmed transition as specified, without sites
     // (like a transition without `impl`), so it doesn't lose behavior the code may have.
-    for (const n of ["heldValue", "heldLater", "heldLet", "builderNoRead"]) {
+    for (const n of ["heldValue", "heldLater", "heldLet"]) {
       const copies = result.model?.transitions.filter((x) => x.name === n) ?? [];
       expect(copies.every((c) => c.sites === undefined)).toBe(true);
     }
@@ -579,11 +605,118 @@ export async function reply(id: string) {
     expect(s.sites?.atomicUnknown).toBeDefined();
   });
 
+  it("an update with no read of one entity before it (bulk) is the entity's too: reported, never silent", () => {
+    const noRead = transitionOf(result, "builderNoRead");
+    expect(noRead.from).toBe("*");
+    expect(finding("unanalyzable:Fixture orders:storage:builderNoRead")?.message).toContain(
+      '`qb.update("orders").set`, which is not a `bindings.storage.save` function',
+    );
+    expect(finding("unanalyzable:Fixture orders:from-state:builderNoRead")?.hint).toContain(
+      "Nothing reads one Order before this update",
+    );
+    // A `status` object passed to a call that is not an update is not a write.
+    expect(result.findings.some((f) => f.message.includes("bus.publish"))).toBe(false);
+    expect(result.model?.transitions.some((x) => x.sites?.function.name === "announce")).toBe(
+      false,
+    );
+  });
+
+  it("an ORM update's `data` is a patch passed to a function the binding doesn't name", () => {
+    expect(transitionOf(result, "ormUpdate").from).toEqual(["paid"]);
+    expect(finding("unanalyzable:Fixture orders:storage:ormUpdate")?.message).toContain(
+      "`orm.order.update`, which is not a `bindings.storage.save` function",
+    );
+  });
+
   it("a query builder's patch is the entity's when its states are exactly the entity's, after a read", () => {
     expect(transitionOf(result, "builderHeld").from).toEqual(["pending_payment"]);
     expect(transitionOf(result, "builderInline").from).toEqual(["pending_payment"]);
     expect(finding("unanalyzable:Fixture orders:storage:builderInline")?.message).toContain(
       '`qb.update("orders").set`',
+    );
+  });
+});
+
+describe("one write that several transitions reach", () => {
+  const result = extract(
+    `${IMPORTS}
+async function cancelAll(id: string) {
+  await qb.update("orders").set({ status: "cancelled" }).where(id);
+}
+export async function cancelOnPause(id: string) {
+  await cancelAll(id);
+}
+export async function cancelOnDelete(id: string) {
+  await cancelAll(id);
+}
+`,
+    [
+      t("cancelOnPause", "cancelled", { from: ["pending_payment"] }),
+      t("cancelOnDelete", "cancelled", { from: ["pending_payment"] }),
+    ],
+  );
+
+  it("is reported once per kind of warning, naming every transition", () => {
+    expect(result.findings.map((f) => [f.id, f.message])).toEqual([
+      [
+        "unanalyzable:Fixture orders:from-state:cancelOnDelete",
+        "cancelOnDelete and cancelOnPause: the from-state of this write is unknown: no read of the Order precedes the call",
+      ],
+      [
+        "unanalyzable:Fixture orders:storage:cancelOnDelete",
+        'cancelOnDelete and cancelOnPause: Order.status is written in a patch passed to `qb.update("orders").set`, which is not a `bindings.storage.save` function',
+      ],
+    ]);
+  });
+});
+
+describe("a read whose type doesn't name the entity", () => {
+  // The row type of a query builder or a schema library (\`z.infer<…>\`, \`$inferSelect\`) is
+  // an anonymous object type: its name is lost, but it is what a bound read returned.
+  const result = extract(
+    `${IMPORTS}
+import type { Status } from "./repo";
+export async function getRow(id: string): Promise<{ id: string; status: Status } | undefined> {
+  return getOrder(id);
+}
+export async function cancel(id: string) {
+  const row = await getRow(id);
+  if (!row) throw new Error("missing");
+  if (row.status !== "pending_payment") throw new Error("not pending");
+  await qb.update("orders").set({ status: "cancelled", note: "x" }).where(id);
+}
+export async function cancelUnread(id: string) {
+  const other = await Promise.resolve({ status: "x" });
+  await legacy.patch(id, { status: "cancelled" });
+  return other;
+}
+`,
+    [
+      t("cancel", "cancelled", { from: ["pending_payment"] }),
+      t("cancelUnread", "cancelled", { from: ["pending_payment"] }),
+    ],
+    storageOf({
+      read: ["src/impl.ts#getRow"],
+      save: [{ fn: "src/repo.ts#patchOrder", args: ["key", "patch"] }],
+    }),
+  );
+
+  it("the patch's from-state is read from the bound read before it", () => {
+    expect(transitionOf(result, "cancel").from).toEqual(["pending_payment"]);
+    expect(result.findings.map((f) => f.id)).not.toContain(
+      "unanalyzable:Fixture orders:from-state:cancel",
+    );
+  });
+
+  it("with no read before the write, the hint says to read it, not to retype the field", () => {
+    const f = result.findings.find(
+      (x) => x.id === "unanalyzable:Fixture orders:from-state:cancelUnread",
+    );
+    expect(f?.message).toBe(
+      "cancelUnread: the from-state of this write is unknown: no read of the Order precedes the call",
+    );
+    expect(f?.hint).toBe(
+      "Read the Order with a `bindings.storage.read` function into a `const` before the write, in the function that writes it (`const x = await getRow(…)`), and check `x.status` there.",
     );
   });
 });
@@ -739,6 +872,76 @@ export async function shipBlind(id: string) {
     expect(s.sites?.atomicNote).toBeUndefined();
     expect(s.sites?.effects.map((e) => e.gate)).toEqual(["email.send"]);
     expect(s.from).toEqual(all);
+  });
+
+  it("an effect that follows another conditional save that went through is that save's", () => {
+    const all = ["draft", "pending_payment", "paid", "shipped", "refunded", "cancelled"];
+    const result = extract(
+      `${IMPORTS}
+async function tryShip(id: string): Promise<boolean> {
+  if (!(await setStatusIf(id, "paid", "shipped"))) return false;
+  await email.send(id, "shipped");
+  return true;
+}
+/** Ships when it can, else cancels: the email is the shipment's, not the cancellation's. */
+export async function shipOrCancel(id: string) {
+  if (await tryShip(id)) return;
+  if (!(await setStatusIf(id, "paid", "cancelled"))) throw new Error("changed");
+}
+/** After a save that can't fail, an effect is that save's too. */
+export async function shipThenCancel(id: string) {
+  await markShipped(id);
+  await email.send(id, "shipped");
+  if (!(await setStatusIf(id, "shipped", "cancelled"))) throw new Error("changed");
+}
+/** An effect before both saves still runs although the second one finds the state changed. */
+export async function emailFirst(id: string) {
+  await email.send(id, "working on it");
+  await markShipped(id);
+  if (!(await setStatusIf(id, "shipped", "cancelled"))) throw new Error("changed");
+}
+`,
+      [
+        t("shipOrCancel", "cancelled", { from: ["paid"] }),
+        t("shipThenCancel", "cancelled", { from: ["shipped"] }),
+        t("emailFirst", "cancelled", { from: ["shipped"] }),
+      ],
+      storageOf({
+        update: [
+          "src/repo.ts#setStatusIf",
+          { fn: "src/repo.ts#markShipped", from: all, to: "shipped", returns: "throws" },
+        ],
+      }),
+    );
+    for (const name of ["shipOrCancel", "shipThenCancel"]) {
+      const c = transitionOf(result, name);
+      expect({ name, atomic: c.atomic, note: c.sites?.atomicNote }).toEqual({
+        name,
+        atomic: true,
+        note: undefined,
+      });
+    }
+    expect(transitionOf(result, "emailFirst").sites?.atomicNote?.message).toBe(
+      "email.send can run although storage.setStatusIf found status changed: the call is not behind a check of the save's result",
+    );
+  });
+
+  it("a call no spec effect maps to doesn't make the transition non-atomic", () => {
+    const result = extract(
+      `${IMPORTS}
+export async function refundAfterLog(id: string) {
+  await legacy.patch(id, {});
+  if (!(await setStatusIf(id, "paid", "refunded"))) throw new Error("changed");
+}
+`,
+      [t("refundAfterLog", "refunded")],
+      storageOf({ update: ["src/repo.ts#setStatusIf"] }),
+    );
+    const s = transitionOf(result, "refundAfterLog");
+    // legacy.patch is a bound client call, but not a spec effect: `undeclared-effect` says so.
+    expect(s.sites?.effects.map((e) => e.gate)).toEqual(["legacy.patch"]);
+    expect(s.atomic).toBe(true);
+    expect(s.sites?.atomicNote).toBeUndefined();
   });
 
   it("`returns: count` also reads a count object (`r.count === 0`)", () => {
@@ -902,6 +1105,61 @@ export async function ship(deps: { orders: OrderStore }, id: string) {
         reason: "OrderStore.get is a method of OrderStore, a type, which has no value to replace",
       },
     ]);
+  });
+
+  it("a function that isn't exported is a broken link, but still read as bound", () => {
+    const result = extract(
+      `${IMPORTS}
+async function findLocal(_db: unknown, id: string) {
+  return getOrder(id);
+}
+export async function cancel(id: string) {
+  const order = await findLocal(null, id);
+  if (order?.status !== "pending_payment") throw new Error("not pending");
+  await patchOrder(id, { status: "cancelled" });
+}
+`,
+      [t("cancel", "cancelled", { from: ["pending_payment"] })],
+      storageOf({
+        read: [{ fn: "src/impl.ts#findLocal", args: ["_", "key"] }],
+        save: [{ fn: "src/repo.ts#patchOrder", args: ["key", "patch"] }],
+      }),
+    );
+    const f = result.findings.find((x) => x.id === "broken-link:Fixture orders:storage:findLocal");
+    expect(f).toMatchObject({ severity: "error" });
+    expect(f?.message).toBe(
+      "storage read function src/impl.ts#findLocal is not exported: `tsverify test` replaces storage functions by mocking the module that exports them, so it can't replace this one",
+    );
+    const s = transitionOf(result, "cancel");
+    expect(s.from).toEqual(["pending_payment"]);
+    expect(s.sites?.read?.gate).toBe("storage.findLocal");
+  });
+
+  it("warns when a role's argument is an object of named arguments", () => {
+    const result = extract(
+      `${IMPORTS}
+import { getByArgs } from "./repo";
+export async function ship(id: string) {
+  const order = await getByArgs({ id, tenant: "t1" });
+  if (order?.status !== "paid") throw new Error("not paid");
+  if (!(await setStatusIf(id, "paid", "shipped"))) throw new Error("changed");
+}
+`,
+      [t("ship", "shipped")],
+      storageOf({
+        read: ["src/repo.ts#getByArgs"],
+        update: ["src/repo.ts#setStatusIf"],
+      }),
+      true,
+    );
+    const f = result.findings.find((x) => x.id.endsWith(":binding:storage.getByArgs.args"));
+    expect(f).toMatchObject({ severity: "warning" });
+    expect(f?.message).toBe(
+      "argument 1 of storage read function src/repo.ts#getByArgs is an object ({ id: string; tenant: string }), but its `key` role needs a string or number: tsverify can't tell which of its fields that is",
+    );
+    expect(f?.hint).toContain("aren't supported yet");
+    // `from` as a list of states is fine.
+    expect(result.findings.some((x) => x.id.includes("setStatusIf.args"))).toBe(false);
   });
 
   it("warns about a bound function (any kind) that no call resolves to", () => {

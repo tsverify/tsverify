@@ -35,8 +35,10 @@ export type {
   UnreadWrite,
 } from "./model";
 export {
+  formatGuardArgList,
   formatGuardRef,
   formatSymbolRef,
+  parseGuardArgs,
   parseGuardBinding,
   parseGuardRef,
   parseSymbolRef,

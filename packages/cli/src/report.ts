@@ -68,6 +68,20 @@ export function dedupeFindings(findings: readonly Finding[]): Finding[] {
   });
 }
 
+/**
+ * Drops an `implementation-property` finding that repeats a `spec-property` finding of the same
+ * spec: same message, same counterexample. The code model then only inherits a problem of the
+ * spec itself (a skeleton spec with no transitions is stuck in its initial state either way), and
+ * the spec's finding is the one to fix.
+ */
+export function dropSpecRepeats(findings: readonly Finding[]): Finding[] {
+  // The traces differ only in which model they come from.
+  const key = (f: Finding) =>
+    `${f.message}\u0000${JSON.stringify(f.trace ? { ...f.trace, model: "" } : null)}`;
+  const spec = new Set(findings.filter((f) => f.category === "spec-property").map(key));
+  return findings.filter((f) => f.category !== "implementation-property" || !spec.has(key(f)));
+}
+
 export function countSeverity(findings: readonly Finding[], severity: Severity): number {
   return findings.filter((f) => f.severity === severity).length;
 }

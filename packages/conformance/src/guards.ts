@@ -3,6 +3,7 @@ import {
   compareStrings,
   type Finding,
   type GuardRef,
+  type SourceLocation,
   type Transition,
 } from "@tsverify/ir";
 import { earliest, type Pairing, pairingFinding } from "./finding";
@@ -110,6 +111,22 @@ function callOf(spec: BehaviorModel, raw: string): string {
   return spec.bindings.guards[raw]?.symbol ?? `the ${raw} guard`;
 }
 
+/** The earliest call of `raw`'s function with other arguments than its binding's, if any. */
+function firstMiss(
+  sites: Pairing["sites"],
+  raw: string,
+): { at: SourceLocation; args: string[] } | undefined {
+  const misses = (sites.guardMisses ?? []).filter((m) => m.guard === raw);
+  const at = earliest(misses.map((m) => m.at));
+  return misses.find((m) => m.at === at);
+}
+
+/** Guard arguments as written in messages: `"admin"`, `["owner", "admin"]`, `2`. */
+function argList(args: readonly string[]): string {
+  if (args.length === 0) return "no literal arguments";
+  return args.map((a) => (/^[[\d]|^(true|false)$/.test(a) ? a : JSON.stringify(a))).join(", ");
+}
+
 /** One finding per required guard that does not dominate the write. */
 function perGuard(p: Pairing, required: RequiredGuard[]): Finding[] {
   const { spec, t, code, sites } = p;
@@ -121,6 +138,25 @@ function perGuard(p: Pairing, required: RequiredGuard[]): Finding[] {
       sites.guards.filter((g) => g.guard === guard.raw && !g.dominates).map((g) => g.at),
     );
     const call = callOf(spec, guard.raw);
+    const miss = partial === undefined ? firstMiss(sites, guard.raw) : undefined;
+    if (miss) {
+      const wanted = spec.bindings.guards[guard.raw]?.args ?? [];
+      findings.push(
+        pairingFinding(p, {
+          category: "guard-not-dominating",
+          severity: "error",
+          subject: guard.raw,
+          message:
+            `${t.name}: ${guard.raw} (${call}) is called before the write, but not with ` +
+            `${argList(wanted)}: the call passes ${argList(miss.args)} ` +
+            `(required by ${sources.join(", ")}).`,
+          hint: `Pass ${argList(wanted)} as literal arguments (a list may also be a \`const\` holding an array literal), or bind ${guard.raw} to the arguments the code passes.`,
+          ...(guard.at === undefined ? {} : { specAt: guard.at }),
+          codeAt: miss.at,
+        }),
+      );
+      continue;
+    }
     const how = partial === undefined ? "is never called" : "is called on some paths but not all";
     findings.push(
       pairingFinding(p, {
