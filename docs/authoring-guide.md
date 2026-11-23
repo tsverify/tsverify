@@ -399,7 +399,7 @@ a redelivered `idempotent` event.
 | Category | Severity (exit) | Means | Do this |
 |---|---|---|---|
 | `invalid-spec` | error (2), or warning | The spec doesn't parse or validate: unknown key, unknown state or actor, rule syntax, unbound guard. Warnings: a terminal state with an outgoing transition, an unused guard binding | Fix the YAML at the location. Most messages carry a "did you mean" |
-| `broken-link` | error (2) | `impl`, a client, a guard or a storage function binding doesn't resolve: missing file, file not in the tsconfig, missing export, not a function with a body, no `tsconfig.json`. Also a `bindings.storage` function that isn't exported (generated tests can't replace it) | Fix the path (project-root relative) or the symbol (`file.ts#name`, `file.ts#Class.method`); export the storage function |
+| `broken-link` | error (2) | `impl`, a client, a guard or a storage function binding doesn't resolve: missing file, file not in the tsconfig, missing export, not a function with a body, no `tsconfig.json`. `tsverify test` generates no tests while a link is broken | Fix the path (project-root relative) or the symbol (`file.ts#name`, `file.ts#Class.method`) |
 | `spec-property` | error (1), or warning | The **spec** breaks a property, as a design bug. See [§6.2](#62-built-in-properties) | Fix the design (`atomic`, `from`, `idempotent`, a missing transition). Don't delete the rule |
 | `implementation-property` | error (1) | The **code's** model breaks a property, with a trace. Usually a `↳ consequence` of a conformance finding | Fix the root cause. If it stands alone, the code reaches a bad state the spec forbids. Fix the code |
 | `undeclared-transition` | error (1) | The code writes a state change that no transition declares, or a linked function writes a different `to` | A legit transition: declare it with that `impl`. A bug (B1 "reopen"): remove the write. Test or seed code: keep it out of the tsconfig `include` |
@@ -715,8 +715,8 @@ How to find them:
   other requests (a database transaction at a sufficient isolation level, or a lock). tsverify trusts the
   declaration and can't check what happens inside; the generated replay tests still run the race through it.
 - **Exported, in their own module.** Generated tests replace the functions by mocking the module that exports
-  them, so each must be exported (a function that isn't is a `broken-link` error; `check` still reads its calls),
-  and a call from inside that same module (an `impl` next to `getOrder` in `repo.ts`) still reaches the real one.
+  them, so each must be exported (`check` reads a function that isn't as usual; `test` generates no tests for the
+  spec and says which function), and a call from inside that same module (an `impl` next to `getOrder` in `repo.ts`) still reaches the real one.
   Keep the `impl`s in other files. Guards need not be exported: tests run them as they are.
 - **Only the functions the transitions call.** One read, one save and the conditional saves and atomic
   wrappers that the `impl`s use are enough; list several of a kind if the code uses several.
@@ -817,12 +817,11 @@ fixtures:
 - An `impl` that is an instance method (`file.ts#Class.method`, not `static`) gets no test yet (`not-generated`,
   an error under `--strict`): a test would need an object of the class to call it on.
 - An `impl` a test can't import or call gets none either (`not-generated`, saying which): a function its module
-  doesn't export, or a private method (`file.ts#Class.#method`). `check` reads both as usual; a storage function
-  that isn't exported is different, a `broken-link` error, because the tests must replace it. Export the impl,
+  doesn't export, or a private method (`file.ts#Class.#method`). `check` reads both as usual. Export the impl,
   or point `impl` at the exported function that calls it.
 - A binding the generated mocks can't replace means no test for the spec (`not-generated`, with each reason): a
-  client bound to a class (an object in its place would break `new`), or a storage function that is a method of
-  an interface (a type: there is no value to replace) or of a class.
+  client bound to a class (an object in its place would break `new`), a storage function that is a method of
+  an interface (a type: there is no value to replace) or of a class, or one its module doesn't export.
 - The tests resolve imports like the project: the tsconfig's `customConditions` are passed to vitest, so a
   workspace package resolved to its sources (`"exports": { "@org/source": "./src/index.ts", … }`) resolves the
   same way. A test file that can't load at all (an import that doesn't resolve, a mock that can't be built) is

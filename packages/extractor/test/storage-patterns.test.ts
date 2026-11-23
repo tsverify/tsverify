@@ -1421,7 +1421,7 @@ export async function ship(deps: { orders: OrderStore }, id: string) {
     ]);
   });
 
-  it("a function that isn't exported is a broken link, but still read as bound", () => {
+  it("a function that isn't exported is read as bound; only `tsverify test` can't replace it", () => {
     const result = extract(
       `${IMPORTS}
 async function findLocal(_db: unknown, id: string) {
@@ -1439,11 +1439,14 @@ export async function cancel(id: string) {
         save: [{ fn: "src/repo.ts#patchOrder", args: ["key", "patch"] }],
       }),
     );
-    const f = result.findings.find((x) => x.id === "broken-link:Fixture orders:storage:findLocal");
-    expect(f).toMatchObject({ severity: "error" });
-    expect(f?.message).toBe(
-      "storage read function src/impl.ts#findLocal is not exported: `tsverify test` replaces storage functions by mocking the module that exports them, so it can't replace this one",
-    );
+    expect(result.findings.filter((x) => x.category === "broken-link")).toEqual([]);
+    expect(result.model?.unfakeable).toEqual([
+      {
+        binding: "storage.findLocal",
+        reason:
+          "storage read function src/impl.ts#findLocal is not exported, and the tests replace a storage function by mocking the module that exports it (export findLocal from src/impl.ts and keep the impls that call it in another module, or bind the exported function that calls it)",
+      },
+    ]);
     const s = transitionOf(result, "cancel");
     expect(s.from).toEqual(["pending_payment"]);
     expect(s.sites?.read?.gate).toBe("storage.findLocal");

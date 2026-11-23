@@ -411,21 +411,13 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
             ...(at ? { specAt: at } : {}),
           });
         }
-        // Still read as bound, so the rest of the check stays accurate; but generated tests
+        // Read as bound by `check`, like a private impl (`hiddenImpls`); but generated tests
         // replace storage functions by mocking the module that exports them.
         if (!isExportedPath(ctx, fn.ref)) {
-          findings.push(
-            brokenLink(
-              behavior,
-              "storage",
-              fn.ref.symbol,
-              `storage ${fnKind} function ${formatSymbolRef(fn.ref)} is not exported: \`tsverify test\` replaces storage functions by mocking the module that exports them, so it can't replace this one`,
-              fn.at ?? storageBinding.at,
-              {
-                hint: `Export ${head} from ${fn.ref.file} (and keep the impls that call it in another module, so the mock reaches their calls), or bind the exported function that calls it.`,
-              },
-            ),
-          );
+          unfakeable.push({
+            binding: `storage.${fn.ref.symbol}`,
+            reason: `storage ${fnKind} function ${formatSymbolRef(fn.ref)} is not exported, and the tests replace a storage function by mocking the module that exports it (export ${head} from ${fn.ref.file} and keep the impls that call it in another module, or bind the exported function that calls it)`,
+          });
         }
       } else {
         findings.push(
@@ -482,9 +474,10 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
           reason: `client ${name} is the class ${binding.export}, and a fake object in its place would break \`new ${binding.export}(…)\``,
         });
       } else if (!(r.value.flags & ts.SymbolFlags.Value)) {
+        const what = r.value.flags & ts.SymbolFlags.Interface ? "the interface" : "the type";
         unfakeable.push({
           binding: `clients.${name}`,
-          reason: `client ${name} is the interface ${binding.export}, a type: there is no module export to replace with a fake, and the code gets its instances from elsewhere`,
+          reason: `client ${name} is ${what} ${binding.export}, a type: there is no module export to replace with a fake, and the code gets its instances from elsewhere`,
         });
       }
     } else {

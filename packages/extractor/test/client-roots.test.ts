@@ -268,6 +268,20 @@ describe("a client bound to a class, and bound clients nothing calls", () => {
     ]);
   });
 
+  it("calls a client bound to a type alias the type, not the interface", () => {
+    const aliased = structuredClone(bindings);
+    aliased.clients.notifier = { module: "src/queue.ts", export: "NotifierType" };
+    const r = extractFixture(
+      "injected-class",
+      orderSpec([{ name: "ship", impl: "src/service.ts#Service.ship", to: "shipped" }], aliased),
+    );
+    expect(r.model?.unfakeable).toContainEqual({
+      binding: "clients.notifier",
+      reason:
+        "client notifier is the type NotifierType, a type: there is no module export to replace with a fake, and the code gets its instances from elsewhere",
+    });
+  });
+
   it("takes the effects on that client as specified (they can't be seen)", () => {
     const ship = transitionOf(result, "ship");
     expect(ship.effects.map((e) => e.name)).toEqual([
