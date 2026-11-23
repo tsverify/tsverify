@@ -678,6 +678,27 @@ How to find them:
   email.send(…); return; }` before `await cancel(id)`). Only spec effects (named in `bindings.effects` or
   declared on a transition) count: another call is reported as `undeclared-effect` instead. A `count` may also be
   a count object (`r.count === 0`), as Prisma's `updateMany` returns.
+  The check can test the call itself, a `const` holding its result (`const ok = await setStatusIf(…); if (!ok)
+  …`), or a `let` (or `var`) assigned a conditional save's result in each branch and tested once afterwards:
+
+  ```ts
+  let updated: Order | undefined;
+  switch (input.status) {
+    case "paid": updated = await setOrderStatusIf(tx, id, "pending", "paid", patch); break;
+    case "refunded": updated = await setOrderStatusIf(tx, id, "paid", "refunded", patch); break;
+    default: throw new Error("bad status"); // or return; a `switch` with a case for every value needs none
+  }
+  if (!updated) throw new ConflictError("changed concurrently");
+  await emitAudit(tx, …); // behind the check
+  ```
+
+  The same holds for an `if` / `else` chain and every `returns` kind (`if (n === 0)`, `if (!ok)`). Every path to
+  the test must assign the variable a conditional save's result (a call of a bound `update`, or of the same
+  helper), with no other assignment between that save and the test. A path that assigns something else
+  (`updated = existing`) or nothing (a `default: break`, a `switch` on a `string` without `default`), a
+  reassignment after the save (`if (again) ok = await …`), a retry loop around the save, or a write such as
+  `ok &&= …` leaves the check unread, and an effect after it is reported as not behind a check of the save's
+  result.
 - **An unconditional ("blind") update** writes its state whatever the stored one is (`update({ where: { id } })`
   with a fixed status, a store method such as `startAttempt(id, …)` that sets `EXECUTING` unconditionally). Bind
   it with `from` **every state** (a YAML anchor helps: `from: &ALL [DELAYED, PENDING, …]`, then `from: *ALL`) and
