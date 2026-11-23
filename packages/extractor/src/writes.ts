@@ -70,6 +70,18 @@ export interface PatchOptions {
   fields: ReadonlySet<string>;
   /** Bound read functions' symbols (`getOrder`, `repo.get`): probe reference candidates. */
   readSymbols: readonly string[];
+  /**
+   * Last names of bound save and update functions with a `patch` or `entity` field role
+   * (`args: [{ id: key, data: patch }]`): an object literal in such a field of their object
+   * argument is a `patch` candidate, like one passed as an argument of its own.
+   */
+  fieldPatchNames?: ReadonlySet<string>;
+  /**
+   * Bound unconditional ("blind") updates (`from` every state), by symbol, with their spec's
+   * state field: each call gets a narrowing probe of the entity read before it
+   * (`findUpdateProbes`).
+   */
+  blindUpdates?: readonly { symbol: string; field: string }[];
 }
 
 export interface CandidateWrite {
@@ -484,12 +496,19 @@ function readNamesOf(sf: TS.SourceFile, symbols: readonly string[]): ReadonlySet
   return names;
 }
 
-/** Whether `init` is `await? <name>(…)` for one of `names` (any call when `names` is undefined). */
-function isReadCall(init: TS.Expression, names: ReadonlySet<string> | undefined): boolean {
+/**
+ * Whether `init` is `await? <name>(…)` for one of `names` (any call when `names` is undefined).
+ * `name` gives the callee's name to look up (default: its full text, `repo.get`).
+ */
+function isReadCall(
+  init: TS.Expression,
+  names: ReadonlySet<string> | undefined,
+  name: (callee: TS.Expression) => string | undefined = referenceText,
+): boolean {
   const e = stripValue(init);
   if (!ts.isCallExpression(e)) return false;
   if (!names) return true;
-  const callee = referenceText(e.expression);
+  const callee = name(e.expression);
   return callee !== undefined && names.has(callee);
 }
 
@@ -509,7 +528,11 @@ function patchRefText(at: TS.Node, names: ReadonlySet<string>): string | undefin
   return closestConstCall(at, names) ?? closestConstCall(at, undefined);
 }
 
-function closestConstCall(at: TS.Node, names: ReadonlySet<string> | undefined): string | undefined {
+function closestConstCall(
+  at: TS.Node,
+  names: ReadonlySet<string> | undefined,
+  name?: (callee: TS.Expression) => string | undefined,
+): string | undefined {
   let child: TS.Node = at;
   for (let p: TS.Node | undefined = at.parent; p; child = p, p = p.parent) {
     if (ts.isFunctionLike(p) && !isInlineCallback(p)) return undefined;
@@ -522,7 +545,7 @@ function closestConstCall(at: TS.Node, names: ReadonlySet<string> | undefined): 
       if (!st || !ts.isVariableStatement(st)) continue;
       if (!(st.declarationList.flags & ts.NodeFlags.Const)) continue;
       for (const d of st.declarationList.declarations) {
-        if (ts.isIdentifier(d.name) && d.initializer && isReadCall(d.initializer, names)) {
+        if (ts.isIdentifier(d.name) && d.initializer && isReadCall(d.initializer, names, name)) {
           return d.name.text;
         }
       }
@@ -912,7 +935,9 @@ function matchWrite(
   }
   if (ts.isObjectLiteralExpression(n)) {
     const parent = parentSkippingWrappers(n);
-    if (parent && ts.isPropertyAssignment(parent)) return matchDataWrite(n, fields);
+    if (parent && ts.isPropertyAssignment(parent)) {
+      return matchDataWrite(n, fields) ?? (patch ? matchFieldPatchWrite(n, patch) : undefined);
+    }
     const held = heldDeclarationOf(n);
     if (held) {
       return (
@@ -951,6 +976,59 @@ function matchWrite(
         };
       }
     }
+  }
+  return undefined;
+}
+
+/** The last segment of a callee's text: `findRun` for `this.$.store.findRun`. */
+function lastName(e: TS.Expression): string | undefined {
+  const x = skipParens(e);
+  if (ts.isIdentifier(x)) return x.text;
+  if (ts.isPropertyAccessExpression(x) && ts.isIdentifier(x.name)) return x.name.text;
+  return undefined;
+}
+
+/**
+ * A `patch` write in a field of an object argument (`savePatch({ id, data: { status: "paid" } })`)
+ * of a call whose name is a bound function's with a `patch` or `entity` field role
+ * (`PatchOptions.fieldPatchNames`). Phase 2 checks the symbol and the field's role.
+ */
+function matchFieldPatchWrite(
+  n: TS.ObjectLiteralExpression,
+  patch: PatchOptions,
+): WriteNode | undefined {
+  const names = patch.fieldPatchNames;
+  if (!names || names.size === 0) return undefined;
+  let cur: TS.Node = n;
+  let parent = parentSkippingWrappers(cur);
+  while (parent && ts.isPropertyAssignment(parent)) {
+    const obj = parentSkippingWrappers(parent);
+    if (!obj || !ts.isObjectLiteralExpression(obj)) return undefined;
+    cur = obj;
+    parent = parentSkippingWrappers(cur);
+  }
+  if (!parent || !ts.isCallExpression(parent) || cur === n) return undefined;
+  if (!parent.arguments.some((a) => unwrapArgument(a) === cur)) return undefined;
+  const callee = lastName(parent.expression);
+  if (callee === undefined || !names.has(callee)) return undefined;
+  for (const p of n.properties) {
+    if (ts.isSpreadAssignment(p)) return undefined;
+    const name = propertyName(p);
+    if (name === undefined || !patch.fields.has(name)) continue;
+    const value = ts.isPropertyAssignment(p)
+      ? p.initializer
+      : ((p as TS.ShorthandPropertyAssignment).name as TS.Identifier);
+    const probe = probeRefOf(n);
+    return {
+      kind: "patch",
+      field: name,
+      expr: n,
+      site: p,
+      ref: probe ?? n,
+      value,
+      call: parent,
+      probed: probe !== undefined,
+    };
   }
   return undefined;
 }
@@ -1003,6 +1081,61 @@ export function findCandidateWrites(
         ...(ref === undefined ? {} : { ref }),
       });
     }
+  }
+  return out;
+}
+
+/** Phase 1: a narrowing probe at a call to a bound unconditional update (`findUpdateProbes`). */
+export interface UpdateProbe {
+  file: string;
+  /** Original offsets of the call. */
+  span: { start: number; end: number };
+  /** The entity reference the probe reads (`order`, from `const order = await getOrder(id)`). */
+  ref: string;
+  field: string;
+}
+
+/**
+ * Phase 1, syntax only: a probe at every call that may be a bound unconditional update
+ * (`PatchOptions.blindUpdates`, by its last name), reading the state of the entity the code read
+ * before it: the closest `const X = await? <read>(…)` in an enclosing block, where `<read>`'s last
+ * name is a bound read function's, else the closest `const X = await? <any call>(…)`. Phase 2
+ * checks that the call is the bound update and `X` what a bound read of the same key returned;
+ * the narrowed state at the call is then what the code checked before the update
+ * (`adapters/functions.ts`).
+ */
+export function findUpdateProbes(
+  files: readonly TS.SourceFile[],
+  patch: PatchOptions | undefined,
+): UpdateProbe[] {
+  const blind = patch?.blindUpdates ?? [];
+  if (blind.length === 0) return [];
+  const fieldsByName = new Map<string, Set<string>>();
+  for (const b of blind) {
+    const name = b.symbol.slice(b.symbol.lastIndexOf(".") + 1);
+    const set = fieldsByName.get(name) ?? new Set<string>();
+    set.add(b.field);
+    fieldsByName.set(name, set);
+  }
+  const readNames = new Set(patch?.readSymbols.map((s) => s.slice(s.lastIndexOf(".") + 1)));
+  const out: UpdateProbe[] = [];
+  for (const sf of files) {
+    forEachDescendant(sf, (n) => {
+      if (!ts.isCallExpression(n)) return;
+      const name = lastName(n.expression);
+      const fields = name === undefined ? undefined : fieldsByName.get(name);
+      if (!fields) return;
+      const ref = closestConstCall(n, readNames, lastName) ?? closestConstCall(n, undefined);
+      if (ref === undefined) return;
+      for (const field of fields) {
+        out.push({
+          file: sf.fileName,
+          span: { start: n.getStart(sf), end: n.getEnd() },
+          ref,
+          field,
+        });
+      }
+    });
   }
   return out;
 }

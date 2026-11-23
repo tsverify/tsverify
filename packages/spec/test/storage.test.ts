@@ -370,6 +370,41 @@ describe("bindings.storage: validation", () => {
     expect(findings).toEqual([]);
   });
 
+  it("reads roles in the fields of an object argument", () => {
+    const { model, findings } = parseSpec(
+      `${BASE}  storage:
+    read: { fn: src/a.ts#get, args: [{ id: key }] }
+    save: { fn: src/a.ts#save, args: [{ where: { id: key }, data: patch }] }
+    update: { fn: src/a.ts#setIf, args: [_, { id: key, from: from, to: to }] }
+`,
+      FILE,
+    );
+    expect(findings).toEqual([]);
+    expect(model?.bindings.storage?.read[0]?.args).toEqual([{ id: "key" }]);
+    expect(model?.bindings.storage?.save[0]?.args).toEqual([
+      { where: { id: "key" }, data: "patch" },
+    ]);
+  });
+
+  it("checks field roles like positional ones, and rejects `_`, `callback` and `{}` in fields", () => {
+    const { findings } = parseSpec(
+      `${BASE}  storage:
+    read: { fn: src/a.ts#get, args: [{ id: key, tenant: _ }] }
+    save: { fn: src/a.ts#save, args: [{ id: key, data: from }, {}] }
+    atomic: { fn: src/a.ts#tx, args: [{ run: callback }] }
+`,
+      FILE,
+    );
+    expect(findings.map((f) => f.message.split(": ").slice(1).join(": "))).toEqual([
+      '"_" is not a field role (a field the object argument doesn\'t name is ignored)',
+      'a save function needs an "entity" argument, or "key" and "patch" (args: [{ id: key, data: from }, {}])',
+      'a save function takes no "from" argument (its roles: key, entity, patch, _)',
+      'an object argument names no field (`{}`); give the role of a field, as in `{ id: key }`, or use "_" to ignore the argument',
+      'an atomic function needs a "callback" argument (args: [{ run: callback }])',
+      '"callback" can\'t be a field of an object argument; the callback must be an argument of its own',
+    ]);
+  });
+
   it("reports every problem of one function", () => {
     const { findings } = parseSpec(
       `${BASE}  storage:\n    update: { fn: src/a.ts#u, args: [to, to, callback] }\n`,

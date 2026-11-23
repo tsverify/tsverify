@@ -5,6 +5,7 @@ import type {
   BehaviorModel,
   CallSite,
   CodeSites,
+  StorageArg,
   StorageBinding,
   StorageFunction,
   StorageRole,
@@ -17,6 +18,7 @@ import type {
   CodeModelInput,
   CodeSitesInput,
   ModelActionKind,
+  StorageArgInput,
   StorageBindingInput,
   StorageFunctionInput,
   StorageRoleInput,
@@ -46,6 +48,7 @@ describe("ir types are assignable to the runtime's structural inputs", () => {
     expectTypeOf<StorageBinding>().toExtend<StorageBindingInput>();
     expectTypeOf<StorageFunction>().toExtend<StorageFunctionInput>();
     expectTypeOf<StorageRole>().toEqualTypeOf<StorageRoleInput>();
+    expectTypeOf<StorageArg>().toExtend<StorageArgInput>();
     expectTypeOf<NonNullable<StorageFunction["returns"]>>().toEqualTypeOf<
       NonNullable<StorageFunctionInput["returns"]>
     >();

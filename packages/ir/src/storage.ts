@@ -1,4 +1,4 @@
-import type { StorageBinding, StorageFunction, StorageRole } from "./model";
+import type { StorageArg, StorageBinding, StorageFunction, StorageRole } from "./model";
 import { formatSymbolRef } from "./refs";
 
 /** The four kinds of storage function in `bindings.storage`, in YAML order. */
@@ -40,6 +40,53 @@ export function defaultStorageArgs(
   }
 }
 
+/** Where a role is: the positional argument, and the field path inside it (`[]`: the argument). */
+export interface StorageRoleAt {
+  index: number;
+  path: string[];
+}
+
+function findRole(arg: StorageArg, role: StorageRole, path: string[]): string[] | undefined {
+  if (typeof arg === "string") return arg === role ? path : undefined;
+  for (const [field, inner] of Object.entries(arg)) {
+    const found = findRole(inner, role, [...path, field]);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+/** Where `role` is in a storage function's arguments (the first place), if anywhere. */
+export function storageRoleAt(
+  fn: Pick<StorageFunction, "args">,
+  role: StorageRole,
+): StorageRoleAt | undefined {
+  for (const [index, arg] of fn.args.entries()) {
+    const path = findRole(arg, role, []);
+    if (path) return { index, path };
+  }
+  return undefined;
+}
+
+/** Every role a storage function's arguments carry, positional and field roles, in order. */
+export function storageRoles(fn: Pick<StorageFunction, "args">): StorageRole[] {
+  const out: StorageRole[] = [];
+  const visit = (arg: StorageArg) => {
+    if (typeof arg === "string") out.push(arg);
+    else for (const inner of Object.values(arg)) visit(inner);
+  };
+  for (const arg of fn.args) visit(arg);
+  return out;
+}
+
+/** One argument as the spec writes it: `key`, `{ id: key }`, `{ where: { id: key } }`. */
+export function formatStorageArg(arg: StorageArg): string {
+  if (typeof arg === "string") return arg;
+  const fields = Object.entries(arg).map(
+    ([field, inner]) => `${field}: ${formatStorageArg(inner)}`,
+  );
+  return fields.length === 0 ? "{}" : `{ ${fields.join(", ")} }`;
+}
+
 /**
  * `path#symbol`, plus what differs from the defaults: `(roles)` when the roles are not the
  * default ones, then ` from [a, b]`, ` to s` and ` returns r` (any `returns` but `changed`).
@@ -48,7 +95,8 @@ export function defaultStorageArgs(
 export function formatStorageFunction(kind: StorageKind, fn: StorageFunction): string {
   let text = formatSymbolRef(fn.ref);
   const defaults = defaultStorageArgs(kind, fn);
-  if (fn.args.join(",") !== defaults.join(",")) text += `(${fn.args.join(", ")})`;
+  const args = fn.args.map(formatStorageArg);
+  if (args.join(",") !== defaults.join(",")) text += `(${args.join(", ")})`;
   if (fn.from !== undefined) text += ` from [${fn.from.join(", ")}]`;
   if (fn.to !== undefined) text += ` to ${fn.to}`;
   if (fn.returns !== undefined && fn.returns !== "changed") text += ` returns ${fn.returns}`;

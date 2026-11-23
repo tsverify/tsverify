@@ -235,14 +235,27 @@ export interface GuardBinding {
 export type StorageRole = "key" | "entity" | "patch" | "from" | "to" | "callback" | "_";
 
 /**
+ * What one positional argument of a storage function carries: a role, or, for an argument that is
+ * an object of named arguments (`findOrder({ tx, id })`), the role of some of its fields, by name
+ * (`{ id: key }`; nested objects as nested maps, `{ where: { id: key } }`). Fields it doesn't
+ * name are ignored, like `_`. `callback` and `_` are not field roles.
+ */
+export type StorageArg = StorageRole | StorageArgFields;
+
+/** The roles of an object argument's fields, by field name (see `StorageArg`). */
+export interface StorageArgFields {
+  readonly [field: string]: StorageArg;
+}
+
+/**
  * One storage function of the app, written `path#symbol` or `{ fn, args, returns?, from?, to? }`.
  * Default `args`: read `[key]`, save `[entity]`, update `[key, from, to]` minus the roles a fixed
  * `from` / `to` replaces, atomic `[callback]`.
  */
 export interface StorageFunction {
   ref: SymbolRef;
-  /** Role of each positional argument. */
-  args: StorageRole[];
+  /** Role of each positional argument (or of the fields of an object argument). */
+  args: StorageArg[];
   /**
    * Update only: what the conditional save returns (default `changed`). On success / when the
    * state check fails: `changed` → `true` / `false`; `count` → `1` / `0`; `entity` → the updated

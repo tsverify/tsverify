@@ -15,10 +15,10 @@ import {
   parseSymbolRef,
   type Rule,
   STORAGE_KINDS,
+  type StorageArg,
   type StorageBinding,
   type StorageFunction,
   type StorageKind,
-  type StorageRole,
   type Transition,
 } from "@tsverify/ir";
 import type { FindingCollector } from "./findings";
@@ -32,7 +32,7 @@ type StorageInput = Exclude<NonNullable<NonNullable<SpecInput["bindings"]>["stor
 /** One item of `storage.read` / `save` / `update` / `atomic`, as written. */
 type StorageLongInput = {
   fn: string;
-  args?: StorageRole[];
+  args?: StorageArg[];
   returns?: StorageFunction["returns"];
   from?: string | string[];
   to?: string;
@@ -308,7 +308,7 @@ class Normalizer {
     const fn: StorageFunction = {
       ref,
       args: long?.args
-        ? [...long.args]
+        ? structuredClone(long.args)
         : defaultStorageArgs(kind, {
             ...(from !== undefined && { from }),
             ...(to !== undefined && { to }),

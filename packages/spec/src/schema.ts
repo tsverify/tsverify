@@ -1,4 +1,4 @@
-import type { StorageFunction, StorageRole } from "@tsverify/ir";
+import type { StorageArg, StorageFunction, StorageRole } from "@tsverify/ir";
 import { z } from "zod";
 
 /**
@@ -126,15 +126,28 @@ const concurrency = z
   })
   .describe("Bounds for the model checker");
 
-const storageRoles = z
-  .array(
+const storageRole = z
+  .enum(STORAGE_ROLES)
+  .describe(
+    "`key`, `entity`, `patch` (some fields), `from` (state or states), `to` (state), `callback`, or `_` (ignored)",
+  );
+
+/** A role, or the roles of an object argument's fields by name: `{ id: key }`. */
+const storageArg: z.ZodType<StorageArg> = z
+  .union([
+    storageRole,
     z
-      .enum(STORAGE_ROLES)
+      .record(
+        name,
+        z.lazy(() => storageArg),
+      )
       .describe(
-        "`key`, `entity`, `patch` (some fields), `from` (state or states), `to` (state), `callback`, or `_` (ignored)",
+        "An argument that is an object of named arguments: the role of some of its fields, by name, e.g. `{ id: key }` (nested objects as nested maps)",
       ),
-  )
-  .describe("Role of each positional argument");
+  ])
+  .meta({ id: "StorageArg" });
+
+const storageRoles = z.array(storageArg).describe("Role of each positional argument");
 
 const storageRef = z.string().describe("The app's function: `path/to/file.ts#symbol`");
 

@@ -21,10 +21,16 @@ export function resolveAlias(sym: TS.Symbol, checker: TS.Checker): TS.Symbol {
   return sym.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(sym) : sym;
 }
 
-/** The symbol an expression (identifier or `a.b` name) refers to, through import aliases. */
+/**
+ * The symbol an expression (identifier or `a.b` name) refers to, through import aliases. The name
+ * of a shorthand property (`id` in `{ id }`) refers to the variable it copies, not the property.
+ */
 export function symbolOf(node: TS.Node, checker: TS.Checker): TS.Symbol | undefined {
   const target = ts.isPropertyAccessExpression(node) ? node.name : node;
-  const sym = checker.getSymbolAtLocation(target);
+  const sym =
+    ts.isShorthandPropertyAssignment(target.parent) && target.parent.name === target
+      ? checker.getShorthandAssignmentValueSymbol(target.parent)
+      : checker.getSymbolAtLocation(target);
   return sym && resolveAlias(sym, checker);
 }
 

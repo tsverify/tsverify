@@ -21,16 +21,19 @@ import type {
   Finding,
   PersistenceKind,
   SourceLocation,
+  StorageArg,
   StorageFunction,
+  StorageRole,
   UnreadWrite,
 } from "@tsverify/ir";
-import { compareStrings, formatSymbolRef, storageFunctions } from "@tsverify/ir";
+import { compareStrings, formatStorageArg, formatSymbolRef, storageFunctions } from "@tsverify/ir";
 import { assignAdapter } from "./adapters/assign";
 import {
   type BoundFunction,
   functionsAdapter,
   STORAGE_CLIENT,
   StorageFunctions,
+  type UpdateCheck,
 } from "./adapters/functions";
 import { memoryAdapter } from "./adapters/memory";
 import { prismaAdapter } from "./adapters/prisma";
@@ -71,6 +74,7 @@ import {
 import { type TypeScript, ts, useTypeScript } from "./typescript";
 import {
   findCandidateWrites,
+  findUpdateProbes,
   oneLine,
   type PatchOptions,
   rebindWrites,
@@ -128,6 +132,8 @@ interface Env {
   writes: WriteNode[];
   types: WriteTypes[];
   callees: Callees;
+  /** The probe at a blind update's call (`findUpdateProbes`), for the `functions` adapter. */
+  narrowAtCall: (call: TS.CallExpression, field: string) => UpdateCheck | undefined;
 }
 
 function now(): number {
@@ -180,13 +186,41 @@ function unprobedTypes(write: WriteNode, checker: TS.Checker): Narrowed {
   };
 }
 
-/** `patch` write discovery, only when some spec names its own storage functions. */
+/** Whether a storage argument gives a field (not the argument itself) the `patch` or `entity` role. */
+function hasFieldPatch(arg: StorageArg): boolean {
+  if (typeof arg === "string") return false;
+  return Object.values(arg).some(
+    (inner) => inner === "patch" || inner === "entity" || hasFieldPatch(inner),
+  );
+}
+
+/**
+ * `patch` write discovery and blind-update probes (`writes.ts`), only when some spec names its
+ * own storage functions.
+ */
 function patchOptions(specs: readonly BehaviorModel[]): PatchOptions | undefined {
   const named = specs.filter((s) => s.bindings.storage !== undefined);
   if (named.length === 0) return undefined;
+  const fieldPatchNames = new Set<string>();
+  const blindUpdates: { symbol: string; field: string }[] = [];
+  for (const spec of named) {
+    const b = spec.bindings.storage as NonNullable<typeof spec.bindings.storage>;
+    for (const f of [...b.save, ...b.update]) {
+      if (f.args.some(hasFieldPatch)) {
+        fieldPatchNames.add(f.ref.symbol.slice(f.ref.symbol.lastIndexOf(".") + 1));
+      }
+    }
+    for (const f of b.update) {
+      if (f.from && spec.entity.states.every((st) => f.from?.includes(st))) {
+        blindUpdates.push({ symbol: f.ref.symbol, field: spec.entity.stateField });
+      }
+    }
+  }
   return {
     fields: new Set(named.map((s) => s.entity.stateField)),
     readSymbols: named.flatMap((s) => s.bindings.storage?.read.map((f) => f.ref.symbol) ?? []),
+    ...(fieldPatchNames.size > 0 ? { fieldPatchNames } : {}),
+    ...(blindUpdates.length > 0 ? { blindUpdates } : {}),
   };
 }
 
@@ -249,6 +283,14 @@ function extractLoaded(
     requestOf.push(requests.length);
     requests.push({ file: c.file, span: c.span, ref: c.ref, field: c.field });
   }
+  // Probes at blind updates: the state the code checked before each (`findUpdateProbes`).
+  const updateProbes = findUpdateProbes(loaded.files, patch);
+  const updateRequest = new Map<string, number[]>();
+  for (const u of updateProbes) {
+    const key = `${u.file}:${u.span.start}`;
+    updateRequest.set(key, [...(updateRequest.get(key) ?? []), requests.length]);
+    requests.push({ file: u.file, span: u.span, ref: u.ref, field: u.field });
+  }
   const handles = loaded.facts.planNarrowing(requests);
 
   // Phase 2: type queries.
@@ -270,7 +312,37 @@ function extractLoaded(
       probed: true,
     };
   });
-  const env: Env = { ctx, writes, types, callees: new Callees(ctx) };
+  const narrowAtCall = (call: TS.CallExpression, field: string): UpdateCheck | undefined => {
+    const file = call.getSourceFile().fileName;
+    const start = ctx.facts.toOriginalPosition(file, call.getStart());
+    for (const r of updateRequest.get(`${file}:${start}`) ?? []) {
+      if (requests[r]?.field !== field) continue;
+      // The probe wraps the call: `(order.status, update(…))`; several probes at one call nest.
+      const want = `${requests[r]?.ref}.${field}`;
+      let probe: TS.PropertyAccessExpression | undefined;
+      for (let c: TS.Node = call; !probe; ) {
+        const p = c.parent;
+        if (ts.isParenthesizedExpression(p)) c = p;
+        else if (
+          ts.isBinaryExpression(p) &&
+          p.operatorToken.kind === ts.SyntaxKind.CommaToken &&
+          p.right === c
+        ) {
+          if (ts.isPropertyAccessExpression(p.left) && p.left.getText() === want) probe = p.left;
+          c = p;
+        } else break;
+      }
+      if (!probe) continue;
+      const ref = probe.expression;
+      const narrowed = ctx.facts.narrowedLiteralsAt(handles[r] as NarrowHandle);
+      return {
+        ref,
+        narrowed: withMembershipGuards(narrowed, call, ref, field, ctx.checker),
+      };
+    }
+    return undefined;
+  };
+  const env: Env = { ctx, writes, types, callees: new Callees(ctx), narrowAtCall };
   const results = specs.map((spec) => extractSpec(spec, env));
   return {
     results,
@@ -325,18 +397,16 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
       }
       if (r.ok) {
         bound.set(r.value, { kind: fnKind, fn, path: fn.ref.symbol });
-        const objectArg = objectRoleArgument(ctx, r.value, fn);
-        if (objectArg) {
+        const issue = roleArgumentIssue(ctx, r.value, fn, storageBinding.key);
+        if (issue) {
           const at = fn.at ?? storageBinding.at;
           findings.push({
             ...unanalyzable(
               behavior,
               "binding",
               `${STORAGE_CLIENT}.${fn.ref.symbol}.args`,
-              `argument ${objectArg.index + 1} of storage ${fnKind} function ${formatSymbolRef(fn.ref)} is an object (${objectArg.text}), but its \`${objectArg.role}\` role needs ${objectArg.role === "key" ? "a string or number" : "a state, or a list of states"}: tsverify can't tell which of its fields that is`,
-              {
-                hint: `Bind a function that takes the ${objectArg.role} as an argument of its own: a thin wrapper such as \`(tx, id) => ${head}({ tx, id, … })\`, bound with \`args: [_, ${objectArg.role}]\`. Functions that take one object of named arguments aren't supported yet.`,
-              },
+              `argument ${issue.index + 1} of storage ${fnKind} function ${formatSymbolRef(fn.ref)} ${issue.message}`,
+              { hint: issue.hint },
             ),
             ...(at ? { specAt: at } : {}),
           });
@@ -382,6 +452,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
           callees,
           checker,
           entity: spec.entity,
+          narrowAt: (call) => env.narrowAtCall(call, spec.entity.stateField),
         })
       : ADAPTERS[kind];
   if (!adapter) {
@@ -702,39 +773,98 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
   return { spec: behavior, model, findings: sorted };
 }
 
+const VALUE_ROLES: ReadonlySet<StorageRole> = new Set(["key", "from", "to"]);
+
+/** What a value role needs, for messages. */
+function roleNeeds(role: StorageRole): string {
+  return role === "key" ? "a string or number" : "a state, or a list of states";
+}
+
+/** The properties of a parameter's type (each member of a union), if it is a plain object. */
+function objectParts(ctx: ProjectContext, type: TS.Type): TS.Type[] {
+  const parts = type.isUnionType() ? type.getTypes() : [type];
+  // An array or tuple of states (`from`) has an index signature; a plain object has none.
+  return parts.filter(
+    (t) => (t.flags & ts.TypeFlags.Object) !== 0 && ctx.checker.getIndexInfosOfType(t).length === 0,
+  );
+}
+
 /**
- * The first argument of a bound storage function whose role is `key`, `from` or `to` but whose
- * parameter is an object (`getOrder({ tx, id, tenantId })` bound with `args: [key]`): the
- * code check would take the whole object as the key, and the generated tests' fake too.
+ * A role in a bound storage function's `args` that doesn't fit its parameter:
+ * - a bare `key`, `from` or `to` on a parameter that is an object of named arguments
+ *   (`getOrder({ tx, id, tenantId })` bound with `args: [key]`): the code check would take the
+ *   whole object as the key, and the generated tests' fake too. The hint names the field form,
+ *   `args: [{ id: key }]`;
+ * - a field role (`args: [{ id: key }]`) on a parameter whose type has no such field.
  */
-function objectRoleArgument(
+function roleArgumentIssue(
   ctx: ProjectContext,
   sym: TS.Symbol,
   fn: StorageFunction,
-): { index: number; role: string; text: string } | undefined {
+  keyField: string,
+): { index: number; message: string; hint: string } | undefined {
   const decl = primaryDeclarationOf(sym);
   const params =
     decl && "parameters" in decl
       ? (decl as { parameters: readonly TS.ParameterDeclaration[] }).parameters
       : functionOfDeclaration(decl)?.parameters;
   if (!params) return undefined;
-  for (const [index, role] of fn.args.entries()) {
-    if (role !== "key" && role !== "from" && role !== "to") continue;
+  const checker = ctx.checker;
+  for (const [index, arg] of fn.args.entries()) {
     const param = params[index];
     if (!param || param.dotDotDotToken) continue;
-    const type = ctx.checker.getTypeAtLocation(param);
+    const type = checker.getTypeAtLocation(param);
     if (!type) continue;
-    const parts = type.isUnionType() ? type.getTypes() : [type];
-    // An array or tuple of states (`from`) has an index signature; a plain object has none.
-    const isObject = (t: TS.Type) =>
-      (t.flags & ts.TypeFlags.Object) !== 0 && ctx.checker.getIndexInfosOfType(t).length === 0;
-    if (!parts.some(isObject)) continue;
     const text = ts.isObjectBindingPattern(param.name)
       ? oneLine(param.name)
       : param.type
         ? oneLine(param.type)
-        : ctx.checker.typeToString(type);
-    return { index, role, text: text.length > 40 ? `${text.slice(0, 39)}…` : text };
+        : checker.typeToString(type);
+    const shown = text.length > 40 ? `${text.slice(0, 39)}…` : text;
+    if (typeof arg === "string") {
+      if (!VALUE_ROLES.has(arg)) continue;
+      const objects = objectParts(ctx, type);
+      if (objects.length === 0) continue;
+      const wanted = arg === "key" ? keyField : arg;
+      const has = objects.some((t) => checker.getPropertyOfType(t, wanted) !== undefined);
+      const field = has ? wanted : "<field>";
+      const args = fn.args.map((a, i) =>
+        i === index ? `{ ${field}: ${arg} }` : formatStorageArg(a),
+      );
+      return {
+        index,
+        message: `is an object (${shown}), but its \`${arg}\` role needs ${roleNeeds(arg)}: tsverify can't tell which of its fields that is`,
+        hint: `Name the field that carries the ${arg}: \`args: [${args.join(", ")}]\` (docs/behavior-format.md, storage roles).`,
+      };
+    }
+    // Field roles: each named field must be a property of the parameter's type.
+    const missing = (
+      fields: StorageArg,
+      t: TS.Type | undefined,
+      path: string[],
+    ): string[] | undefined => {
+      // A type tsverify can't see into (`any`, a type parameter) is taken as having the field.
+      if (typeof fields === "string" || !t || t.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown))
+        return undefined;
+      const present = checker.getNonNullableType(t);
+      const apparent = present && checker.getApparentType(present);
+      if (!apparent) return undefined;
+      for (const [field, inner] of Object.entries(fields)) {
+        const prop = checker.getPropertyOfType(apparent, field);
+        if (!prop) return [...path, field];
+        const found = missing(inner, checker.getTypeOfSymbol(prop), [...path, field]);
+        if (found) return found;
+      }
+      return undefined;
+    };
+    const gap = missing(arg, type, []);
+    if (gap) {
+      return {
+        index,
+        message: `has no field \`${gap.join(".")}\` (its type is ${shown}), which \`args\` gives a role`,
+        hint: `Name a field of the argument in \`args\` (\`{ ${keyField}: key }\` for \`${fn.ref.symbol}({ ${keyField}, … })\`), as the function's parameter type spells it.`,
+      };
+    }
   }
   return undefined;
 }
