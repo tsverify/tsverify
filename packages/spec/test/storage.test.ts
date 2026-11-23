@@ -203,14 +203,15 @@ describe("bindings.storage: validation", () => {
       "  storage:\n    update: { fn: src/repo.ts#u, args: [key, to] }\n",
       'bindings.storage.update "src/repo.ts#u": a conditional save needs its from-states: a "from" argument, or a fixed "from:" (args: [key, to])',
       [17, 40],
-      'add "from" to args, or write from: [paid]',
+      // In the spec's own states: its first transition's (`pay`: draft → paid).
+      'add "from" to args, or write from: [draft]',
     ],
     [
       "update without target state",
       "  storage:\n    update: { fn: src/repo.ts#u, args: [key, from] }\n",
       'bindings.storage.update "src/repo.ts#u": a conditional save needs its target state: a "to" argument, or a fixed "to:" (args: [key, from])',
       [17, 40],
-      'add "to" to args, or write to: refunded',
+      'add "to" to args, or write to: paid',
     ],
     [
       "update with from-states given twice",

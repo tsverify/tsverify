@@ -244,9 +244,21 @@ class Validator {
     if (!seen.has("key")) {
       need('a conditional save (update) needs a "key" argument', "e.g. args: [key, from, to]");
     }
+    // Examples in the spec's own states: its first transition's, else its initial and a final one.
+    const { entity, transitions } = this.model;
+    const first = transitions[0];
+    const fromExample =
+      (first && first.from !== "*" ? first.from[0] : undefined) ?? entity.initial ?? "<state>";
+    const toExample = first?.to ?? entity.terminal[0] ?? entity.states.at(-1) ?? "<state>";
     const sides = [
-      { role: "from", fixed: fn.from, what: "from-states", are: "are", example: "from: [paid]" },
-      { role: "to", fixed: fn.to, what: "target state", are: "is", example: "to: refunded" },
+      {
+        role: "from",
+        fixed: fn.from,
+        what: "from-states",
+        are: "are",
+        example: `from: [${fromExample}]`,
+      },
+      { role: "to", fixed: fn.to, what: "target state", are: "is", example: `to: ${toExample}` },
     ] as const;
     for (const { role, fixed, what, are, example } of sides) {
       if (seen.has(role) && fixed !== undefined) {
