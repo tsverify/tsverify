@@ -103,6 +103,33 @@ function propertyOf(checker: TS.Checker, sym: TS.Symbol, name: string): TS.Symbo
   return type && checker.getPropertyOfType(type, name);
 }
 
+/**
+ * What a `file#Head.member` path's head is, when it is a class or a type (an interface, a type
+ * alias): the kinds of export generated tests can't replace with a plain fake object.
+ */
+export function pathHeadKind(ctx: ProjectContext, ref: SymbolRef): "class" | "type" | undefined {
+  const sf = ctx.sourceFile(ctx.abs(ref.file));
+  const head = sf && topLevelSymbol(ctx, sf, ref.symbol.split(".")[0] as string);
+  if (!head) return undefined;
+  if (head.flags & ts.SymbolFlags.Class) return "class";
+  if (!(head.flags & ts.SymbolFlags.Value)) return "type";
+  return undefined;
+}
+
+/**
+ * Whether an impl function is an instance member of a class: a method (or accessor) without
+ * `static`, or a function held in an instance field (`handle = async () => …`).
+ */
+export function isInstanceMember(fn: FunctionLike): boolean {
+  const member: TS.Node =
+    (ts.isArrowFunction(fn) || ts.isFunctionExpression(fn)) && ts.isPropertyDeclaration(fn.parent)
+      ? fn.parent
+      : fn;
+  if (!ts.isClassLike(member.parent)) return false;
+  const modifiers = (member as { modifiers?: readonly TS.Node[] }).modifiers ?? [];
+  return !modifiers.some((m) => m.kind === ts.SyntaxKind.StaticKeyword);
+}
+
 /** `file#symbol` or `file#Class.method` → the symbol. */
 function resolveSymbolPath(ctx: ProjectContext, file: string, symbol: string): Resolved<TS.Symbol> {
   const sf = projectFile(ctx, file);

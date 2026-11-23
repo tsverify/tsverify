@@ -44,6 +44,8 @@ import { brokenLink, sortFindings, unanalyzable, uniqueIds } from "./findings";
 import { loadTypeScript, TypeScriptSetupError } from "./load-typescript";
 import { type LoadedProject, loadProject, ProjectContext } from "./project";
 import {
+  isInstanceMember,
+  pathHeadKind,
   resolveClient,
   resolveGuard,
   resolveImpl,
@@ -309,10 +311,23 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
     : (spec.bindings.persistence ?? detectPersistence(ctx));
   // Named storage functions: resolved by symbol, for the `functions` adapter.
   let storage: StorageFunctions | undefined;
+  // Bindings `tsverify test` can't replace with a fake (`BehaviorModel.unfakeable`).
+  const unfakeable: { binding: string; reason: string }[] = [];
   if (storageBinding) {
     const bound = new Map<TS.Symbol, BoundFunction>();
     for (const { kind: fnKind, fn } of storageFunctions(storageBinding)) {
       const r = resolveStorageFunction(ctx, fn);
+      const head = fn.ref.symbol.split(".")[0] as string;
+      const headKind = r.ok && fn.ref.symbol.includes(".") ? pathHeadKind(ctx, fn.ref) : undefined;
+      if (headKind !== undefined) {
+        unfakeable.push({
+          binding: `storage.${fn.ref.symbol}`,
+          reason:
+            headKind === "type"
+              ? `${fn.ref.symbol} is a method of ${head}, a type, which has no value to replace`
+              : `${fn.ref.symbol} is a method of the class ${head}, which would have to be replaced as a whole`,
+        });
+      }
       if (r.ok) bound.set(r.value, { kind: fnKind, fn, path: fn.ref.symbol });
       else {
         findings.push(
@@ -360,8 +375,15 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
   const clientSyms = new Map<TS.Symbol, string>();
   for (const [name, binding] of sortedEntries(spec.bindings.clients)) {
     const r = resolveClient(ctx, binding);
-    if (r.ok) clientSyms.set(r.value, name);
-    else {
+    if (r.ok) {
+      clientSyms.set(r.value, name);
+      if (r.value.flags & ts.SymbolFlags.Class) {
+        unfakeable.push({
+          binding: `clients.${name}`,
+          reason: `client ${name} is the class ${binding.export}, and a fake object in its place would break \`new ${binding.export}(…)\``,
+        });
+      }
+    } else {
       findings.push(
         brokenLink(
           behavior,
@@ -437,6 +459,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
   };
 
   const impls: { name: string; fn: FunctionLike; reach: Reach }[] = [];
+  const instanceImpls: string[] = [];
   const implAt: Record<string, SourceLocation> = {};
   for (const t of [...spec.transitions].sort((a, b) => compareStrings(a.name, b.name))) {
     if (!t.impl) continue;
@@ -444,6 +467,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
     if (r.ok) {
       impls.push({ name: t.name, fn: r.value, reach: reachFrom(r.value) });
       implAt[t.name] = ctx.loc(frameNaming(r.value).node);
+      if (isInstanceMember(r.value)) instanceImpls.push(t.name);
     } else {
       findings.push(
         brokenLink(
@@ -620,6 +644,8 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
     uncalledClients: new Set(Object.keys(uncalled)),
   });
   if (Object.keys(uncalled).length > 0) model.uncalledClients = uncalled;
+  if (instanceImpls.length > 0) model.instanceImpls = instanceImpls;
+  if (unfakeable.length > 0) model.unfakeable = unfakeable;
   const sorted = sortFindings(uniqueIds(findings));
   // After `uniqueIds`: each unread write names its finding by its final id.
   const unreadWrites: Record<string, UnreadWrite[]> = {};

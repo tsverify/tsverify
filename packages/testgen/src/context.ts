@@ -1,8 +1,10 @@
 /**
  * Everything the emitters share for one spec: which spec transitions can be driven (linked code
  * transition with an invocation shape and storage, `assign`, `prisma` or `functions` persistence,
- * actor fixtures), the fake configurations derived from every code transition's `CodeSites` (and,
- * for `functions`, from the spec's `bindings.storage`), and the fixtures.
+ * actor fixtures, an impl that is a function or a static method), the fake configurations derived
+ * from every code transition's `CodeSites` (and, for `functions`, from the spec's
+ * `bindings.storage`), and the fixtures. No test is generated when a bound export can't be
+ * replaced by a fake (`BehaviorModel.unfakeable`: a class, a method of an interface).
  * Whatever cannot be generated is recorded as an `info` finding instead.
  */
 import {
@@ -138,11 +140,21 @@ export function buildContext(input: ContextInput): { ctx?: Context; skipped: Fin
       "Add `fixtures: { entity: …, actors: … }` to the spec (docs/behavior-format.md, fixtures).",
     );
   }
+  // Every bound export is replaced by a fake (`prelude.ts`): one that can't be would break the
+  // generated files as they load.
+  const unfakeable = code.unfakeable ?? [];
+  if (unfakeable.length > 0) {
+    return skipAll(
+      "fakes",
+      `tsverify test generated no tests: the generated tests replace every export the spec binds with a fake, and can't replace these: ${unfakeable.map((u) => u.reason).join("; ")}`,
+      "Bind values the code imports (an exported object, function or instance, not a class or an interface), or test these transitions with your own tests.",
+    );
+  }
 
   // 1. Candidate transitions: linked, with invocation + storage, a persistence with fakes.
   const candidates: { spec: Transition; code: Transition; sites: CodeSites }[] = [];
   for (const t of [...spec.transitions].sort((a, b) => compareStrings(a.name, b.name))) {
-    const skip = (message: string) =>
+    const skip = (message: string, hint?: string) =>
       skipped.push(
         skipFinding(
           behavior,
@@ -151,11 +163,19 @@ export function buildContext(input: ContextInput): { ctx?: Context; skipped: Fin
           {
             transition: t.name,
             ...(t.at ? { specAt: t.at } : {}),
+            ...(hint === undefined ? {} : { hint }),
           },
         ),
       );
     if (t.impl === undefined) {
       skip("it has no `impl`");
+      continue;
+    }
+    if (code.instanceImpls?.includes(t.name)) {
+      skip(
+        `its impl ${formatSymbolRef(t.impl)} is an instance method, and a generated test can't build an object of its class to call it on yet`,
+        "Test it with your own tests, or point `impl` at a function or static method that does the work.",
+      );
       continue;
     }
     const c = code.transitions.find((x) => x.name === t.name && x.sites?.specTransition === t.name);

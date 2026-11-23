@@ -206,6 +206,17 @@ describe("a client bound to a class, and bound clients nothing calls", () => {
     });
   });
 
+  it("tells `tsverify test` what it can't call or fake: an instance method, a class", () => {
+    expect(result.model?.instanceImpls).toEqual(["ship"]);
+    expect(result.model?.unfakeable).toEqual([
+      {
+        binding: "clients.queue",
+        reason:
+          "client queue is the class Queue, and a fake object in its place would break `new Queue(…)`",
+      },
+    ]);
+  });
+
   it("takes the effects on that client as specified (they can't be seen)", () => {
     const ship = transitionOf(result, "ship");
     expect(ship.effects.map((e) => e.name)).toEqual(["audit.shipped", "queue.ack_ship"]);

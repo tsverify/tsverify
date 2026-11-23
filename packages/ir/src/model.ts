@@ -373,6 +373,18 @@ export interface BehaviorModel {
    * than missing.
    */
   uncalledClients?: Record<string, string>;
+  /**
+   * Code models only: spec transitions whose `impl` is an instance method of a class
+   * (`file#Class.method`, not `static`). Calling one needs an object of the class, which the
+   * generated tests can't build yet (`tsverify test` reports them as not generated).
+   */
+  instanceImpls?: string[];
+  /**
+   * Code models only: bindings the generated tests can't replace with a fake, and why: a client
+   * bound to a class (replacing the export with an object would break `new`), a storage function
+   * that is a method of an interface (a type, with no value to replace) or of a class.
+   */
+  unfakeable?: { binding: string; reason: string }[];
 }
 
 /** A state write the extractor could not read as a transition (`BehaviorModel.unreadWrites`). */

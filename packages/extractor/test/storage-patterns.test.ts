@@ -68,6 +68,8 @@ export async function cancelOrThrow(id: string): Promise<void> {
   if (!(await setStatusIf(id, "pending_payment", "cancelled"))) throw new Error("changed");
 }
 export const repo = { get: getOrder, save: saveOrder };
+/** A storage interface the app injects (\`deps.orders.get(id)\`). */
+export interface OrderStore { get(id: string): Promise<Order | undefined> }
 `;
 const DB = `
 let tail: Promise<unknown> = Promise.resolve();
@@ -822,6 +824,28 @@ export async function ship(id: string) {
       "markShipped",
       "refundIf",
       "ship",
+    ]);
+  });
+
+  it("tells `tsverify test` it can't fake a method of an interface", () => {
+    const result = extract(
+      `${IMPORTS}
+import type { OrderStore } from "./repo";
+export async function ship(deps: { orders: OrderStore }, id: string) {
+  const order = await deps.orders.get(id);
+  if (order?.status !== "paid") throw new Error("not paid");
+  if (!(await setStatusIf(id, "paid", "shipped"))) throw new Error("changed");
+}
+`,
+      [t("ship", "shipped")],
+      storageOf({ read: ["src/repo.ts#OrderStore.get"], update: ["src/repo.ts#setStatusIf"] }),
+    );
+    expect(transitionOf(result, "ship").sites?.read?.gate).toBe("storage.OrderStore.get");
+    expect(result.model?.unfakeable).toEqual([
+      {
+        binding: "storage.OrderStore.get",
+        reason: "OrderStore.get is a method of OrderStore, a type, which has no value to replace",
+      },
     ]);
   });
 
