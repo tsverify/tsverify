@@ -1064,7 +1064,7 @@ export async function expireUnlocked(id: string) {
 export async function expireBlind(id: string) {
   await expireOrder(id);
 }
-/** A check of another order says nothing about this one. */
+/** A check of an order read with another key: tsverify can't tell it is this one. */
 export async function expireOther(id: string, otherId: string) {
   const other = await getOrder(otherId);
   if (other?.status !== "pending_payment") return;
@@ -1126,17 +1126,27 @@ export async function expireMany(ids: string[]) {
     }
   });
 
-  it("with no check, or a check of another key, the update writes from every state", () => {
-    for (const name of ["expireBlind", "expireOther"]) {
-      const s = transitionOf(result, name);
-      expect({ name, from: s.from, unconstrained: s.sites?.fromState.unconstrained }).toEqual({
-        name,
-        from: ALL,
-        unconstrained: true,
-      });
-      // The update itself is one step: nothing to race with.
-      expect(s.atomic).toBe(true);
-    }
+  it("with no check, the update writes from every state", () => {
+    const s = transitionOf(result, "expireBlind");
+    expect({ from: s.from, unconstrained: s.sites?.fromState.unconstrained }).toEqual({
+      from: ALL,
+      unconstrained: true,
+    });
+    // The update itself is one step: nothing to race with.
+    expect(s.atomic).toBe(true);
+  });
+
+  it("with a check of an order read with another key, the from-state is unknown (a warning)", () => {
+    const s = transitionOf(result, "expireOther");
+    expect(s.from).toBe("*");
+    expect(s.sites?.fromState.reason).toBe(
+      "status is checked on the Order that storage.getOrder reads with key `otherId`, but the write's key is `id`, so tsverify can't tell it is the same Order",
+    );
+    const f = result.findings.find((x) => x.id.endsWith(":from-state:expireOther"));
+    expect(f).toMatchObject({
+      severity: "warning",
+      hint: "Write the Order with the key it was read with, or with the read row's own `id` (`row.id`), so tsverify can tell it is the one the code checked.",
+    });
   });
 
   it("a lock method of a class, called through an injected field, is the atomic scope", () => {
@@ -1193,6 +1203,7 @@ export class Expiry {
     // (`setStatusIf`'s own write is reported too: it isn't bound here.)
     expect(result.findings.filter((x) => x.id.includes("expire")).map((x) => x.id)).toEqual([
       f?.id,
+      "unanalyzable:Fixture orders:from-state:expireOther",
     ]);
   });
 });
@@ -1663,5 +1674,77 @@ export async function ship(ledger: Ledger, id: string) {
       true,
     );
     expect(result.findings.filter((f) => f.id.endsWith(":storage.unbound-methods"))).toEqual([]);
+  });
+});
+
+describe("the key a write uses and the key the checked entity was read with", () => {
+  const result = extract(
+    `${IMPORTS}
+/** Read by one key, saved by another: which order is written? */
+export async function shipOther(id: string, otherId: string) {
+  const order = await getOrder(otherId);
+  if (order?.status !== "paid") throw new Error("not paid");
+  await patchOrder(id, { status: "shipped" });
+}
+/** Read by one key, saved by the read row's own key: the same order. */
+export async function shipRow(orderId: string) {
+  const order = await findOrder("t1", orderId);
+  if (order?.status !== "paid") throw new Error("not paid");
+  await patchOrder(order.id, { status: "shipped" });
+}
+/** A conditional update of another key than the order read and checked. */
+export async function cancelOther(id: string, otherId: string) {
+  const order = await getOrder(otherId);
+  if (order?.status !== "pending_payment") throw new Error("not pending");
+  if (!(await setStatusIf(id, "pending_payment", "cancelled"))) throw new Error("changed");
+}
+/** A conditional update of the read row's own key. */
+export async function cancelRow(orderId: string) {
+  const order = await getOrder(orderId);
+  if (order?.status !== "pending_payment") throw new Error("not pending");
+  if (!(await setStatusIf(order.id, "pending_payment", "cancelled"))) throw new Error("changed");
+}
+/** The same key through a const copy. */
+export async function shipCopy(input: { id: string }) {
+  const id = input.id;
+  const order = await getOrder(input.id);
+  if (order?.status !== "paid") throw new Error("not paid");
+  await patchOrder(id, { status: "shipped" });
+}
+`,
+    [
+      t("shipOther", "shipped", { from: ["paid"] }),
+      t("shipRow", "shipped", { from: ["paid"] }),
+      t("shipCopy", "shipped", { from: ["paid"] }),
+      t("cancelOther", "cancelled", { from: ["pending_payment"] }),
+      t("cancelRow", "cancelled", { from: ["pending_payment"] }),
+    ],
+  );
+
+  it("differ: the from-state is unknown, with a warning that says so", () => {
+    const s = transitionOf(result, "shipOther");
+    expect(s.from).toBe("*");
+    const f = result.findings.find((x) => x.id.endsWith(":from-state:shipOther"));
+    expect(f?.message).toBe(
+      "shipOther: the from-state of this write is unknown: status is checked on the Order that storage.getOrder reads with key `otherId`, but the write's key is `id`, so tsverify can't tell it is the same Order",
+    );
+  });
+
+  it("differ for a conditional update: its from-state stands, with a warning about the key", () => {
+    expect(transitionOf(result, "cancelOther").from).toEqual(["pending_payment"]);
+    const f = result.findings.find((x) => x.id === "unanalyzable:Fixture orders:key:cancelOther");
+    expect(f).toMatchObject({
+      severity: "warning",
+      message:
+        "cancelOther: status is checked on the Order that storage.getOrder reads with key `otherId`, but the write's key is `id`, so tsverify can't tell it is the same Order: storage.setStatusIf sets status on whichever Order has that key",
+    });
+    expect(result.findings.some((x) => x.id.endsWith(":key:cancelRow"))).toBe(false);
+  });
+
+  it("are the same: the read row's own key field, or a const copy of the read's key", () => {
+    for (const name of ["shipRow", "shipCopy"]) {
+      expect({ name, from: transitionOf(result, name).from }).toEqual({ name, from: ["paid"] });
+      expect(result.findings.some((x) => x.id.endsWith(`:from-state:${name}`))).toBe(false);
+    }
   });
 });

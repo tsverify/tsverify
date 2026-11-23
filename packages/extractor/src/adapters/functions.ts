@@ -597,6 +597,8 @@ interface BlindCheck {
   /** How to name what was checked: `order`, or `the rows of runs`. */
   what: string;
   list: boolean;
+  /** Why the from-state is unknown although one entity was checked: the keys differ (`keyMismatch`). */
+  reason?: string;
 }
 
 interface Scope {
@@ -672,6 +674,62 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
     }
     return agreed;
   };
+
+  /** A `const` key copied from another expression (`const id = run.id`): that expression. */
+  const keySource = (e: TS.Expression): TS.Expression => {
+    const x = strip(e);
+    if (!ts.isIdentifier(x)) return x;
+    const decl = valueDeclarationOf(symbolOf(x, checker));
+    if (
+      decl &&
+      ts.isVariableDeclaration(decl) &&
+      decl.initializer &&
+      ts.isIdentifier(decl.name) &&
+      ts.isVariableDeclarationList(decl.parent) &&
+      decl.parent.flags & ts.NodeFlags.Const
+    ) {
+      const init = strip(decl.initializer);
+      if (!ts.isCallExpression(init)) return init;
+    }
+    return x;
+  };
+
+  /**
+   * Why the write may change another entity than the one `read` loaded and the code checked: the
+   * write's key is neither the read's key (the same variable or reference, also through a `const`
+   * copy) nor the read row's own key field (`row.<key>`). Undefined when they are the same, or
+   * when either key isn't known.
+   */
+  const keyMismatch = (
+    read: ClientCall,
+    writeKey: TS.Expression | undefined,
+    frame: FunctionLike | undefined,
+    reach: Reach | undefined,
+  ): string | undefined => {
+    const rb = fns.of(read.call);
+    const readKey = rb && argAt(read.call, rb.fn, "key");
+    if (!readKey || !writeKey) return undefined;
+    const same = (a: TS.Expression, b: TS.Expression) => {
+      const x = strip(a);
+      const y = strip(b);
+      if (sameRef(x, y, checker)) return true;
+      const lit = (e: TS.Expression) =>
+        ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e) || ts.isNumericLiteral(e);
+      return lit(x) && lit(y) && x.text === y.text;
+    };
+    const w = keySource(writeKey);
+    if (same(readKey, writeKey) || same(keySource(readKey), w)) return undefined;
+    // `row.id`, where `row` holds what this read returned.
+    for (const k of [strip(writeKey), w]) {
+      if (ts.isPropertyAccessExpression(k) && k.name.text === binding.key) {
+        const holder = readOfRef(k.expression, frame, reach, 0);
+        if (holder?.call === read.call) return undefined;
+      }
+    }
+    return `${field} is checked on the ${entity.name} that ${read.gate} reads with key \`${oneLine(readKey)}\`, but the write's key is \`${oneLine(writeKey)}\`, so tsverify can't tell it is the same ${entity.name}`;
+  };
+
+  const keyHint = `Write the ${entity.name} with the key it was read with, or with the read row's own \`${binding.key}\` (\`row.${binding.key}\`), so tsverify can tell it is the one the code checked.`;
 
   /** A bound save among `calls` (after `after`) that takes `ref` as its entity or patch. */
   const saveOf = (
@@ -1017,19 +1075,14 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
     const probe = narrowAt?.(call);
     if (probe && probe.narrowed.values !== "*") {
       const read = readOfRef(probe.ref, frame, reach, 0);
-      const readFn = read && fns.of(read.call);
-      const readKey = read && readFn && argAt(read.call, readFn.fn, "key");
-      const sameKey = !key || !readKey || sameRef(readKey, key, checker);
-      if (read && sameKey && elementOf(checker.getTypeAtLocation(probe.ref)) === undefined) {
+      const mismatch = read && keyMismatch(read, key, frame, reach);
+      if (read && elementOf(checker.getTypeAtLocation(probe.ref)) === undefined) {
         const values = probe.narrowed.values.filter((v) => entity.states.includes(v));
         if (entity.states.some((st) => !values.includes(st))) {
-          return {
-            readCall: read.call,
-            read,
-            values,
-            what: `\`${referenceText(probe.ref) ?? probe.ref.getText()}\``,
-            list: false,
-          };
+          const what = `\`${referenceText(probe.ref) ?? probe.ref.getText()}\``;
+          return mismatch === undefined
+            ? { readCall: read.call, read, values, what, list: false }
+            : { readCall: read.call, read, values: "*", what, list: false, reason: mismatch };
         }
       }
     }
@@ -1092,12 +1145,17 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
               ? {
                   values: "*",
                   unconstrained: false,
-                  reason: `${field} is checked on ${checked.what}, read by ${readText}, and tsverify can't tell which of them ${commit.gate} writes`,
+                  reason:
+                    checked.reason ??
+                    `${field} is checked on ${checked.what}, read by ${readText}, and tsverify can't tell which of them ${commit.gate} writes`,
                 }
               : { values: uniqueSorted(checked.values), unconstrained: false },
           ...(checked.values === "*"
             ? {
-                fromStateHint: `Check and update one ${entity.name} at a time (read it with a \`bindings.storage.read\` function, check its ${field}, then update it), or make the bulk update conditional: give it the states its query requires as \`from\` (docs/authoring-guide.md §7.6).`,
+                fromStateHint:
+                  checked.reason !== undefined
+                    ? keyHint
+                    : `Check and update one ${entity.name} at a time (read it with a \`bindings.storage.read\` function, check its ${field}, then update it), or make the bulk update conditional: give it the states its query requires as \`from\` (docs/authoring-guide.md §7.6).`,
               }
             : {}),
           notes: [
@@ -1111,19 +1169,31 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
           ...(key ? { entityKey: key } : {}),
         };
       }
-      // The read that the code checked before the save: the latest one with the same key.
+      // The read that the code checked before the save: the latest one with the same key (or
+      // whose row's own key the update takes). The latest read of another key is reported.
       let read: ClientCall | undefined;
+      let other: ClientCall | undefined;
       if (key) {
         for (const c of frameCalls(frame)) {
           if (c.getStart() >= call.getStart()) break;
-          const rb = fns.of(c);
-          const rk = rb?.kind === "read" ? argAt(c, rb.fn, "key") : undefined;
-          if (rk && sameRef(rk, key, checker)) read = fns.clientCall(c);
+          if (fns.of(c)?.kind !== "read") continue;
+          const r = fns.clientCall(c) as ClientCall;
+          if (keyMismatch(r, key, frame, reach) === undefined) read = r;
+          else other = r;
         }
       }
+      const otherKey = !read && other ? keyMismatch(other, key, frame, reach) : undefined;
       return {
         ...base,
         ...(read ? { read } : {}),
+        ...(otherKey === undefined
+          ? {}
+          : {
+              keyWarning: {
+                message: `${otherKey}: ${commit.gate} sets ${field} on whichever ${entity.name} has that key`,
+                hint: keyHint,
+              },
+            }),
         commit,
         atomic: true,
         atomicAt: { kind: "conditional-update", call, gate: commit.gate },
@@ -1210,11 +1280,18 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
         };
       }
       const read = readOfRef(write.ref, frame, reach, 0);
+      const mismatch = read && keyMismatch(read, key, frame, reach);
       return {
         ...base,
         ...(read ? { read } : {}),
         commit,
         atomic: false,
+        ...(mismatch === undefined
+          ? {}
+          : {
+              fromState: { values: "*", unconstrained: false, reason: mismatch },
+              fromStateHint: keyHint,
+            }),
         ...keyFacts,
         ...(!key && read
           ? { entityKey: argAt(read.call, (fns.of(read.call) as BoundFunction).fn, "key") }
@@ -1247,12 +1324,19 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
     const commitBound = commit && (fns.of(commit.call) as BoundFunction);
     const commitKey = commit && commitBound && argAt(commit.call, commitBound.fn, "key");
     const entityKey = readKey ?? commitKey;
+    const mismatch = read && keyMismatch(read, commitKey, frame, reach);
     const facts: PersistenceFacts = {
       ...base,
       ...(read ? { read } : {}),
       ...(commit ? { commit } : {}),
       atomic: false,
       ...(entityKey ? { entityKey } : {}),
+      ...(mismatch === undefined
+        ? {}
+        : {
+            fromState: { values: "*", unconstrained: false, reason: mismatch },
+            fromStateHint: keyHint,
+          }),
       problems: read ? [] : [noRead(refText)],
     };
     if (!commit) {
@@ -1274,6 +1358,7 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
         ...(facts.entityKey ? { entityKey: facts.entityKey } : {}),
         problems: facts.problems,
         ...(facts.unbound ? { unbound: facts.unbound } : {}),
+        ...(facts.keyWarning ? { keyWarning: facts.keyWarning } : {}),
       },
     };
     if (facts.atomicAt) {

@@ -226,8 +226,11 @@ function buildTransition(
     checker: ctx.checker,
     facts: m.persistence,
   });
+  // The impl's call paths decide what the write's own frame couldn't (a key that is a helper's
+  // parameter): its key warning, if any, replaces the frame's.
+  const { keyWarning: _, ...frameFacts } = m.persistence;
   const p: PersistenceFacts = linkAtomicity?.facts
-    ? { ...m.persistence, ...linkAtomicity.facts }
+    ? { ...frameFacts, ...linkAtomicity.facts }
     : m.persistence;
   let atomicScope: CodeSites["atomic"];
   if (linkAtomicity) {
@@ -387,6 +390,16 @@ function buildTransition(
         hint:
           env.adapter.readHint ??
           "Read the entity through a bound client (`bindings.clients`) in the same function as the write.",
+      }),
+    );
+  }
+  // A conditional update of another key than the entity the code read and checked.
+  if (p.keyWarning) {
+    env.findings.push(
+      unanalyzable(spec.name, "key", name, `${name}: ${p.keyWarning.message}`, {
+        transition: name,
+        codeAt: m.at,
+        hint: p.keyWarning.hint,
       }),
     );
   }
