@@ -64,6 +64,27 @@ describe("summarize", () => {
     expect(summarize(model)).toContain("a customer (untrusted, no guard) can move a draft order");
   });
 
+  it("picks a or an by sound: a user, an hourly job, an SMS webhook, a unique order", () => {
+    const model = orderModel();
+    const rename = (from: string, to: string) => {
+      const actor = model.actors[from];
+      if (!actor) throw new Error("fixture changed");
+      delete model.actors[from];
+      model.actors[to] = { ...actor, name: to };
+      for (const t of model.transitions) t.by = t.by.map((a) => (a === from ? to : a));
+    };
+    rename("customer", "user");
+    rename("admin", "hourly_job");
+    rename("stripe", "SMS");
+    const out = summarize(model);
+    expect(out).toContain("a user (untrusted, requires owner) can move a draft order");
+    expect(out).toContain("an hourly_job (requires role(admin))");
+    expect(out).toContain("an SMS webhook");
+    expect(out).not.toMatch(/\ban user\b/);
+    model.entity.name = "UniqueOrder";
+    expect(summarize(model)).toContain("A unique order has 6 states");
+  });
+
   it("reads nested rule expressions and escapes Markdown", () => {
     const out = summarize(escapingModel());
     expect(out).toContain("A support ticket has 4 states: open, on-hold, on_hold and end.");
