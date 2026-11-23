@@ -731,6 +731,8 @@ describe("spread-to-save write held in a variable", () => {
     orderSpec([
       { name: "refund", impl: "src/refund.ts#refundOrder", to: "refunded" },
       { name: "ship", impl: "src/refund.ts#shipTwice", to: "shipped" },
+      { name: "cancel", impl: "src/refund.ts#cancelFilled", to: "cancelled" },
+      { name: "cancel_patch", impl: "src/refund.ts#cancelPatch", to: "cancelled" },
     ]),
   );
 
@@ -743,12 +745,32 @@ describe("spread-to-save write held in a variable", () => {
   });
 
   it("reports one saved twice, instead of extracting it", () => {
-    expect(result.findings.map((f) => [f.id, f.severity])).toEqual([
-      ["unanalyzable:Fixture orders:write-shape:shipTwice", "warning"],
-    ]);
-    expect(result.findings[0]?.message).toBe(
+    const f = result.findings.find(
+      (x) => x.id === "unanalyzable:Fixture orders:write-shape:shipTwice",
+    );
+    expect(f?.severity).toBe("warning");
+    expect(f?.message).toBe(
       "Order.status is set in `next`, an object later passed to `db.orders.save`, but `next` is passed to 2 calls; the write is not extracted",
     );
+  });
+
+  it("reports a copy or an empty patch whose state is set afterwards, instead of reading it wrong", () => {
+    expect(result.findings.map((f) => f.id)).toEqual([
+      "unanalyzable:Fixture orders:write-shape:cancelFilled",
+      "unanalyzable:Fixture orders:write-shape:cancelPatch",
+      "unanalyzable:Fixture orders:write-shape:shipTwice",
+    ]);
+    const message = (id: string) => result.findings.find((f) => f.id.endsWith(id))?.message;
+    expect(message(":cancelFilled")).toBe(
+      "Order.status is set in `next`, an object later passed to `tx.orders.save`, but `next.status` is set after the object is built; the write is not extracted",
+    );
+    expect(message(":cancelPatch")).toContain(
+      "but `patch.status` is set after the object is built",
+    );
+    // Not extracted: no transition read from every state, or silently dropped.
+    for (const name of ["cancel", "cancel_patch"]) {
+      expect(transitionOf(result, name).sites).toBeUndefined();
+    }
   });
 });
 

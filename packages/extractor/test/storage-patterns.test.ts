@@ -99,6 +99,14 @@ export const qb = {
   },
 };
 export const http = { json(_body: unknown) {} };
+// An event whose type has exactly the entity's states: not an update, so not a write.
+// An ORM call the binding doesn't name, in Prisma's shape.
+export const orm = {
+  order: {
+    async update(_a: { where: { id: string }; data: { status?: import("./repo").Status } }) {},
+  },
+};
+export const bus = { async publish(_e: { id: string; status: import("./repo").Status }) {} };
 `;
 
 type FnSpec = string | ({ fn: string; args?: StorageRole[] } & Partial<StorageFunction>);
@@ -193,7 +201,7 @@ const IMPORTS = `
 import { getOrder, findOrder, saveOrder, patchOrder, setStatusIf, markShipped, refundIf, cancelOrThrow, repo } from "./repo";
 import { loadOrder, updateIf, store } from "./index";
 import { withTransaction } from "./db";
-import { stripe, email, legacy, qb, http } from "./clients";
+import { stripe, email, legacy, qb, http, bus, orm } from "./clients";
 `;
 
 function t(name: string, to: string, extra: Partial<TransitionSpec> = {}): TransitionSpec {
@@ -476,6 +484,14 @@ export async function reply(id: string) {
   http.json(body);
   http.json({ status: "ok" });
 }
+export async function ormUpdate(id: string) {
+  const order = await getOrder(id);
+  if (order?.status !== "paid") throw new Error("not paid");
+  await orm.order.update({ where: { id }, data: { status: "shipped" } });
+}
+export async function announce(id: string) {
+  await bus.publish({ id, status: "cancelled" });
+}
 `,
     [
       t("heldConst", "cancelled", { from: ["pending_payment"] }),
@@ -486,15 +502,21 @@ export async function reply(id: string) {
       t("builderHeld", "cancelled", { from: ["pending_payment"] }),
       t("builderInline", "cancelled", { from: ["pending_payment"] }),
       t("builderNoRead", "cancelled", { from: ["pending_payment"] }),
+      t("ormUpdate", "shipped", { from: ["paid"] }),
     ],
   );
   const finding = (id: string) => result.findings.find((f) => f.id === id);
 
   it("reports every write it can't read, and nothing for objects that aren't the entity's", () => {
     expect(result.findings.map((f) => f.id)).toEqual([
+      "unanalyzable:Fixture orders:from-state:builderNoRead",
+      "unanalyzable:Fixture orders:from-state:builderNoRead~2",
       "unanalyzable:Fixture orders:storage:builderHeld",
       "unanalyzable:Fixture orders:storage:builderInline",
+      "unanalyzable:Fixture orders:storage:builderNoRead",
+      "unanalyzable:Fixture orders:storage:builderNoRead~2",
       "unanalyzable:Fixture orders:storage:heldUnbound",
+      "unanalyzable:Fixture orders:storage:ormUpdate",
       "unanalyzable:Fixture orders:write-shape:heldLater",
       "unanalyzable:Fixture orders:write-shape:heldLet",
       "unanalyzable:Fixture orders:write-value:heldValue",
@@ -529,7 +551,7 @@ export async function reply(id: string) {
     );
     // Not extracted: the code model has each unconfirmed transition as specified, without sites
     // (like a transition without `impl`), so it doesn't lose behavior the code may have.
-    for (const n of ["heldValue", "heldLater", "heldLet", "builderNoRead"]) {
+    for (const n of ["heldValue", "heldLater", "heldLet"]) {
       const copies = result.model?.transitions.filter((x) => x.name === n) ?? [];
       expect(copies.every((c) => c.sites === undefined)).toBe(true);
     }
@@ -577,6 +599,29 @@ export async function reply(id: string) {
     const s = transitionOf(result, "heldUnbound");
     expect(s.from).toEqual(["pending_payment"]);
     expect(s.sites?.atomicUnknown).toBeDefined();
+  });
+
+  it("an update with no read of one entity before it (bulk) is the entity's too: reported, never silent", () => {
+    const noRead = transitionOf(result, "builderNoRead");
+    expect(noRead.from).toBe("*");
+    expect(finding("unanalyzable:Fixture orders:storage:builderNoRead")?.message).toContain(
+      '`qb.update("orders").set`, which is not a `bindings.storage.save` function',
+    );
+    expect(finding("unanalyzable:Fixture orders:from-state:builderNoRead")?.hint).toContain(
+      "Nothing reads one Order before this update",
+    );
+    // A `status` object passed to a call that is not an update is not a write.
+    expect(result.findings.some((f) => f.message.includes("bus.publish"))).toBe(false);
+    expect(result.model?.transitions.some((x) => x.sites?.function.name === "announce")).toBe(
+      false,
+    );
+  });
+
+  it("an ORM update's `data` is a patch passed to a function the binding doesn't name", () => {
+    expect(transitionOf(result, "ormUpdate").from).toEqual(["paid"]);
+    expect(finding("unanalyzable:Fixture orders:storage:ormUpdate")?.message).toContain(
+      "`orm.order.update`, which is not a `bindings.storage.save` function",
+    );
   });
 
   it("a query builder's patch is the entity's when its states are exactly the entity's, after a read", () => {

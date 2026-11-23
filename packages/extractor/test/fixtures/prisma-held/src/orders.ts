@@ -40,3 +40,25 @@ export function view(): { status: string } {
   const body = { status: "paid" };
   return body;
 }
+
+/** The update's whole argument held in a `const` used only there: read as if inline. */
+export async function refundArgs(orderId: string): Promise<void> {
+  const order = await prisma.order.findUnique({ where: { id: orderId } });
+  if (!order || order.status !== "paid") throw new Error("not paid");
+  const args = { where: { id: order.id }, data: { status: "refunded" as const } };
+  await prisma.order.update(args);
+}
+
+/** The whole argument held, and its `data` replaced before the call: reported. */
+export async function shipArgsLater(orderId: string): Promise<void> {
+  const args = { where: { id: orderId }, data: { status: "shipped" as const } };
+  args.data = { status: "shipped" as const };
+  await prisma.order.update(args);
+}
+
+/** An empty update object filled in afterwards: reported. */
+export async function payFilled(orderId: string): Promise<void> {
+  const data: import("../../_prisma/client").OrderUpdateInput = {};
+  data.status = "paid";
+  await prisma.order.update({ where: { id: orderId }, data });
+}

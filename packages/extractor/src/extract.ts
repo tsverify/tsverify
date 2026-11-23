@@ -66,7 +66,13 @@ import {
   withMembershipGuards,
 } from "./type-facts";
 import { type TypeScript, ts, useTypeScript } from "./typescript";
-import { findCandidateWrites, type PatchOptions, rebindWrites, type WriteNode } from "./writes";
+import {
+  findCandidateWrites,
+  oneLine,
+  type PatchOptions,
+  rebindWrites,
+  type WriteNode,
+} from "./writes";
 
 export interface ExtractOptions {
   /** Project root; `impl` and binding paths are relative to it. */
@@ -543,8 +549,10 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
       });
       return persistence;
     };
-    // The exact-union fallback needs a recognized read: DTOs and events share the union.
-    if (match === "union" && (!frame || !analyze(frame).read)) return;
+    // The exact-union fallback needs a recognized read: DTOs and events share the union. An
+    // object built up before it is saved (`writes.ts`, `held`) is reported, never dropped.
+    const builtUp = write.held?.issue !== undefined && write.kind === "assign";
+    if (match === "union" && !builtUp && (!frame || !analyze(frame).read)) return;
     const at = ctx.loc(write.site);
     const subject = frame ? frameNaming(frame).name : moduleName(ctx, write.expr);
     const value = write.fixedValue ?? writtenValue(write.value, checker);
@@ -563,7 +571,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
     // An object held in a variable that tsverify can't follow to the call (`writes.ts`).
     if (write.held?.issue !== undefined) {
       const target = write.call
-        ? `, an object later passed to \`${write.call.expression.getText()}\``
+        ? `, an object later passed to \`${oneLine(write.call.expression)}\``
         : "";
       notExtracted(
         "write-shape",

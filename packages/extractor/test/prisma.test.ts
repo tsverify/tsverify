@@ -298,6 +298,9 @@ describe("prisma: an update object held in a variable", () => {
         held("cancelHeldLet", "cancelled"),
         held("cancelHeldLater", "cancelled"),
         held("payHeldTwice", "paid", ["pending_payment"]),
+        held("refundArgs", "refunded"),
+        held("shipArgsLater", "shipped"),
+        held("payFilled", "paid", ["pending_payment"]),
       ],
       prismaBindings(),
     ),
@@ -331,13 +334,33 @@ describe("prisma: an update object held in a variable", () => {
       "but `data` is the update object of 2 calls",
     );
     const sited = (result.model?.transitions ?? []).filter((t) => t.sites !== undefined);
-    expect(sited.map((t) => t.name)).toEqual(["refundHeld", "shipHeld"]);
+    expect(sited.map((t) => t.name)).toEqual(["refundArgs", "refundHeld", "shipHeld"]);
     // Each impl that reaches one is unconfirmed, not missing.
     expect(Object.keys(result.model?.unreadWrites ?? {})).toEqual([
       "cancelHeldLater",
       "cancelHeldLet",
+      "payFilled",
       "payHeldTwice",
+      "shipArgsLater",
     ]);
+  });
+
+  it("an update's whole argument held in a `const` used only there is read as if inline", () => {
+    const r = transitionOf(result, "refundArgs");
+    expect(r).toMatchObject({ from: ["paid"], to: "refunded" });
+    expect(r.sites).toMatchObject({
+      read: { gate: "db.order.findUnique" },
+      commit: { gate: "db.order.update" },
+    });
+  });
+
+  it("a held argument changed before the call, or an empty object filled afterwards, is reported", () => {
+    expect(finding("unanalyzable:Fixture orders:write-shape:shipArgsLater")?.message).toContain(
+      "but `args.data` is set after the object is built",
+    );
+    expect(finding("unanalyzable:Fixture orders:write-shape:payFilled")?.message).toBe(
+      "Order.status is set in `data`, an object later passed to `prisma.order.update`, but `data.status` is set after the object is built; the write is not extracted",
+    );
   });
 
   it("an object that never reaches an update is not a write", () => {

@@ -66,7 +66,7 @@ import { symbolOf } from "../resolve";
 import type * as TS from "../ts-types";
 import { literalsOf } from "../type-facts";
 import { ts } from "../typescript";
-import { propertyNamed, unwrapArgument, type WriteNode } from "../writes";
+import { propertyNamed, unwrapArgument, updateArgsOf, type WriteNode } from "../writes";
 import { findRead } from "./assign";
 import type { AdapterInput, AtomicityNote, PersistenceAdapter, PersistenceFacts } from "./types";
 
@@ -89,6 +89,8 @@ function strip(e: TS.Expression): TS.Expression {
 }
 
 function objectArg(call: TS.CallExpression, index: number): TS.ObjectLiteralExpression | undefined {
+  // The update's argument may be held in a `const` first (`writes.ts`, `heldArgsContext`).
+  if (index === 0) return updateArgsOf(call);
   const a = call.arguments[index];
   if (!a) return undefined;
   const e = strip(unwrapArgument(a) as TS.Expression);

@@ -511,7 +511,7 @@ await stripe.refunds.create({ charge });       // effect, after the commit
 |---|---|
 | Detected | When no Prisma or Drizzle import is found. Set `persistence: assign` to be explicit |
 | Read | A call on a bound client (or on `tx`) whose result initializes the entity reference, also through a helper (`const o = await loadOrder(tx, id)`) |
-| Write | `ref.<state> = "literal"`, or `{ ...ref, <state>: "literal" }` passed to a call, directly or as a `const` only that call takes (`const next = { ...order, status: "refunded" }; await tx.orders.save(next)`); anything else done with such a `const` (a `let`, two saves, the state set on it afterwards) is reported as `unanalyzable` |
+| Write | `ref.<state> = "literal"`, or `{ ...ref, <state>: "literal" }` passed to a call, directly or as a `const` only that call takes (`const next = { ...order, status: "refunded" }; await tx.orders.save(next)`); anything else done with such a `const` (a `let`, two saves, the state set on it afterwards) is reported as `unanalyzable`, and so is the state set on a copy or an empty patch built in the function (`const next = { ...order }; next.status = "refunded"`, `const patch: Partial<Order> = {}; patch.status = …`) |
 | Atomic | Read, write and commit inside one `<client>.transaction(async (tx) => …)` callback, all through `tx`. The method must be called `transaction`, with the callback as its first argument. A `db.…` call inside the callback bypasses the transaction |
 | Not a write | `this.status = …` in a constructor, and new object literals (`{ id, status: "draft" }`) |
 | `tsverify test` | Supported (in-memory fake store) |
@@ -537,8 +537,10 @@ await stripe.refunds.create({ charge: order.chargeId });
 | Blind update: no state in `where`, and no read | every state (`from-state-unconstrained`) | yes (the bug is the missing check) |
 
 The update object may be held in a `const` first (`const data = { status: "refunded" }; await
-prisma.order.update({ where: { id }, data })`): one used only as that update's `data` is read as if written into
-the call. A `let`, one object for several updates, the state set on it afterwards (`data.status = …`) or any
+prisma.order.update({ where: { id }, data })`), and so may the update's whole argument (`const args = { where:
+{ id }, data: { status: "refunded" } }; await prisma.order.update(args)`): one used only by that update is read
+as if written into the call. A `let`, one object for several updates, the state set on it afterwards
+(`data.status = …`, also on an empty `const data: Prisma.OrderUpdateInput = {}`), `args.data` replaced, or any
 other use is reported as `unanalyzable`, and the transitions reaching it as "couldn't confirm".
 
 The entity is matched by model delegate, ignoring case: `prisma.order` is `entity.name: Order`. Bind the client
@@ -581,6 +583,7 @@ Prefer a small, behavior-preserving refactor that makes the code checkable over 
 | "assigned a value that is not a single literal" (`setStatus(order, next)`), and "couldn't confirm that … writes …" on the transitions it serves | One function per transition, each writing a literal (`order.status = "paid"`). A generic verb that takes the target state (`setStatus(id, input.status)`) can stay as the entry point if it calls one of those per target state, or a conditional save with literal states (`setStatusIf(id, "open", "mitigated")`, bound as `update`) |
 | "is set in `patch` …" / "is set on `patch` … after the object is built" | Build the patch as one `const` object literal with the state as a literal (`const patch = { status: "resolved", resolvedAt: now }`) and pass it to one bound save. Setting other fields on it afterwards is fine; setting the state field is not |
 | "written in a patch passed to `tx.update(…).set`, which is not a `bindings.storage.save` function" | Move the query into a named function (`setIncidentStatusIf(tx, id, from, to)`) and bind it in `bindings.storage` (`update` for a conditional save, `save` otherwise) |
+| "Nothing reads one … before this update" (a bulk `update(…).set({ status })` over the rows a query matches) | Move it into a named function, bound as an `update` with the states its query requires as `from` (`resolveOpenIncidents(tx, monitorIds)` with `from: [open, investigating]`, `to: resolved`) |
 | "the from-state of this write is unknown: … is typed string" | `status: OrderStatus` with `type OrderStatus = "draft" \| …` |
 | `from-state-unconstrained`, although a check exists | Compare the field directly in an `if`/`switch` (or `.includes` / `Set.has` on a list of literals), or use a type predicate. No copy to a local |
 | "no read of `x` through a bound client was found" | Read the entity through the bound client (or `tx`) in the impl or a helper it calls. Don't pass the entity in from outside |
@@ -659,9 +662,16 @@ How to find them:
     gives no `non-atomic` verdict on it either. Name that function in `bindings.storage`, or move the query into one.
 - **Whose patch it is.** A patch passed to a bound save is the entity's. One passed to another function is the
   entity's when its type, or the parameter's, names the entity (`Partial<Order>`), or when its state field allows
-  exactly the spec's states (ignoring `undefined` and non-literal members, as in Drizzle's column types) and a bound
-  `read` of the entity comes before it in the same function. Other objects with a `status` key
-  (`c.json({ status: "ok" })`) are not writes.
+  exactly the spec's states (ignoring `undefined` and non-literal members, as in Drizzle's column types) and
+  either a bound `read` of the entity comes before it in the same function, or the call is an update: a method
+  named `update`, `updateMany`, `updateOne`, `updateTable` or `upsert`, or `set` called on what one returned.
+  That last rule catches bulk updates with no read of one entity before them: Drizzle's
+  `tx.update(incidents).set({ status: "resolved" }).where(…)` takes a patch typed from the table, whose `status`
+  column has exactly the spec's states. Such a write is reported (its from-state is unknown: it changes
+  whichever rows its query matches), never skipped. Other objects with a `status` key are not writes: a response
+  body (`c.json({ status: "ok" })`), or an event passed to a function that isn't an update
+  (`bus.publish({ id, status: "resolved" })`), even when its type has exactly the spec's states. An ORM update's
+  `data` (`prisma.order.update({ where, data: { status } })`) is such a patch too.
 - **Use a preset instead** (`storage: assign`, `prisma` or `memory`) when there is no such layer: the `impl`s
   call a Prisma client directly (`prisma`), a repository object on a bound client (`assign`), or in-process
   objects (`memory`, see [§7.2–7.4](#72-assign-repository-objects-the-default)). If the code reads and writes
