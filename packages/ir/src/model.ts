@@ -39,6 +39,9 @@ export interface EffectDecl {
 /**
  * A call on a bound client (see `Bindings.clients`), e.g. `tx.orders.get(id)` on client `db`.
  * `gate` is the label replay uses to pause a worker at this call.
+ *
+ * A call to a named storage function (`Bindings.storage`) is a call site with `client: "storage"`,
+ * `path: <symbol>` and `gate: "storage.<symbol>"`, e.g. `getOrder(id)` → `storage.getOrder`.
  */
 export interface CallSite {
   at: SourceLocation;
@@ -55,12 +58,22 @@ export interface CallSite {
   occurrence: number;
 }
 
-/** The construct that makes a transition's state check and write indivisible. */
+/**
+ * The construct that makes a transition's state check and write indivisible.
+ *
+ * With named storage functions (`Bindings.storage`), a conditional save (`storage.update`) is
+ * `{ kind: "conditional-update", gate: "storage.<symbol>" }`, and a read and write inside a
+ * named atomic function (`storage.atomic`) is `{ kind: "declared", gate: "storage.<symbol>" }`.
+ */
 export interface AtomicScope {
-  /** `synchronous`: `memory` persistence, no `await`/`yield` between the check and the write. */
-  kind: "transaction" | "conditional-update" | "lock" | "synchronous";
+  /**
+   * - `synchronous`: `memory` persistence, no `await`/`yield` between the check and the write.
+   * - `declared`: the transition runs inside a named `storage.atomic` function. It is atomic
+   *   because the spec declares that function atomic, not because tsverify proved it.
+   */
+  kind: "transaction" | "conditional-update" | "lock" | "synchronous" | "declared";
   at: SourceLocation;
-  /** Gate of the call that opens the scope, e.g. `db.transaction`. */
+  /** Gate of the call that opens the scope, e.g. `db.transaction`, `storage.withTransaction`. */
   gate?: string;
 }
 
@@ -95,6 +108,7 @@ export interface FromState {
  * One `Transition` in a code model corresponds to one state write in the code.
  */
 export interface CodeSites {
+  /** `functions` when the entity is read and saved through named storage functions. */
   persistence: PersistenceKind;
   /** The state write itself (assignment, spread property, or update call). */
   write: SourceLocation;
@@ -129,7 +143,10 @@ export interface CodeSites {
   /** Effect calls attributed to this transition. `effect` is the spec effect name, or the gate when unmapped. */
   effects: (CallSite & { effect: string })[];
   invocation?: InvocationShape;
-  /** Where the entity is stored, for seeding and reading back in generated tests. */
+  /**
+   * Where the entity is stored, for seeding and reading back in generated tests. With named
+   * storage functions: `{ client: "storage", collection: <entity name>, key: <StorageBinding.key> }`.
+   */
   storage?: { client: string; collection: string; key: string };
 }
 
@@ -170,8 +187,10 @@ export interface EntityDecl {
  * - `assign`: repository fakes (`db.orders.get/save`, `db.transaction`) with plain assignment
  * - `prisma` / `drizzle`: ORM calls (M9+)
  * - `memory`: in-process objects with no client; atomic = no `await`/`yield` between check and write
+ * - `functions`: the app's own storage functions, named in `Bindings.storage`. Only code models
+ *   use it (`CodeSites.persistence`); a spec's `Bindings.persistence` holds a preset.
  */
-export type PersistenceKind = "assign" | "prisma" | "drizzle" | "memory";
+export type PersistenceKind = "assign" | "prisma" | "drizzle" | "memory" | "functions";
 
 export interface ClientBinding {
   module: string;
@@ -188,9 +207,76 @@ export interface GuardBinding {
   at?: SourceLocation;
 }
 
+/**
+ * What one positional argument of a storage function carries:
+ * - `key`: the entity's key (`StorageBinding.key`)
+ * - `entity`: a whole entity
+ * - `patch`: some fields of an entity, merged into the stored one
+ * - `from`: the state, or list of states, a conditional save requires
+ * - `to`: the state a conditional save sets
+ * - `callback`: the function an atomic function runs
+ * - `_`: an argument tsverify ignores
+ */
+export type StorageRole = "key" | "entity" | "patch" | "from" | "to" | "callback" | "_";
+
+/**
+ * One storage function of the app, written `path#symbol` or `{ fn, args, returns?, from?, to? }`.
+ * Default `args`: read `[key]`, save `[entity]`, update `[key, from, to]` minus the roles a fixed
+ * `from` / `to` replaces, atomic `[callback]`.
+ */
+export interface StorageFunction {
+  ref: SymbolRef;
+  /** Role of each positional argument. */
+  args: StorageRole[];
+  /**
+   * Update only: what the conditional save returns (default `changed`). On success / when the
+   * state check fails: `changed` → `true` / `false`; `count` → `1` / `0`; `entity` → the updated
+   * entity / `undefined`; `throws` → nothing useful / it throws.
+   */
+  returns?: "changed" | "count" | "entity" | "throws";
+  /** Update only: the fixed from-states, when no argument has the `from` role. */
+  from?: string[];
+  /** Update only: the fixed target state, when no argument has the `to` role. */
+  to?: string;
+  at?: SourceLocation;
+}
+
+/**
+ * `bindings.storage` in its named-function form: the app's own functions that read, save,
+ * conditionally save and atomically run code for the entity. tsverify treats them as the storage
+ * boundary and does not look inside them. Each list is in YAML order.
+ *
+ * Conventions for code models:
+ * - a call to one of them is a `CallSite` with `client: "storage"`, `path: <symbol>` and
+ *   `gate: "storage.<symbol>"`
+ * - code sites use `persistence: "functions"` and
+ *   `storage: { client: "storage", collection: <entity name>, key }`
+ * - a conditional save's `CodeSites.atomic` is `{ kind: "conditional-update", gate }`; running
+ *   inside an `atomic` function is `{ kind: "declared", gate }`
+ */
+export interface StorageBinding {
+  /** The entity's key field (default `id`). */
+  key: string;
+  /** Load one entity by key. */
+  read: StorageFunction[];
+  /** Persist an entity. */
+  save: StorageFunction[];
+  /** Conditional save: checks the state and saves in one step. */
+  update: StorageFunction[];
+  /** Run a callback as one indivisible step (declared, not proven). */
+  atomic: StorageFunction[];
+  at?: SourceLocation;
+}
+
 export interface Bindings {
-  /** Omitted → auto-detected by the extractor from imports. */
+  /**
+   * The preset storage style: `bindings.storage: assign | prisma | memory`, or its alias
+   * `bindings.persistence`. Omitted → auto-detected by the extractor from imports (unless
+   * `storage` names the app's own functions).
+   */
   persistence?: PersistenceKind;
+  /** `bindings.storage` in its named-function form; absent for a preset. */
+  storage?: StorageBinding;
   clients: Record<string, ClientBinding>;
   /** Keyed by `GuardRef.raw`, e.g. `role(admin)`. */
   guards: Record<string, GuardBinding>;

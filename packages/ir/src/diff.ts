@@ -1,6 +1,7 @@
 import { compareStrings } from "./compare";
 import type { Actor, BehaviorModel, Bindings, Transition } from "./model";
 import { formatSymbolRef } from "./refs";
+import { formatStorageFunction, STORAGE_KINDS } from "./storage";
 
 /**
  * Structural behavior diff between two spec models of the same behavior file (e.g. the PR base
@@ -45,7 +46,12 @@ export interface BehaviorDiff {
   actors: ItemChange[];
   /** Fields: `kind`, `expr` (the source text). */
   rules: ItemChange[];
-  /** Fields: `persistence`, `client:<name>`, `guard:<ref>`, `effect:<name>` (only those that differ). */
+  /**
+   * Fields: `persistence`, `client:<name>`, `guard:<ref>`, `effect:<name>`, and for the
+   * named-function storage form `storage:key`, `storage:read`, `storage:save`, `storage:update`,
+   * `storage:atomic` (each the sorted list of `formatStorageFunction` texts: the ref, plus the
+   * roles and fixed states when they are not the defaults). Only those that differ.
+   */
   bindings: FieldChange[];
 }
 
@@ -91,6 +97,13 @@ function bindingFields(b: Bindings): Fields {
   for (const [k, c] of Object.entries(b.clients)) out[`client:${k}`] = `${c.module}#${c.export}`;
   for (const [k, g] of Object.entries(b.guards)) out[`guard:${k}`] = g.raw;
   for (const [k, e] of Object.entries(b.effects)) out[`effect:${k}`] = e;
+  if (b.storage !== undefined) {
+    const storage = b.storage;
+    out["storage:key"] = storage.key;
+    for (const kind of STORAGE_KINDS) {
+      out[`storage:${kind}`] = list(storage[kind].map((fn) => formatStorageFunction(kind, fn)));
+    }
+  }
   return out;
 }
 
