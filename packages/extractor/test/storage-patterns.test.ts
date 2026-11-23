@@ -406,7 +406,10 @@ export async function cancelLegacy(id: string) {
     );
     expect(f?.message).toContain("`legacy.patch`, which is not a `bindings.storage.save` function");
     expect(f?.hint).toContain("`bindings.storage` (`read`, `save`, `update` or `atomic`)");
-    expect(transitionOf(result, "cancelLegacy").atomic).toBe(false);
+    // No verdict on what it can't read: atomic as specified, with the reason.
+    const s = transitionOf(result, "cancelLegacy");
+    expect(s.atomic).toBe(true);
+    expect(s.sites?.atomicUnknown).toContain("`legacy.patch`");
   });
 });
 
@@ -562,6 +565,7 @@ export async function reply(id: string) {
     );
     const s = transitionOf(result, "heldUnbound");
     expect(s.from).toEqual(["pending_payment"]);
+    expect(s.sites?.atomicUnknown).toBeDefined();
   });
 
   it("a query builder's patch is the entity's when its states are exactly the entity's, after a read", () => {

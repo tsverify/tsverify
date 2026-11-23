@@ -128,6 +128,14 @@ export interface CodeSites {
    * reason and hint of the `non-atomic` finding.
    */
   atomicNote?: { message: string; hint: string; at: SourceLocation };
+  /**
+   * Why tsverify could not decide whether the read and write are atomic, when it could not: the
+   * write is saved through a function `bindings.storage` doesn't name, or no read of the entity
+   * was found. The extractor reports it once, as `unanalyzable`; the code transition then keeps
+   * the linked spec transition's `atomic` (as specified, like a transition without `impl`), so
+   * neither conformance (`non-atomic`) nor the checker gives a verdict on what it couldn't read.
+   */
+  atomicUnknown?: string;
   /** Bound guards called on some path to the write; `dominates` = called on every path. */
   guards: { guard: string; at: SourceLocation; dominates: boolean }[];
   /**

@@ -8,10 +8,14 @@ import { type Pairing, pairingFinding } from "./finding";
  * adapter knows why a scoped-looking read and write still race (`sites.atomicNote`, e.g. a
  * Prisma `$transaction` at READ COMMITTED), that reason and its hint replace the generic ones.
  * For `memory` persistence the fix is to keep the check and the write synchronous; for named
- * storage functions (`functions`), a bound atomic function or a conditional save.
+ * storage functions (`functions`), a bound atomic function or a conditional save. A write whose
+ * atomicity the extractor could not decide (`sites.atomicUnknown`, already an `unanalyzable`
+ * finding) gets no `non-atomic` finding.
  */
 export function checkAtomicity(p: Pairing): Finding[] {
   const { t, code, sites } = p;
+  // The extractor already reported why it can't tell (`unanalyzable`): no verdict on top.
+  if (sites.atomicUnknown !== undefined) return [];
   if (!t.atomic || code.atomic) return [];
   const read = sites.read === undefined ? "the entity" : `the entity (${sites.read.gate})`;
   const note = sites.atomicNote;

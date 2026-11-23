@@ -780,7 +780,7 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
   };
 
   const noRead = (what: string): string =>
-    `no read of \`${what}\` through a \`bindings.storage.read\` function was found before this write, so atomicity cannot be decided (reported as not atomic)`;
+    `no read of \`${what}\` through a \`bindings.storage.read\` function was found before this write, so whether it is atomic cannot be decided (not checked)`;
 
   const unbound = (message: string): PersistenceFacts["unbound"] => ({
     message,

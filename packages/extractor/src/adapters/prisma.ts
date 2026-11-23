@@ -347,7 +347,7 @@ function analyze(input: AdapterInput): PersistenceFacts {
     return {
       ...base,
       problems: [
-        `no read of \`${refText}\` through a bound client was found before ${commit.gate}, so atomicity cannot be decided (reported as not atomic)`,
+        `no read of \`${refText}\` through a bound client was found before ${commit.gate}, so whether it is atomic cannot be decided (not checked)`,
       ],
     };
   }
