@@ -50,6 +50,7 @@ import { occurrenceOf } from "./occurrence";
 import type { ProjectContext } from "./project";
 import type * as TS from "./ts-types";
 import type { Narrowed } from "./type-facts";
+import { unreadCheckOf } from "./unread-check";
 import { referenceText, type WriteNode } from "./writes";
 
 export interface MatchedWrite {
@@ -99,6 +100,10 @@ function baseName(d: Draft, functionName: string): string {
   if (!d.linked) return functionName;
   return d.linked.to === d.write.value ? d.linked.name : `${d.linked.name}->${d.write.value}`;
 }
+
+/** The hint of the `unanalyzable` from-state finding for a check tsverify can't read. */
+const UNREAD_CHECK_HINT =
+  'Check the state in a form tsverify reads, before the write: `if (x.status !== "a") throw`, a `switch`, `.includes` on a list of literals, or a helper declared as an assertion function (`function assertOpen(x): asserts x is Open`). See docs/authoring-guide.md §7.5, "Restructuring unanalyzable code".';
 
 /** The hint of the `unanalyzable` from-state finding when the adapter gave none. */
 const RESTRUCTURE_HINT =
@@ -296,9 +301,30 @@ function buildTransition(
     multiplicity: multiplicityOf(e, spec, t),
   }));
 
-  const { hint: fromStateHint, ...fromState } = p.fromState
+  const decided = p.fromState
     ? { ...p.fromState, hint: p.fromStateHint ?? RESTRUCTURE_HINT }
     : fromStateOf(spec, m);
+  // Nothing narrows the state before the write, but the code consults it in a form tsverify
+  // can't read (`unread-check.ts`): the from-state is unknown, not unchecked.
+  const unread =
+    !p.fromState && decided.unconstrained
+      ? unreadCheckOf(
+          m.write,
+          m.frame,
+          ctx.checker,
+          (call) => calls.classify(call) !== undefined || dominance.keysOfCall(call).length > 0,
+        )
+      : undefined;
+  const unreadAt = unread && ctx.loc(unread.at);
+  const { hint: fromStateHint, ...fromState } =
+    unread && unreadAt
+      ? {
+          values: "*" as const,
+          unconstrained: false,
+          reason: `the from-state check at ${unreadAt.file}:${unreadAt.line} is in a form tsverify can't read: \`${unread.text}\``,
+          hint: UNREAD_CHECK_HINT,
+        }
+      : decided;
   const from =
     fromState.values === "*"
       ? "*"
@@ -312,7 +338,9 @@ function buildTransition(
         spec.name,
         "from-state",
         name,
-        `${name}: the from-state of this write is unknown: ${fromState.reason}`,
+        unread
+          ? `${name}: ${fromState.reason}, so the from-state of this write is unknown`
+          : `${name}: the from-state of this write is unknown: ${fromState.reason}`,
         {
           transition: name,
           codeAt: m.at,

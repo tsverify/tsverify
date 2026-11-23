@@ -692,10 +692,54 @@ describe("membership guards (`.includes` / `.has`)", () => {
     expect(t.sites?.fromState).toEqual({ values: [...from].sort(), unconstrained: false });
   });
 
-  it.each(["mutableList", "otherEntity", "noExit"])("%s: not a guard, unconstrained", (name) => {
+  it.each(["otherEntity", "noExit"])("%s: not a guard, unconstrained", (name) => {
     const t = transitionOf(result, name);
     expect(t.from).toEqual(ALL);
     expect(t.sites?.fromState.unconstrained).toBe(true);
+  });
+
+  it("mutableList: a check on a list that can change is one tsverify can't read, not no check", () => {
+    const t = transitionOf(result, "mutableList");
+    expect(t.from).toBe("*");
+    expect(t.sites?.fromState.reason).toMatch(
+      /^the from-state check at src\/orders\.ts:\d+ is in a form tsverify can't read: `!mutable\.includes\(order\.status\)`$/,
+    );
+  });
+});
+
+describe("a from-state check tsverify can't read", () => {
+  const result = extractFixture(
+    "unread-check",
+    orderSpec([
+      { name: "table", impl: "src/refund.ts#refundByTable", to: "refunded" },
+      { name: "helper", impl: "src/refund.ts#refundByHelper", to: "refunded" },
+      { name: "unchecked", impl: "src/refund.ts#refundUnchecked", to: "refunded" },
+    ]),
+  );
+  const finding = (t: string) =>
+    result.findings.find((f) => f.id === `unanalyzable:Fixture orders:from-state:${t}`);
+
+  it("a lookup table: the from-state is unknown, with where the check is and what to do", () => {
+    expect(transitionOf(result, "table").from).toBe("*");
+    expect(finding("table")).toMatchObject({
+      severity: "warning",
+      message:
+        'table: the from-state check at src/refund.ts:16 is in a form tsverify can\'t read: `!NEXT[order.status].includes("refunded")`, so the from-state of this write is unknown',
+    });
+    expect(finding("table")?.hint).toContain("Restructuring unanalyzable code");
+  });
+
+  it("the entity passed to a helper that may check it: unknown too", () => {
+    expect(transitionOf(result, "helper").from).toBe("*");
+    expect(finding("helper")?.message).toContain(
+      'the from-state check at src/refund.ts:28 is in a form tsverify can\'t read: `assertTransition(order, "refunded")`',
+    );
+  });
+
+  it("a state that is never consulted (only in a message) is still unconstrained", () => {
+    const t = transitionOf(result, "unchecked");
+    expect(t.sites?.fromState.unconstrained).toBe(true);
+    expect(finding("unchecked")).toBeUndefined();
   });
 });
 
