@@ -97,6 +97,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   has it whole; pretty output prints its first lines under `detail:`.
 
 ### Fixed
+- **A conditional save's result held in a `let`** no longer makes an effect after its check `non-atomic`: a
+  `let` (or `var`) that each branch of a `switch` or `if` / `else` chain assigns a conditional save's result,
+  tested once afterwards (`if (!updated) throw …`), is read like a `const`. A `default` that throws or returns,
+  or a `switch` with a case for every member of a literal union, leaves no unassigned path. A path that assigns
+  something else or nothing, or another assignment between the save and the test, keeps the effect unchecked.
 - **`tsverify test` sets `NODE_ENV=test`** (unless set), `VITEST` and `TEST`, as the `vitest` command does, and
   restores them. Without it vite set `development`, so a module that opens a connection as it loads, with a
   fallback only under test, failed inside every module mock; vitest reported that as its generic "error when

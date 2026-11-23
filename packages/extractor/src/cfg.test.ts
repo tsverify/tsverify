@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { openProject } from "../test/typescript";
-import { buildCfg, ENTRY, EXIT, type FunctionLike, reachable } from "./cfg";
+import { buildCfg, type CfgOptions, ENTRY, EXIT, type FunctionLike, reachable } from "./cfg";
 import type * as TS from "./ts-types";
 import { ts } from "./typescript";
 
@@ -56,6 +56,8 @@ const NORMAL_COMPLETION: [string, string, string[]][] = [
 ];
 
 const THROWS = "throw new Error();";
+const SWITCH_NO_DEFAULT = "switch (a) { case 1: guard(); break; case 2: guard(); } target();";
+const PICKED = "let v = b(); if (a) v = guard(); target(v);";
 
 /** Every body as `function f(a: any, b: any) { … }` in a file of its own, parsed by TypeScript. */
 const bodies = [
@@ -63,6 +65,8 @@ const bodies = [
     ...[...DOMINATED, ...NOT_DOMINATED].map(([, body]) => body),
     ...NORMAL_COMPLETION.map(([, body]) => body),
     THROWS,
+    SWITCH_NO_DEFAULT,
+    PICKED,
   ]),
 ];
 const project = openProject(
@@ -83,9 +87,9 @@ function parsed(body: string): { sf: TS.SourceFile; fn: FunctionLike } {
  * Parses `function f() { … }` and answers: is the call to `target()` reachable from entry when
  * every call to `guard()` is removed? (true = the guard does not dominate the target).
  */
-function bypassable(body: string): boolean {
+function bypassable(body: string, options?: CfgOptions): boolean {
   const { sf, fn } = parsed(body);
-  const cfg = buildCfg(fn);
+  const cfg = buildCfg(fn, options);
   const callsTo = (name: string): number[] =>
     cfg.nodes.flatMap((n, id) =>
       n && ts.isCallExpression(n) && n.expression.getText(sf) === name ? [id] : [],
@@ -119,6 +123,28 @@ describe("cfg: guard dominance by reachability", () => {
       expect(hit).toEqual(expected);
     },
   );
+
+  it("a switch without default said to cover every value has no path past its cases", () => {
+    expect(bypassable(SWITCH_NO_DEFAULT)).toBe(true);
+    expect(bypassable(SWITCH_NO_DEFAULT, { exhaustive: () => true })).toBe(false);
+  });
+
+  it("nodesOf adds a node for each picked read and declaration, in evaluation order", () => {
+    const { fn } = parsed(PICKED);
+    const isRead = (n: TS.Node) =>
+      ts.isIdentifier(n) && n.text === "v" && ts.isCallExpression(n.parent);
+    const cfg = buildCfg(fn, { nodesOf: (n) => isRead(n) || ts.isVariableDeclaration(n) });
+    const ids = (test: (n: TS.Node) => boolean) =>
+      cfg.nodes.flatMap((n, id) => (n && test(n) ? [id] : []));
+    const [declared] = ids(ts.isVariableDeclaration);
+    const [read] = ids(isRead);
+    if (declared === undefined || read === undefined) throw new Error("no picked nodes");
+    // The declaration's value reaches the read on the path that skips the assignment …
+    const assigned = new Set(ids(ts.isBinaryExpression));
+    expect(reachable(cfg, [declared], assigned)[read]).toBe(1);
+    // … and no path reaches the read without passing the declaration.
+    expect(reachable(cfg, [ENTRY], new Set([declared]))[read]).toBe(0);
+  });
 
   it("reaches the normal exit only through returns and fall-through", () => {
     const cfg = buildCfg(parsed(THROWS).fn);

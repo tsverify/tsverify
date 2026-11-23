@@ -50,7 +50,9 @@
  * This mirrors the other adapters, where a check that throws inside the transaction or a
  * `return undefined` followed by `if (x === undefined) return` stop the transition: here the
  * result tests `!r`, `r === false | 0 | undefined | null`, `r < 1`, their negations, and
- * `&&` / `||` of them, on the call itself or on a `const` holding it, decide the branch. A helper
+ * `&&` / `||` of them, on the call itself, on a `const` holding it, or on a `let` that every path
+ * to the test assigns a conditional save's result (`let r; switch (…) { case …: r = await
+ * setStatusIf(…); break; … }`, see `assigned-result.ts`), decide the branch. A helper
  * passes the outcome to its callers when it throws on failure, or returns the save's result.
  *
  * **Patches held in a variable** (`held`, `writes.ts`): `const patch = { status: "paid" }`, later
@@ -94,6 +96,7 @@ import type {
   StorageRole,
 } from "@tsverify/ir";
 import { storageRoleAt } from "@tsverify/ir";
+import { holdsResultOf } from "../assigned-result";
 import { type Callees, frameCalls, frameOf, leadsTo, MAX_DEPTH, type Reach } from "../callgraph";
 import { ENTRY, type FunctionLike, inlineCallbackCall, isFunctionLike, reachable } from "../cfg";
 import type { ClientCall } from "../client-calls";
@@ -1392,8 +1395,12 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
     const returns = bound.returns ?? "changed";
     const leads = leadsTo(reach, frame, write.expr);
 
+    /**
+     * Whether an expression is `subject`'s result. A `let` may hold another conditional save's
+     * result on the paths that don't run `subject` (`holdsResultOf`), unless `only` is set.
+     */
     const subjectFor =
-      (subject: TS.CallExpression, kind: StorageFunction["returns"]) =>
+      (subject: TS.CallExpression, kind: StorageFunction["returns"], only = false) =>
       (e: TS.Expression): boolean => {
         let s = strip(e);
         // `returns: count` may be a count object, as Prisma's `updateMany` returns: `r.count`.
@@ -1403,13 +1410,20 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
         if (s === subject) return true;
         if (!ts.isIdentifier(s)) return false;
         const decl = valueDeclarationOf(symbolOf(s, checker));
-        return (
-          decl !== undefined &&
-          ts.isVariableDeclaration(decl) &&
-          decl.initializer !== undefined &&
-          strip(decl.initializer) === subject
-        );
+        if (!decl || !ts.isVariableDeclaration(decl)) return false;
+        if (decl.parent.flags & ts.NodeFlags.Const) {
+          return decl.initializer !== undefined && strip(decl.initializer) === subject;
+        }
+        // A `let` each branch assigns a conditional save's result, tested once afterwards.
+        const others = only ? () => false : (c: TS.CallExpression) => anotherSave(c, subject);
+        return holdsResultOf(s, subject, others, checker);
       };
+    /** A conditional save, or another call of the function `subject` calls (a helper). */
+    const anotherSave = (c: TS.CallExpression, subject: TS.CallExpression): boolean => {
+      if (fns.of(c)?.kind === "update") return true;
+      const callee = symbolOf(c.expression, checker);
+      return callee !== undefined && callee === symbolOf(subject.expression, checker);
+    };
     const subjectOf = (subject: TS.CallExpression) => subjectFor(subject, returns);
 
     /**
@@ -1434,7 +1448,8 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
           if (ids.length > 0 && !ids.some((id) => seen[id] === 1)) return true;
           continue;
         }
-        if (branchOutcome(node, fn, subjectFor(c, kind), kind) === "success") return true;
+        // Its "saved" branch: the test reads its result on every path, not another save's.
+        if (branchOutcome(node, fn, subjectFor(c, kind, true), kind) === "success") return true;
       }
       return false;
     };
