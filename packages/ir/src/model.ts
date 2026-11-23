@@ -365,6 +365,14 @@ export interface BehaviorModel {
    * it as specified (copied without `sites`, like a transition without `impl`).
    */
   unreadWrites?: Record<string, UnreadWrite[]>;
+  /**
+   * Code models only: bound clients (`bindings.clients` names) that no call in the project
+   * resolves to, each with the id of the extractor's `unanalyzable` finding that says so. Their
+   * effects can't be seen, so a linked transition has the spec's effects on them as specified
+   * (in `effects`, not in `sites.effects`), and conformance reports them as unconfirmed rather
+   * than missing.
+   */
+  uncalledClients?: Record<string, string>;
 }
 
 /** A state write the extractor could not read as a transition (`BehaviorModel.unreadWrites`). */

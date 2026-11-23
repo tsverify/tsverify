@@ -12,8 +12,11 @@
  *   parameter, class field (including a constructor parameter property), property signature,
  *   destructured binding or variable whose declared type is the bound export's type (`typeof db`,
  *   or the class or interface the export is typed as): `constructor(private prisma: PrismaClient)`
- *   → `this.prisma.order.update(…)`; `(deps: { db: typeof db }) => deps.db.orders.get(id)`. Types
- *   compare by identity, so an object of another type never matches; a type shared by several
+ *   → `this.prisma.order.update(…)`; `(deps: { db: typeof db }) => deps.db.orders.get(id)`. A
+ *   client bound to an exported **class** (`queue: { export: RunQueue }`) is any instance of it
+ *   held that way: `this.$.runQueue.acknowledgeMessage(…)` with `runQueue: RunQueue` is a call on
+ *   `queue`, path `acknowledgeMessage`. Types compare by identity, so an object of another type
+ *   (a subclass, an interface the class implements) never matches; a type shared by several
  *   clients, or one that is not an object or function type (`any`, primitives, `{}`), matches
  *   none.
  *
@@ -110,6 +113,25 @@ export class ClientCalls {
     const result = this.compute(call);
     this.memo.set(call, result ?? null);
     return result;
+  }
+
+  /**
+   * Which of `wanted` (client names) some call in `files` is on. Calls already classified are
+   * looked at first; the files are only scanned (classifying every call) for the ones left.
+   */
+  calledClients(files: readonly TS.SourceFile[], wanted: ReadonlySet<string>): Set<string> {
+    const found = new Set<string>();
+    const note = (cc: ClientCall | null | undefined) => {
+      if (cc && wanted.has(cc.client)) found.add(cc.client);
+    };
+    for (const cc of this.memo.values()) note(cc);
+    const visit = (n: TS.Node): void => {
+      if (found.size === wanted.size) return;
+      if (ts.isCallExpression(n)) note(this.classify(n));
+      n.forEachChild(visit);
+    };
+    for (const sf of files) visit(sf);
+    return found;
   }
 
   /** The scope an inline callback runs in, when it is the scope callback of a client call. */
@@ -211,11 +233,17 @@ export class ClientCalls {
     if (this.clientTypes) return this.clientTypes;
     const index = new Map<TS.Type, string[]>();
     for (const [sym, name] of this.clients) {
-      const type = this.checker.getTypeOfSymbol(sym);
-      if (!type || !this.identifiesClient(type)) continue;
-      const names = index.get(type) ?? [];
-      if (!names.includes(name)) names.push(name);
-      index.set(type, names);
+      // A client bound to a class: its instances (`this.$.queue: RunQueue`) are the client.
+      const types = [
+        this.checker.getTypeOfSymbol(sym),
+        sym.flags & ts.SymbolFlags.Class ? this.checker.getDeclaredTypeOfSymbol(sym) : undefined,
+      ];
+      for (const type of types) {
+        if (!type || !this.identifiesClient(type)) continue;
+        const names = index.get(type) ?? [];
+        if (!names.includes(name)) names.push(name);
+        index.set(type, names);
+      }
     }
     this.clientTypes = index;
     return index;

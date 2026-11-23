@@ -158,3 +158,57 @@ describe("injected clients (by declared type)", () => {
     });
   });
 });
+
+describe("a client bound to a class, and bound clients nothing calls", () => {
+  const bindings = libBindings();
+  const specAt = { file: "fixture.behavior.yaml", line: 40, column: 5 };
+  bindings.clients = {
+    db: bindings.clients.db as (typeof bindings.clients)[string],
+    queue: { module: "src/queue.ts", export: "Queue" },
+    audit: { module: "src/queue.ts", export: "audit", at: specAt },
+  };
+  bindings.effects = { "queue.ack_ship": "queue.ack", "audit.shipped": "audit.log" };
+  const result = extractFixture(
+    "injected-class",
+    orderSpec(
+      [
+        {
+          name: "ship",
+          impl: "src/service.ts#Service.ship",
+          to: "shipped",
+          effects: [
+            { name: "audit.shipped", multiplicity: "at-least-once" },
+            { name: "queue.ack_ship", multiplicity: "exactly-once" },
+          ],
+        },
+      ],
+      bindings,
+    ),
+    { bindingWarnings: true },
+  );
+
+  it("a call on an instance typed as the class (`this.$.queue.ack`) is a call on the client", () => {
+    expect(effectSites("ship", result)).toEqual([["queue.ack_ship", "queue.ack", "ack"]]);
+  });
+
+  it("warns about a bound client that no call resolves to, at its binding", () => {
+    expect(result.findings).toEqual([
+      expect.objectContaining({
+        id: "unanalyzable:Fixture orders:binding:audit",
+        severity: "warning",
+        message:
+          'client "audit" (src/queue.ts#audit) is bound but never called: no call in the project resolves to it, so tsverify sees none of its calls',
+        specAt,
+      }),
+    ]);
+    expect(result.model?.uncalledClients).toEqual({
+      audit: "unanalyzable:Fixture orders:binding:audit",
+    });
+  });
+
+  it("takes the effects on that client as specified (they can't be seen)", () => {
+    const ship = transitionOf(result, "ship");
+    expect(ship.effects.map((e) => e.name)).toEqual(["audit.shipped", "queue.ack_ship"]);
+    expect(ship.sites?.effects.map((e) => e.effect)).toEqual(["queue.ack_ship"]);
+  });
+});

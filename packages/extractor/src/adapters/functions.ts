@@ -190,6 +190,26 @@ export class StorageFunctions {
     return this.byPath.get(path);
   }
 
+  /**
+   * The bound functions some call in `files` resolves to (by path). Calls already looked up are
+   * used first (`extraWrites` looks up every call of the analyzed files); the files are only
+   * scanned for the functions left.
+   */
+  called(files: readonly TS.SourceFile[]): Set<string> {
+    const found = new Set<string>();
+    for (const b of this.memo.values()) if (b) found.add(b.path);
+    const visit = (n: TS.Node): void => {
+      if (found.size === this.byPath.size) return;
+      if (ts.isCallExpression(n)) {
+        const b = this.of(n);
+        if (b) found.add(b.path);
+      }
+      n.forEachChild(visit);
+    };
+    for (const sf of files) visit(sf);
+    return found;
+  }
+
   /** `call` as a `storage.<symbol>` client call, when it calls a bound function. */
   clientCall(call: TS.CallExpression): ClientCall | undefined {
     const b = this.of(call);

@@ -17,7 +17,7 @@ import type {
 import { defaultStorageArgs, parseSymbolRef } from "@tsverify/ir";
 import { afterAll, describe, expect, it } from "vitest";
 import { type ExtractResult, extractAll } from "../src/index";
-import { orderSpec, type TransitionSpec, transitionOf } from "./helpers";
+import { orderSpec, type TransitionSpec, transitionOf, withoutBindingWarnings } from "./helpers";
 import { installTypeScript } from "./typescript";
 
 const TSCONFIG = JSON.stringify({
@@ -164,6 +164,7 @@ function extract(
   impl: string,
   transitions: TransitionSpec[],
   storage?: StorageBinding,
+  bindingWarnings = false,
 ): ExtractResult {
   const root = mkdtempSync(join(tmpdir(), "tsverify-storage-"));
   roots.push(root);
@@ -181,7 +182,9 @@ function extract(
   }
   const spec = orderSpec(transitions, bindings(storage));
   const { results } = extractAll([spec], { projectRoot: root, typescript: installTypeScript() });
-  return results[0] as ExtractResult;
+  const result = results[0] as ExtractResult;
+  // Each test calls a few of the many bound functions: "bound but never called" is tested apart.
+  return bindingWarnings ? result : withoutBindingWarnings(result);
 }
 
 const IMPORTS = `
@@ -820,5 +823,34 @@ export async function ship(id: string) {
       "refundIf",
       "ship",
     ]);
+  });
+
+  it("warns about a bound function (any kind) that no call resolves to", () => {
+    const result = extract(
+      `${IMPORTS}
+export async function ship(id: string) {
+  if (!(await setStatusIf(id, "paid", "shipped"))) throw new Error("changed");
+}
+`,
+      [t("ship", "shipped")],
+      storageOf({
+        read: ["src/repo.ts#getOrder"],
+        update: ["src/repo.ts#setStatusIf"],
+        atomic: ["src/db.ts#withTransaction"],
+      }),
+      true,
+    );
+    // getOrder is called inside repo.ts (findOrder), setStatusIf by the impl: only the atomic
+    // function is never called. (So are the bound clients, `stripe` …: a warning each.)
+    const storage = result.findings.filter((f) => f.id.includes(":binding:storage."));
+    expect(storage.map((f) => [f.id, f.severity, f.message])).toEqual([
+      [
+        "unanalyzable:Fixture orders:binding:storage.withTransaction",
+        "warning",
+        "storage atomic function src/db.ts#withTransaction is bound but never called: no call in the project resolves to it",
+      ],
+    ]);
+    // Storage functions are not effect clients: only clients go into `uncalledClients`.
+    expect(Object.keys(result.model?.uncalledClients ?? {})).toEqual(["email", "legacy", "stripe"]);
   });
 });

@@ -73,6 +73,31 @@ describe("effects", () => {
     ]);
   });
 
+  it("says it couldn't confirm an effect on a client no call resolves to, as a warning", () => {
+    const spec = specModel();
+    // The extractor takes the effect as specified (in `effects`, no call site).
+    const writes = patchWrite(cleanWrites(), "payment_succeeded", (w) => ({ ...w, effects: [] }));
+    const code = buildCodeModel(spec, writes);
+    const paid = code.transitions.find((t) => t.name === "payment_succeeded");
+    paid?.effects.push({ name: "email.receipt", multiplicity: "exactly-once" });
+    const binding = "unanalyzable:Order lifecycle:binding:email";
+    expect(compare(spec, { ...code, uncalledClients: { email: binding } })).toEqual([
+      {
+        id: "missing-effect:Order lifecycle:payment_succeeded:email.receipt",
+        category: "missing-effect",
+        severity: "warning",
+        message:
+          "payment_succeeded: couldn't confirm that onPaymentSucceeded calls email.receipt (email.send) when it writes paid: no call in the project resolves to client email, so tsverify can't see its calls.",
+        behavior: "Order lifecycle",
+        transition: "payment_succeeded",
+        specAt: { file: "src/orders/order.behavior.yaml", line: 34, column: 9 },
+        codeAt: { file: "src/payments/webhook.ts", line: 22, column: 5 },
+        hint: "Fix bindings.clients.email (see the warning on it). Until then email.receipt is taken as specified.",
+        causedBy: [binding],
+      },
+    ]);
+  });
+
   it("reports one finding per effect name, however often it is called", () => {
     const writes = patchWrite(cleanWrites(), "expire", (w) => ({
       ...w,

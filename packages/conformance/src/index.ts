@@ -56,7 +56,10 @@ export function compare(spec: BehaviorModel, code: BehaviorModel): Finding[] {
       code.unreadWrites?.[t.name],
     );
     findings.push(...result.findings);
-    for (const p of result.pairings) {
+    for (const pairing of result.pairings) {
+      const p = code.uncalledClients
+        ? { ...pairing, uncalledClients: code.uncalledClients }
+        : pairing;
       for (const rule of PAIRING_RULES) findings.push(...rule(p));
     }
   }

@@ -1,6 +1,12 @@
 import { compareStrings, type Finding } from "@tsverify/ir";
 import { earliest, type Pairing, pairingFinding } from "./finding";
 
+/** The client an effect gate calls: `queue` for `queue.acknowledgeMessage`, `notify` for `notify`. */
+function clientOfGate(gate: string): string {
+  const dot = gate.indexOf(".");
+  return dot < 0 ? gate : gate.slice(0, dot);
+}
+
 function uniqueSorted(names: string[]): string[] {
   return [...new Set(names)].sort(compareStrings);
 }
@@ -14,6 +20,11 @@ function uniqueSorted(names: string[]): string[] {
  *
  * `specAt`: a missing effect points at its declaration under `t.effects`. An undeclared one points
  * at `t.at`, where the fix (declaring it) goes; its `bindings.effects` entry only names the gate.
+ *
+ * A declared effect on a client that no call in the project resolves to (`uncalledClients`, the
+ * extractor's "bound but never called" warning) can't be checked: the code model has it as
+ * specified, and it is a `missing-effect` **warning** that says tsverify couldn't confirm the
+ * call, caused by that warning, instead of an error saying the code never makes it.
  */
 export function checkEffects(p: Pairing): Finding[] {
   const { spec, t, code, sites } = p;
@@ -50,9 +61,25 @@ export function checkEffects(p: Pairing): Finding[] {
   }
 
   for (const name of declared) {
-    if (called.includes(name)) continue;
     const gate = gateOf(name);
     const declaration = t.effects.find((e) => e.name === name)?.at;
+    const client = clientOfGate(gate);
+    const unseen = p.uncalledClients?.[client];
+    if (unseen !== undefined) {
+      const finding = pairingFinding(p, {
+        category: "missing-effect",
+        severity: "warning",
+        subject: name,
+        message: `${t.name}: couldn't confirm that ${entry} calls ${name}${gate === name ? "" : ` (${gate})`} when it writes ${t.to}: no call in the project resolves to client ${client}, so tsverify can't see its calls.`,
+        hint: `Fix bindings.clients.${client} (see the warning on it). Until then ${name} is taken as specified.`,
+        ...(declaration === undefined ? {} : { specAt: declaration }),
+        codeAt: sites.write,
+      });
+      finding.causedBy = [unseen];
+      findings.push(finding);
+      continue;
+    }
+    if (called.includes(name)) continue;
     findings.push(
       pairingFinding(p, {
         category: "missing-effect",

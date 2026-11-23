@@ -102,9 +102,28 @@ export function orderSpec(transitions: TransitionSpec[], bindings = libBindings(
   };
 }
 
-export function extractFixture(fixture: string, spec: BehaviorModel): ExtractResult {
+/**
+ * Extracts `spec` from a fixture. The shared bindings (`libBindings`) bind every client of the
+ * fixture library, most of which a given fixture never calls, so the "bound but never called"
+ * warnings (`unanalyzable:<behavior>:binding:…`) are left out unless `bindingWarnings` is set.
+ */
+export function extractFixture(
+  fixture: string,
+  spec: BehaviorModel,
+  options: { bindingWarnings?: boolean } = {},
+): ExtractResult {
   const { results } = extractAll([spec], { projectRoot: fixtureRoot(fixture) });
-  return results[0] as ExtractResult;
+  const result = results[0] as ExtractResult;
+  return options.bindingWarnings ? result : withoutBindingWarnings(result);
+}
+
+/** `result` without the "bound but never called" warnings (see `extractFixture`). */
+export function withoutBindingWarnings(result: ExtractResult): ExtractResult {
+  return { ...result, findings: result.findings.filter((f) => !isBindingWarning(f)) };
+}
+
+function isBindingWarning(f: { id: string; behavior?: string }): boolean {
+  return f.id.startsWith(`unanalyzable:${f.behavior}:binding:`);
 }
 
 export function transitionOf(result: ExtractResult, name: string): Transition {

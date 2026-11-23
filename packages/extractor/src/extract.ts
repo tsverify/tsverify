@@ -583,6 +583,8 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
     }
   }
 
+  const uncalled = reportUncalled(spec, ctx, calls, clientSyms, storage, findings);
+
   const model = assemble(spec, drafts, {
     ctx,
     calls,
@@ -592,7 +594,9 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
     adapter,
     findings,
     implAt,
+    uncalledClients: new Set(Object.keys(uncalled)),
   });
+  if (Object.keys(uncalled).length > 0) model.uncalledClients = uncalled;
   const sorted = sortFindings(uniqueIds(findings));
   // After `uniqueIds`: each unread write names its finding by its final id.
   const unreadWrites: Record<string, UnreadWrite[]> = {};
@@ -605,6 +609,68 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
   if (Object.keys(unreadWrites).length > 0) model.unreadWrites = unreadWrites;
   assumeUnconfirmed(spec, model);
   return { spec: behavior, model, findings: sorted };
+}
+
+/**
+ * A bound client (`bindings.clients`) or storage function (`bindings.storage`, every kind) that
+ * no call anywhere in the project resolves to is almost always a binding that points at the wrong
+ * thing (an interface where the code calls a class, a value the code receives as `any`), and
+ * then everything tsverify says about its calls ("never calls …") is wrong too. Each one gets an
+ * `unanalyzable` warning, `unanalyzable:<behavior>:binding:<client | storage.<symbol>>`.
+ * Returns the uncalled clients' names, with their finding ids, for the code model
+ * (`BehaviorModel.uncalledClients`).
+ */
+function reportUncalled(
+  spec: BehaviorModel,
+  ctx: ProjectContext,
+  calls: ClientCalls,
+  clientSyms: ReadonlyMap<TS.Symbol, string>,
+  storage: StorageFunctions | undefined,
+  findings: Finding[],
+): Record<string, string> {
+  const files = ctx.analyzedFiles();
+  const behavior = spec.name;
+  const uncalled: Record<string, string> = {};
+  const clients = new Set(clientSyms.values());
+  const called = calls.calledClients(files, clients);
+  for (const [name, binding] of sortedEntries(spec.bindings.clients)) {
+    if (!clients.has(name) || called.has(name)) continue;
+    const finding: Finding = {
+      ...unanalyzable(
+        behavior,
+        "binding",
+        name,
+        `client "${name}" (${binding.module}#${binding.export}) is bound but never called: no call in the project resolves to it, so tsverify sees none of its calls`,
+        {
+          hint: `Check \`module\` and \`export\`: tsverify matches calls on the exported value itself, and on variables, parameters and fields typed as it (for a class, as its instances), so a client the code holds as another type (an interface, \`any\`) is never matched. Bind what the code calls, or remove the binding.`,
+        },
+      ),
+      ...(binding.at ? { specAt: binding.at } : {}),
+    };
+    findings.push(finding);
+    uncalled[name] = finding.id;
+  }
+  const binding = spec.bindings.storage;
+  if (storage && binding) {
+    const calledFns = storage.called(files);
+    for (const { kind, fn } of storageFunctions(binding)) {
+      if (storage.path(fn.ref.symbol) === undefined || calledFns.has(fn.ref.symbol)) continue;
+      const at = fn.at ?? binding.at;
+      findings.push({
+        ...unanalyzable(
+          behavior,
+          "binding",
+          `${STORAGE_CLIENT}.${fn.ref.symbol}`,
+          `storage ${kind} function ${formatSymbolRef(fn.ref)} is bound but never called: no call in the project resolves to it`,
+          {
+            hint: `Check the path and symbol: tsverify matches a call by the function it resolves to, so a method called through an interface (\`store: Store\`) resolves to the interface's method, not to a class that implements it. Bind the one the code calls, or remove the binding.`,
+          },
+        ),
+        ...(at ? { specAt: at } : {}),
+      });
+    }
+  }
+  return uncalled;
 }
 
 /**
