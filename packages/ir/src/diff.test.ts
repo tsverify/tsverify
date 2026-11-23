@@ -92,6 +92,59 @@ describe("diffModels", () => {
     ]);
   });
 
+  describe("named storage functions", () => {
+    const repo = (symbol: string) => ({ file: "src/orders/repo.ts", symbol });
+    function withStorage(m: BehaviorModel): void {
+      m.bindings.storage = {
+        key: "id",
+        read: [{ ref: repo("getOrder"), args: ["key"] }],
+        save: [{ ref: repo("saveOrder"), args: ["entity"] }],
+        update: [{ ref: repo("setStatusIf"), args: ["key", "from", "to"] }],
+        atomic: [{ ref: { file: "src/db.ts", symbol: "withTransaction" }, args: ["callback"] }],
+        at: { file: "x.yaml", line: 1, column: 1 },
+      };
+    }
+
+    it("lists every storage field of an added storage block, ignoring locations", () => {
+      expect(diffModels(orderModel(), edited(withStorage)).bindings).toEqual([
+        { field: "storage:atomic", base: "", head: "src/db.ts#withTransaction" },
+        { field: "storage:key", base: "", head: "id" },
+        { field: "storage:read", base: "", head: "src/orders/repo.ts#getOrder" },
+        { field: "storage:save", base: "", head: "src/orders/repo.ts#saveOrder" },
+        { field: "storage:update", base: "", head: "src/orders/repo.ts#setStatusIf" },
+      ]);
+      expect(diffModels(edited(withStorage), edited(withStorage)).kind).toBe("unchanged");
+    });
+
+    it("shows non-default roles, fixed states and returns, sorted", () => {
+      const head = edited((m) => {
+        withStorage(m);
+        const storage = m.bindings.storage;
+        if (!storage) throw new Error("fixture");
+        storage.key = "orderId";
+        storage.read.push({ ref: repo("findOrder"), args: ["_", "key"] });
+        storage.update = [
+          { ref: repo("setStatusIf"), args: ["key", "from", "to"], returns: "changed" },
+          { ref: repo("markPaid"), args: ["key"], from: ["pending"], to: "paid", returns: "count" },
+        ];
+      });
+      const d = diffModels(edited(withStorage), head);
+      expect(d.bindings).toEqual([
+        { field: "storage:key", base: "id", head: "orderId" },
+        {
+          field: "storage:read",
+          base: "src/orders/repo.ts#getOrder",
+          head: "src/orders/repo.ts#findOrder(_, key), src/orders/repo.ts#getOrder",
+        },
+        {
+          field: "storage:update",
+          base: "src/orders/repo.ts#setStatusIf",
+          head: "src/orders/repo.ts#markPaid from [pending] to paid returns count, src/orders/repo.ts#setStatusIf",
+        },
+      ]);
+    });
+  });
+
   it("diffs bindings by key", () => {
     const head = edited((m) => {
       m.bindings.effects["stripe.refund"] = "stripe.refunds.createV2";

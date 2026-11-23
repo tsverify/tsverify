@@ -528,6 +528,54 @@ Prefer a small, behavior-preserving refactor that makes the code checkable over 
 | `undeclared-transition` from test or seed files | Exclude them from the `tsconfig.json` that the spec's project uses (`"include": ["src"]`), or point `tsverify check --project <dir>` at a directory whose tsconfig excludes them |
 | Clients injected via constructors (`this.db`) | Export the client from a module and import it where it is used. For DI frameworks, a thin exported function per transition that the class delegates to |
 
+### 7.6 Storage: point at your own functions
+
+> **Not yet checked by `tsverify check`.** The format, validation and generated-test fakes are in place;
+> recognising calls to these functions in the code check comes next. Until then, `check` treats the spec as if
+> `bindings.storage` were omitted.
+
+Most apps already have a storage layer: a repository, a data-access module, a service. Instead of a preset,
+name its functions under `bindings.storage` ([format](behavior-format.md#bindingsstorage)). tsverify then treats
+them as the storage boundary and never looks inside, whatever they use underneath.
+
+```yaml
+bindings:
+  storage:
+    read:   src/orders/repo.ts#getOrder          # getOrder(id) → Order | undefined
+    save:   src/orders/repo.ts#saveOrder         # saveOrder(order)
+    update: src/orders/repo.ts#setStatusIf       # setStatusIf(id, from, to) → boolean
+    atomic: src/db.ts#withTransaction            # withTransaction(async () => { … })
+```
+
+How to find them:
+
+| Kind | Look for | Grep |
+|---|---|---|
+| `read` | the function the transition's `impl` calls to load the entity by key, before checking its state | `grep -rnE "export (async )?function (get\|find\|load)" src/` |
+| `save` | the function the `impl` passes the changed entity (or the key and the changed fields) to | `grep -rnE "export (async )?function (save\|update\|upsert\|put)" src/` |
+| `update` | a function that writes the state **only if** it still has the expected value, in one statement or command: `UPDATE … WHERE id = ? AND status = ?`, `updateMany({ where: { id, status } })`, a DynamoDB `ConditionExpression`, a Redis script | `grep -rnE "WHERE .*status\|ConditionExpression\|updateMany" src/` |
+| `atomic` | a function that takes a callback and runs it in a transaction or under a lock | `grep -rnE "transaction\|withLock\|mutex" src/` |
+
+- **Roles.** When the arguments aren't in the default order (`read(key)`, `save(entity)`,
+  `update(key, from, to)`, `atomic(callback)`), give them with `args`, e.g.
+  `{ fn: src/repo.ts#findOrder, args: [_, key] }` for `findOrder(tenantId, id)`. A save that takes the key and
+  some fields is `args: [key, patch]`. An update with the states built in (`markPaid(id)`) is
+  `{ fn: …, from: [pending], to: paid }`.
+- **`returns`.** Say what an update returns when the state check fails: `changed` (`false`, the default),
+  `count` (`0`), `entity` (`undefined`) or `throws`. The code is expected to stop when it does.
+- **`atomic` is declared, not proven.** Name a function only if it really serializes the callback against
+  other requests (a database transaction at a sufficient isolation level, or a lock). tsverify trusts the
+  declaration and can't check what happens inside; the generated replay tests still run the race through it.
+- **In their own module.** Generated tests replace the functions by mocking the module that exports them, so a
+  call from inside that same module (an `impl` next to `getOrder` in `repo.ts`) still reaches the real one.
+  Keep the `impl`s in other files.
+- **Only the functions the transitions call.** One read, one save and the conditional saves and atomic
+  wrappers that the `impl`s use are enough; list several of a kind if the code uses several.
+- **Use a preset instead** (`storage: assign`, `prisma` or `memory`) when there is no such layer: the `impl`s
+  call a Prisma client directly (`prisma`), a repository object on a bound client (`assign`), or in-process
+  objects (`memory`, see [§7.2–7.4](#72-assign-repository-objects-the-default)). If the code reads and writes
+  inline, with no function to point at, extract one ([§7.5](#75-restructuring-unanalyzable-code)).
+
 ---
 
 ## 8. Fixtures for `tsverify test`

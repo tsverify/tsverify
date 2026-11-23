@@ -3,14 +3,31 @@
  * generated replay test"):
  *
  * 1. fakes as plain top-level consts (a `vi.mock` factory runs lazily, after them)
- * 2. one `vi.mock` per client module (`bindings.clients`), relative to the generated file, that
- *    replaces only the bound exports and keeps the module's other exports (guards, helpers)
+ * 2. one `vi.mock` per client module (`bindings.clients`) and per module of a named storage
+ *    function (`bindings.storage`), relative to the generated file, that replaces only the bound
+ *    exports and keeps the module's other exports (guards, helpers, unbound functions). A dotted
+ *    storage symbol (`orderRepo.get`) replaces that member on an object inheriting from the real
+ *    export, so its other members stay real.
  * 3. the impls, imported dynamically after (1); a static import would break the mock factories
  * 4. the fixtures: `ID`, `ENTITY`, `ACTORS`
  */
-import { compareStrings, formatSymbolRef, type SymbolRef } from "@tsverify/ir";
-import type { Context } from "./context";
-import { type HeaderInput, headerLines, literal, Names, propertyKey, relativeImport } from "./emit";
+import {
+  compareStrings,
+  formatSymbolRef,
+  STORAGE_KINDS,
+  type SymbolRef,
+  storageFunctions,
+} from "@tsverify/ir";
+import { type Context, STORAGE_CLIENT } from "./context";
+import {
+  type HeaderInput,
+  headerLines,
+  literal,
+  member,
+  Names,
+  propertyKey,
+  relativeImport,
+} from "./emit";
 import { ACTORS, ID } from "./invoke";
 
 export const SCHEDULER = "s";
@@ -115,32 +132,55 @@ export function prelude(ctx: Context, options: PreludeOptions): Prelude {
     );
   }
 
-  // (2) client modules
+  const named = ctx.storageFunctions;
+  if (named !== undefined) {
+    const name = names.allocate(STORAGE_CLIENT);
+    clients.set(STORAGE_CLIENT, name);
+    lines.push(`const ${name} = instrument.storage(${SCHEDULER}, {`);
+    lines.push(`  entity: ${JSON.stringify(named.entity)},`);
+    lines.push(`  state: ${JSON.stringify(named.state)},`);
+    lines.push("  binding: {");
+    lines.push(`    key: ${JSON.stringify(named.binding.key)},`);
+    for (const kind of STORAGE_KINDS) lines.push(`    ${kind}: ${literal(named.binding[kind])},`);
+    lines.push("  },");
+    lines.push("});");
+  }
+
+  // (2) client modules, and the modules of the named storage functions
   const outDir = ctx.outDir;
-  const byModule = new Map<string, { exportName: string; fake: string }[]>();
+  const byModule = new Map<string, Map<string, MockNode>>();
+  const exportsOf = (module: string) => {
+    let exports = byModule.get(module);
+    if (exports === undefined) {
+      exports = new Map();
+      byModule.set(module, exports);
+    }
+    return exports;
+  };
   for (const [client, binding] of Object.entries(ctx.spec.bindings.clients)) {
     const fake = clients.get(client);
     if (fake === undefined) continue;
-    const list = byModule.get(binding.module) ?? [];
-    list.push({ exportName: binding.export, fake });
-    byModule.set(binding.module, list);
+    mockNode(exportsOf(binding.module), [binding.export]).expr = `${fake}.client`;
+  }
+  const storageFake = clients.get(STORAGE_CLIENT);
+  const storageModules = new Set<string>();
+  if (named !== undefined && storageFake !== undefined) {
+    for (const { fn } of storageFunctions(named.binding)) {
+      storageModules.add(fn.ref.file);
+      mockNode(exportsOf(fn.ref.file), fn.ref.symbol.split(".")).expr =
+        `${storageFake}.functions${member(fn.ref.symbol)}`;
+    }
   }
   lines.push(
     "",
-    "// (2) The modules that construct the clients (bindings.clients), relative to this file.",
+    storageModules.size === 0
+      ? "// (2) The modules that construct the clients (bindings.clients), relative to this file."
+      : "// (2) The modules of the clients (bindings.clients) and of the storage functions (bindings.storage), relative to this file.",
   );
   for (const module of [...byModule.keys()].sort(compareStrings)) {
     // Only the bound exports are replaced: guards and helpers exported beside a client stay real.
-    const exports = (byModule.get(module) ?? [])
-      .sort((a, b) => compareStrings(a.exportName, b.exportName))
-      .map((e) => `${propertyKey(e.exportName)}: ${e.fake}.client`)
-      .join(", ");
-    lines.push(
-      `vi.mock(${JSON.stringify(relativeImport(outDir, module))}, async (importOriginal) => ({`,
-      "  ...(await importOriginal<Record<string, unknown>>()),",
-      `  ${exports},`,
-      "}));",
-    );
+    const exports = byModule.get(module) ?? new Map<string, MockNode>();
+    lines.push(...mockModule(relativeImport(outDir, module), exports, storageModules.has(module)));
   }
 
   // (3) impls
@@ -186,4 +226,67 @@ export function prelude(ctx: Context, options: PreludeOptions): Prelude {
   const store = clients.get(ctx.storage.client);
   if (store === undefined) throw new Error(`testgen: no fake for client ${ctx.storage.client}`);
   return { lines, clients, impls, store };
+}
+
+/** One replaced export (or member of one): the fake's expression, or replaced members. */
+interface MockNode {
+  expr?: string;
+  members: Map<string, MockNode>;
+}
+
+function mockNode(exports: Map<string, MockNode>, path: readonly string[]): MockNode {
+  let level = exports;
+  let node: MockNode | undefined;
+  for (const segment of path) {
+    node = level.get(segment);
+    if (node === undefined) {
+      node = { members: new Map() };
+      level.set(segment, node);
+    }
+    level = node.members;
+  }
+  if (node === undefined) throw new Error("testgen: empty export path");
+  return node;
+}
+
+/** The replacement of one export: the fake, or the real one with some members replaced. */
+function mockValue(node: MockNode, real: string): string {
+  if (node.expr !== undefined) return node.expr;
+  const members = [...node.members.entries()]
+    .sort(([a], [b]) => compareStrings(a, b))
+    .map(([name, child]) => `${propertyKey(name)}: ${mockValue(child, `${real}${member(name)}`)}`);
+  return `Object.assign(Object.create(${real}), { ${members.join(", ")} })`;
+}
+
+/**
+ * `vi.mock` of one module, keeping its other exports. Client-only modules keep the one-line
+ * form; modules of storage functions list one export per line.
+ */
+function mockModule(
+  specifier: string,
+  exports: ReadonlyMap<string, MockNode>,
+  perLine: boolean,
+): string[] {
+  const sorted = [...exports.entries()].sort(([a], [b]) => compareStrings(a, b));
+  const open = `vi.mock(${JSON.stringify(specifier)}, async (importOriginal) => `;
+  if (sorted.every(([, node]) => node.expr !== undefined)) {
+    const entries = sorted.map(([name, node]) => `${propertyKey(name)}: ${node.expr}`);
+    return [
+      `${open}({`,
+      "  ...(await importOriginal<Record<string, unknown>>()),",
+      ...(perLine ? entries.map((e) => `  ${e},`) : [`  ${entries.join(", ")},`]),
+      "}));",
+    ];
+  }
+  return [
+    `${open}{`,
+    "  const original = await importOriginal<Record<string, any>>();",
+    "  return {",
+    "    ...original,",
+    ...sorted.map(
+      ([name, node]) => `    ${propertyKey(name)}: ${mockValue(node, `original${member(name)}`)},`,
+    ),
+    "  };",
+    "});",
+  ];
 }

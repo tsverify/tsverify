@@ -67,6 +67,15 @@ instrument.effects(s, {
   gate?: "transparent" | "sync",                  // default transparent
 }) → { client, calls(path): EffectCall[] }
 
+instrument.storage(s, {
+  entity: "Order",                                // CodeSites.storage.collection
+  state: "status",                                // EntityDecl.stateField
+  binding: spec.bindings.storage,                 // ir.StorageBinding: key + read/save/update/atomic
+  seed?: Row[],
+  missing?: "undefined" | ((key) => Error),       // read of a missing key
+}) → { functions: { [symbol]: fn }, seed({ Order: rows }), read("Order", key), rows("Order") }
+// read/save/update: sync gates storage.<symbol>; atomic: transparent gate storage.<symbol> + lock
+
 mappingFromCode(codeModel) → ReplayMapping       // { transitions: { t: { read, write, atomic: gate[] } }, effects }
 planFromTrace(trace, mapping, { fastForward? = true } | { replayFrom: stepIndex }) → ReplayPlan
   // { property, startIndex, seedStatus, seedEffects, skipped, workers, schedule, origins, expectedEffects }
@@ -187,6 +196,15 @@ applied when `fn` resolves and dropped when it throws. Not reentrant (a nested t
   level (the default) it takes **no** lock: a read-then-write inside it interleaves with another
   worker, so a replay shows the race the database would allow. Writes apply when their gate is
   passed and are undone if the transaction fails.
+
+`instrument.storage` stands in for the app's own storage functions (`bindings.storage`), one
+in-memory table of the entity. Each function honours its argument roles: `read` returns a copy,
+`save` stores an `entity` or merges a `patch` under a `key`, `update` sets `to` only when the
+stored state is one of the from-states and returns per `returns` (`changed`, `count`, `entity`,
+`throws`), and `atomic` runs its callback under one mutex per fake, with the callback's writes
+staged and applied when it resolves (dropped when it throws), like the store's transaction. The
+generated test exports `fake.functions[symbol]` in place of each function; the module's other
+exports stay real, so a storage function the binding does not name is **not** faked.
 
 All fakes are **strict**: a member the config doesn't list is a stub that throws
 `UninstrumentedCallError` when called, e.g.

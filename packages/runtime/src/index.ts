@@ -3,6 +3,7 @@
 
 import { effects } from "./instrument/effects.js";
 import { prisma } from "./instrument/prisma.js";
+import { storage } from "./instrument/storage.js";
 import { store } from "./instrument/store.js";
 
 export {
@@ -31,6 +32,16 @@ export {
   type PrismaMethod,
   type PrismaModelConfig,
 } from "./instrument/prisma.js";
+export {
+  STORAGE_CLIENT,
+  type StorageBindingInput,
+  StorageConditionError,
+  type StorageFake,
+  type StorageFakeConfig,
+  type StorageFunctionImpl,
+  type StorageFunctionInput,
+  type StorageRoleInput,
+} from "./instrument/storage.js";
 export type {
   CollectionConfig,
   CommitMethod,
@@ -75,5 +86,8 @@ export {
 } from "./sites.js";
 export { type ReplayResult, type ReplayVerdict, replayResult, replayVerdict } from "./verdict.js";
 
-/** In-memory fakes for the app's clients. `fake.client` is what a `vi.mock` factory exports. */
-export const instrument = { store, prisma, effects };
+/**
+ * In-memory fakes for the app's clients. `fake.client` is what a `vi.mock` factory exports;
+ * for `storage`, `fake.functions[symbol]` replaces each of the app's storage functions.
+ */
+export const instrument = { store, prisma, effects, storage };

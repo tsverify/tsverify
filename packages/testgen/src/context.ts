@@ -1,8 +1,8 @@
 /**
  * Everything the emitters share for one spec: which spec transitions can be driven (linked code
- * transition with an invocation shape and storage, `assign` or `prisma` persistence, actor
- * fixtures), the fake configurations derived from every code transition's `CodeSites`, and the
- * fixtures.
+ * transition with an invocation shape and storage, `assign`, `prisma` or `functions` persistence,
+ * actor fixtures), the fake configurations derived from every code transition's `CodeSites` (and,
+ * for `functions`, from the spec's `bindings.storage`), and the fixtures.
  * Whatever cannot be generated is recorded as an `info` finding instead.
  */
 import {
@@ -13,6 +13,8 @@ import {
   type Fixtures,
   formatSymbolRef,
   type InvocationShape,
+  STORAGE_KINDS,
+  type StorageBinding,
   type Transition,
 } from "@tsverify/ir";
 import { buildArgs, mentions } from "./invoke";
@@ -57,8 +59,24 @@ export interface PrismaFakeConfig {
   write: string[];
 }
 
+/**
+ * `instrument.storage` config: the app's own storage functions (`bindings.storage`), faked on the
+ * `storage` client (`CallSite.client` of every call to them).
+ */
+export interface StorageFunctionsFakeConfig {
+  /** `CodeSites.storage.collection`: the entity name. */
+  entity: string;
+  /** `EntityDecl.stateField`. */
+  state: string;
+  /** The spec's `bindings.storage`, without source locations. */
+  binding: StorageBinding;
+}
+
+/** The client name of calls to the app's storage functions (`ir.StorageBinding`). */
+export const STORAGE_CLIENT = "storage";
+
 /** Persistence kinds the generated tests have fakes for. */
-const FAKED: ReadonlySet<string> = new Set(["assign", "prisma"]);
+const FAKED: ReadonlySet<string> = new Set(["assign", "prisma", "functions"]);
 
 export interface EffectsFakeConfig {
   client: string;
@@ -82,6 +100,8 @@ export interface Context {
   stores: StoreFakeConfig[];
   /** `prisma` storage clients (`instrument.prisma`). */
   prismas: PrismaFakeConfig[];
+  /** The app's named storage functions (`instrument.storage`), when the code uses them. */
+  storageFunctions?: StorageFunctionsFakeConfig;
   effects: EffectsFakeConfig[];
   /** Drivable spec transitions, by name (sorted). */
   linked: Map<string, Linked>;
@@ -243,6 +263,7 @@ export function buildContext(input: ContextInput): { ctx?: Context; skipped: Fin
   const storeClients = sortedUnique(allSites.flatMap((s) => (s.storage ? [s.storage.client] : [])));
   const stores: StoreFakeConfig[] = [];
   const prismas: PrismaFakeConfig[] = [];
+  let storageFunctions: StorageFunctionsFakeConfig | undefined;
   for (const client of storeClients) {
     const paths = (pick: (s: CodeSites) => { client: string; path: string } | undefined) =>
       sortedUnique(
@@ -252,6 +273,33 @@ export function buildContext(input: ContextInput): { ctx?: Context; skipped: Fin
         }),
       );
     const kind = allSites.find((s) => s.storage?.client === client)?.persistence;
+    if (kind === "functions") {
+      const binding = spec.bindings.storage;
+      if (binding === undefined || client !== STORAGE_CLIENT) {
+        skipped.push(
+          skipFinding(
+            behavior,
+            "fakes",
+            `tsverify test generated no tests: the code stores the ${spec.entity.name} through named storage functions (client \`${client}\`), but the spec's \`bindings.storage\` does not name them`,
+            {
+              hint: "Name the read, save, update and atomic functions under `bindings.storage` (docs/behavior-format.md, bindings.storage).",
+            },
+          ),
+        );
+        return { skipped };
+      }
+      const collection =
+        storage.client === client
+          ? storage.collection
+          : (allSites.find((s) => s.storage?.client === client)?.storage?.collection ??
+            spec.entity.name);
+      storageFunctions = {
+        entity: collection,
+        state: spec.entity.stateField,
+        binding: withoutLocations(binding),
+      };
+      continue;
+    }
     if (kind === "prisma") {
       const models: Record<string, { key: string }> = {};
       for (const s of allSites) {
@@ -319,11 +367,21 @@ export function buildContext(input: ContextInput): { ctx?: Context; skipped: Fin
       id,
       stores,
       prismas,
+      ...(storageFunctions === undefined ? {} : { storageFunctions }),
       effects,
       linked,
     },
     skipped,
   };
+}
+
+/** The binding as the generated file writes it: no `at`, every optional field only when set. */
+function withoutLocations(binding: StorageBinding): StorageBinding {
+  const out: StorageBinding = { key: binding.key, read: [], save: [], update: [], atomic: [] };
+  for (const kind of STORAGE_KINDS) {
+    out[kind] = binding[kind].map(({ at: _, ...fn }) => fn);
+  }
+  return out;
 }
 
 /** The gate label of a spec effect (`bindings.effects`, or the name itself). */

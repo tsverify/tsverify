@@ -4,6 +4,7 @@ import {
   type Bindings,
   type ClientBinding,
   compareStrings,
+  defaultStorageArgs,
   type EffectDecl,
   type EntityDecl,
   type Fixtures,
@@ -13,6 +14,11 @@ import {
   parseGuardRef,
   parseSymbolRef,
   type Rule,
+  STORAGE_KINDS,
+  type StorageBinding,
+  type StorageFunction,
+  type StorageKind,
+  type StorageRole,
   type Transition,
 } from "@tsverify/ir";
 import type { FindingCollector } from "./findings";
@@ -21,6 +27,17 @@ import { type NameRef, parseRule } from "./rules/parser";
 import { RULE_KINDS, type RuleInput, type SpecInput, type TransitionInput } from "./schema";
 
 export const DEFAULT_CONCURRENCY = 2;
+
+type StorageInput = Exclude<NonNullable<NonNullable<SpecInput["bindings"]>["storage"]>, string>;
+/** One item of `storage.read` / `save` / `update` / `atomic`, as written. */
+type StorageLongInput = {
+  fn: string;
+  args?: StorageRole[];
+  returns?: StorageFunction["returns"];
+  from?: string | string[];
+  to?: string;
+};
+type StorageItemInput = string | StorageLongInput;
 
 export interface Normalized {
   model: BehaviorModel;
@@ -228,13 +245,78 @@ class Normalizer {
       effectEntries.map(([key]) => [key, this.locator.entry(["bindings", "effects", key])]),
     );
 
+    // `storage: <preset>` is `persistence: <preset>`. Both at once is an error (validate.ts); the
+    // preset `storage:` wins.
+    const preset = typeof b?.storage === "string" ? b.storage : b?.persistence;
+    const storage =
+      b?.storage !== undefined && typeof b.storage !== "string"
+        ? this.storage(b.storage)
+        : undefined;
     return {
-      ...(b?.persistence !== undefined && { persistence: b.persistence }),
+      ...(preset !== undefined && { persistence: preset }),
+      ...(storage !== undefined && { storage }),
       clients,
       guards: Object.fromEntries(guards),
       effects,
       effectsAt,
     };
+  }
+
+  /**
+   * The named-function form of `bindings.storage`: refs parsed (malformed ones reported), default
+   * roles applied, `from` made a list. Roles and states are checked by `validate.ts`.
+   */
+  private storage(s: StorageInput): StorageBinding {
+    const base = ["bindings", "storage"];
+    const binding: StorageBinding = {
+      key: s.key ?? "id",
+      read: [],
+      save: [],
+      update: [],
+      atomic: [],
+    };
+    for (const kind of STORAGE_KINDS) {
+      for (const item of itemsOf<StorageItemInput>(s[kind], [...base, kind])) {
+        const fn = this.storageFunction(kind, item.value, item.path);
+        if (fn) binding[kind].push(fn);
+      }
+    }
+    binding.at = this.locator.entry(base);
+    return binding;
+  }
+
+  private storageFunction(
+    kind: StorageKind,
+    value: StorageItemInput,
+    path: Path,
+  ): StorageFunction | undefined {
+    const long = typeof value === "string" ? undefined : (value as StorageLongInput);
+    const text = long?.fn ?? (value as string);
+    const ref = parseSymbolRef(text);
+    if (!ref) {
+      this.out.error(
+        this.locator.value(long ? [...path, "fn"] : path),
+        `bindings.storage.${kind}: malformed function "${text}" (expected "path/to/file.ts#symbol")`,
+      );
+      return undefined;
+    }
+    const from = typeof long?.from === "string" ? [long.from] : long?.from;
+    const to = long?.to;
+    const fn: StorageFunction = {
+      ref,
+      args: long?.args
+        ? [...long.args]
+        : defaultStorageArgs(kind, {
+            ...(from !== undefined && { from }),
+            ...(to !== undefined && { to }),
+          }),
+    };
+    if (long?.returns !== undefined) fn.returns = long.returns;
+    if (from !== undefined) fn.from = [...from];
+    if (to !== undefined) fn.to = to;
+    fn.at = this.locator.value(path);
+    this.paths.set(fn, path);
+    return fn;
   }
 
   private guards(

@@ -1,3 +1,4 @@
+import type { StorageFunction, StorageRole } from "@tsverify/ir";
 import { z } from "zod";
 
 /**
@@ -9,7 +10,21 @@ import { z } from "zod";
 export const TRUST_LEVELS = ["untrusted", "authenticated", "signed-webhook", "internal"] as const;
 export const EFFECT_MULTIPLICITIES = ["exactly-once", "at-least-once", "idempotent"] as const;
 export const PERSISTENCE_KINDS = ["assign", "prisma", "drizzle", "memory"] as const;
+/** `bindings.storage: <preset>`: the built-in storage styles. */
+export const STORAGE_PRESETS = ["assign", "prisma", "memory"] as const;
+export const STORAGE_ROLES = ["key", "entity", "patch", "from", "to", "callback", "_"] as const;
+export const UPDATE_RETURNS = ["changed", "count", "entity", "throws"] as const;
 export const RULE_KINDS = ["always", "never", "eventually"] as const;
+
+// The format's roles and returns are exactly the IR's.
+type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+const _roles: Same<(typeof STORAGE_ROLES)[number], StorageRole> = true;
+const _returns: Same<
+  (typeof UPDATE_RETURNS)[number],
+  NonNullable<StorageFunction["returns"]>
+> = true;
+void _roles;
+void _returns;
 
 const DURATION = /^\d+[smhd]$/;
 
@@ -111,12 +126,91 @@ const concurrency = z
   })
   .describe("Bounds for the model checker");
 
+const storageRoles = z
+  .array(
+    z
+      .enum(STORAGE_ROLES)
+      .describe(
+        "`key`, `entity`, `patch` (some fields), `from` (state or states), `to` (state), `callback`, or `_` (ignored)",
+      ),
+  )
+  .describe("Role of each positional argument");
+
+const storageRef = z.string().describe("The app's function: `path/to/file.ts#symbol`");
+
+/** One storage function: `path#symbol`, a long form, or a list of either. */
+const storageFunctions = (what: string, defaults: string) => {
+  const longForm = z
+    .strictObject({
+      fn: storageRef,
+      args: storageRoles
+        .optional()
+        .describe(`Role of each positional argument (default ${defaults})`),
+    })
+    .describe(`${what}, with the role of each argument`);
+  const item = z.union([storageRef, longForm]);
+  return z
+    .union([item, z.array(item)])
+    .optional()
+    .describe(`${what}, or a list of them`);
+};
+
+const updateFunctions = (() => {
+  const what = "Conditional save: checks the state and saves in one step";
+  const longForm = z
+    .strictObject({
+      fn: storageRef,
+      args: storageRoles
+        .optional()
+        .describe(
+          "Role of each positional argument (default [key, from, to], without the roles a fixed `from` / `to` replaces)",
+        ),
+      returns: z
+        .enum(UPDATE_RETURNS)
+        .optional()
+        .describe(
+          "What it returns: `changed` (true, or false when the state check fails; the default), `count` (1 or 0), `entity` (the updated entity, or undefined), `throws` (throws when the check fails)",
+        ),
+      from: nameOrList("Fixed from-state, when no argument has the `from` role").optional(),
+      to: name.optional().describe("Fixed target state, when no argument has the `to` role"),
+    })
+    .describe(`${what}, with the role of each argument`);
+  const item = z.union([storageRef, longForm]);
+  return z
+    .union([item, z.array(item)])
+    .optional()
+    .describe(`${what}, or a list of them`);
+})();
+
+const storage = z
+  .union([
+    z.enum(STORAGE_PRESETS).describe("A built-in storage style (same meaning as `persistence:`)"),
+    z
+      .strictObject({
+        key: name.optional().describe("The entity's key field (default `id`)"),
+        read: storageFunctions("Function that loads one entity by key", "[key]"),
+        save: storageFunctions("Function that persists an entity", "[entity]"),
+        update: updateFunctions,
+        atomic: storageFunctions(
+          "Function that runs its callback as one indivisible step (declared, not proven)",
+          "[callback]",
+        ),
+      })
+      .describe("The app's own storage functions; at least one read, save or update"),
+  ])
+  .describe(
+    "How the entity is stored: a preset (assign, prisma, memory), or the app's own read, save, update and atomic functions",
+  );
+
 const bindings = z
   .strictObject({
     persistence: z
       .enum(PERSISTENCE_KINDS)
       .optional()
-      .describe("Persistence adapter; omitted means auto-detected"),
+      .describe(
+        "Alias of the preset form of `storage` (kept for existing specs); omitted means auto-detected",
+      ),
+    storage: storage.optional(),
     clients: z
       .record(
         name,

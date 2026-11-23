@@ -1,0 +1,48 @@
+behavior: Order lifecycle
+summary: Orders stored through the app's own repository functions (bindings.storage).
+entity:
+  name: Order
+  state: status
+  states: [pending, paid, shipped, refunded]
+  initial: pending
+  terminal: [shipped, refunded]
+actors:
+  system: { trust: internal }
+  admin: { trust: authenticated }
+transitions:
+  pay:
+    from: pending
+    to: paid
+    by: system
+    atomic: true
+    impl: src/orders/pay.ts#markPaid
+  ship:
+    from: paid
+    to: shipped
+    by: admin
+    atomic: true
+    impl: src/orders/ship.ts#shipOrder
+  refund:
+    from: paid
+    to: refunded
+    by: admin
+    atomic: true
+    effects: [stripe.refund]
+    impl: src/orders/refund.ts#refundOrder
+rules:
+  - name: Refund issued at most once per order
+    always: count(effect stripe.refund) <= 1
+  - name: Shipped orders are never refunded
+    never: status == shipped and count(effect stripe.refund) > 0
+bindings:
+  storage:
+    read: src/orders/repo.ts#getOrder
+    save: src/orders/repo.ts#saveOrder
+    update: src/orders/repo.ts#setStatusIf
+    atomic: src/db.ts#withTransaction
+  clients:
+    stripe: { module: src/payments/stripe.ts, export: stripe }
+  effects:
+    stripe.refund: stripe.refunds.create
+fixtures:
+  entity: { id: order_1, chargeId: ch_1 }
