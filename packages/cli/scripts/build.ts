@@ -6,9 +6,10 @@
  *   tests import and which is published on its own. Third-party packages are bundled too, unless
  *   they are `dependencies` or `peerDependencies` of this package (left external, installed or
  *   provided by the user). A bundled third-party package must be a `devDependencies` entry, so
- *   its version is pinned here; the build fails otherwise. TypeScript is an optional peer
- *   (`typescript` or `@typescript/typescript6`), loaded at runtime from the analyzed project, so
- *   the build also fails if the bundle imports it statically.
+ *   its version is pinned here; the build fails otherwise. TypeScript (7+) is an optional peer,
+ *   loaded at runtime from the analyzed project (`typescript/sync` or `typescript/unstable/sync`),
+ *   so the build also fails if the bundle imports `typescript` (or a subpath, or an
+ *   `@typescript/*` package) statically.
  * - `dist/viewer/`: the viewer's browser app with the part of Mermaid it uses (`app.js`,
  *   `app.css`, `chunks/`), prebuilt so that an installed CLI needs neither esbuild nor Mermaid
  *   (`@tsverify/viewer`'s assets.ts serves it from next to the bundle, and its on-demand build,
@@ -130,10 +131,10 @@ for (const output of Object.values(result.metafile.outputs)) {
     if (imported.external && !isBuiltin(imported.path)) externals.add(packageName(imported.path));
   }
 }
-// The TypeScript peers come from the analyzed project, loaded at runtime (the extractor's
-// loadTypeScript): a static import would make them hard requirements of every install.
-const TYPESCRIPT_PEERS = ["typescript", "@typescript/typescript6"];
-const imported = TYPESCRIPT_PEERS.filter((name) => externals.has(name));
+// TypeScript comes from the analyzed project, loaded at runtime (the extractor's loadTypeScript):
+// a static import would make it a hard requirement of every install.
+const isTypeScript = (name: string) => name === "typescript" || name.startsWith("@typescript/");
+const imported = [...externals].filter(isTypeScript);
 if (imported.length > 0) {
   throw new Error(
     `the bundle imports the peer dependencies ${imported.join(", ")} statically; load them at runtime`,

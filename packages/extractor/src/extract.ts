@@ -1,8 +1,9 @@
 /**
  * `extractAll`: one TypeScript program per project, every spec extracted against it.
  *
- * 0. Install the project's TypeScript (`typescript.ts`): the caller's, or `loadTypeScript`'s.
- * 1. Load the tsconfig's files (`project.ts`).
+ * 0. Install the project's TypeScript 7 (`typescript.ts`): the caller's, or `loadTypeScript`'s.
+ * 1. Load the tsconfig's files (`project.ts`), in a compiler process that is closed before
+ *    `extractAll` returns or throws.
  * 2. Syntax only: candidate state writes for every spec's state field (`writes.ts`).
  * 3. Plan every narrowing probe (`type-facts.ts`, X1 probe-first) — still no type query.
  * 4. Type queries: entity matching, from-states, link resolution, call graph, guards, effects,
@@ -10,7 +11,6 @@
  */
 import type { BehaviorModel, Finding, PersistenceKind, SourceLocation } from "@tsverify/ir";
 import { compareStrings } from "@tsverify/ir";
-import type * as TS from "@typescript/typescript6";
 import { assignAdapter } from "./adapters/assign";
 import { memoryAdapter } from "./adapters/memory";
 import { prismaAdapter } from "./adapters/prisma";
@@ -22,9 +22,10 @@ import { ClientCalls } from "./client-calls";
 import { Dominance } from "./dominance";
 import { matchesEntity, writtenValue } from "./entity";
 import { brokenLink, sortFindings, unanalyzable, uniqueIds } from "./findings";
-import { loadTypeScript } from "./load-typescript";
-import { loadProject, ProjectContext } from "./project";
+import { loadTypeScript, TypeScriptSetupError } from "./load-typescript";
+import { type LoadedProject, loadProject, ProjectContext } from "./project";
 import { resolveClient, resolveGuard, resolveImpl, symbolOf } from "./resolve";
+import type * as TS from "./ts-types";
 import {
   declaredFieldType,
   declaredTypeOfRef,
@@ -45,8 +46,8 @@ export interface ExtractOptions {
   /** tsconfig path, relative to `projectRoot`. Default `<projectRoot>/tsconfig.json`. */
   tsconfig?: string;
   /**
-   * The TypeScript to read the code with (classic compiler API, 5.4 or later). Default:
-   * `loadTypeScript(projectRoot)`; `extractAll` throws its error when none is usable.
+   * The TypeScript to read the code with (7.0 or later). Default: `loadTypeScript(projectRoot)`;
+   * `extractAll` throws its error (`TypeScriptSetupError`) when none is usable.
    */
   typescript?: TypeScript;
 }
@@ -119,7 +120,7 @@ const ADAPTERS: Partial<Record<PersistenceKind, PersistenceAdapter>> = {
   prisma: prismaAdapter,
 };
 
-function literalArgs(call: TS.CallExpression, checker: TS.TypeChecker): string[] {
+function literalArgs(call: TS.CallExpression, checker: TS.Checker): string[] {
   const out: string[] = [];
   for (const a of call.arguments) {
     if (ts.isStringLiteral(a) || ts.isNoSubstitutionTemplateLiteral(a) || ts.isNumericLiteral(a)) {
@@ -134,7 +135,7 @@ function literalArgs(call: TS.CallExpression, checker: TS.TypeChecker): string[]
   return out;
 }
 
-function unprobedTypes(write: WriteNode, checker: TS.TypeChecker): Narrowed {
+function unprobedTypes(write: WriteNode, checker: TS.Checker): Narrowed {
   const fieldType = declaredFieldType(write.ref, write.field, checker);
   return {
     values: "*",
@@ -148,10 +149,15 @@ function unprobedTypes(write: WriteNode, checker: TS.TypeChecker): Narrowed {
 
 function requireTypeScript(projectRoot: string): TypeScript {
   const loaded = loadTypeScript(projectRoot);
-  if ("error" in loaded) throw new Error(loaded.error);
+  if ("error" in loaded) throw new TypeScriptSetupError(loaded.error);
   return loaded.ts;
 }
 
+/**
+ * Extracts the code model of every spec from one TypeScript project. Throws
+ * `TypeScriptSetupError` when the project cannot be read as set up (no TypeScript 7, a tsconfig
+ * TypeScript rejects).
+ */
 export function extractAll(
   specs: BehaviorModel[],
   options: ExtractOptions,
@@ -177,7 +183,18 @@ export function extractAll(
     }));
     return { results, stats: { files: 0, writes: 0, probes: 0, durationMs: now() - start } };
   }
+  try {
+    return extractLoaded(specs, loaded, start);
+  } finally {
+    loaded.close();
+  }
+}
 
+function extractLoaded(
+  specs: BehaviorModel[],
+  loaded: LoadedProject,
+  start: number,
+): { results: ExtractResult[]; stats: ExtractStats } {
   // Phase 1 (syntax) and probe planning: no type query before planNarrowing.
   const fields = new Set(specs.map((s) => s.entity.stateField));
   const candidates = findCandidateWrites(loaded.files, fields);

@@ -4,9 +4,10 @@
  * not resolve is reported by the caller as `broken-link`.
  */
 import type { ClientBinding, GuardBinding, SymbolRef } from "@tsverify/ir";
-import type * as TS from "@typescript/typescript6";
 import { type FunctionLike, isFunctionLike } from "./cfg";
+import { primaryDeclarationOf } from "./declarations";
 import type { ProjectContext } from "./project";
+import type * as TS from "./ts-types";
 import { ts } from "./typescript";
 
 export type Resolved<T> = { ok: true; value: T } | { ok: false; reason: string };
@@ -15,12 +16,12 @@ function fail<T>(reason: string): Resolved<T> {
   return { ok: false, reason };
 }
 
-export function resolveAlias(sym: TS.Symbol, checker: TS.TypeChecker): TS.Symbol {
+export function resolveAlias(sym: TS.Symbol, checker: TS.Checker): TS.Symbol {
   return sym.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(sym) : sym;
 }
 
 /** The symbol an expression (identifier or `a.b` name) refers to, through import aliases. */
-export function symbolOf(node: TS.Node, checker: TS.TypeChecker): TS.Symbol | undefined {
+export function symbolOf(node: TS.Node, checker: TS.Checker): TS.Symbol | undefined {
   const target = ts.isPropertyAccessExpression(node) ? node.name : node;
   const sym = checker.getSymbolAtLocation(target);
   return sym && resolveAlias(sym, checker);
@@ -44,7 +45,7 @@ function stripExpr(e: TS.Expression): TS.Expression {
  * or property initialized with a function expression, or a higher-order wrapper call
  * (`export const handler = withAuth(async (ctx) => …)`, the last function argument).
  */
-export function functionOfDeclaration(decl: TS.Declaration | undefined): FunctionLike | undefined {
+export function functionOfDeclaration(decl: TS.Node | undefined): FunctionLike | undefined {
   if (!decl) return undefined;
   if (isFunctionLike(decl)) return decl.body ? decl : undefined;
   let init: TS.Expression | undefined;
@@ -97,6 +98,11 @@ function projectFile(ctx: ProjectContext, file: string): Resolved<TS.SourceFile>
   return { ok: true, value: sf };
 }
 
+function propertyOf(checker: TS.Checker, sym: TS.Symbol, name: string): TS.Symbol | undefined {
+  const type = checker.getTypeOfSymbol(sym);
+  return type && checker.getPropertyOfType(type, name);
+}
+
 /** `file#symbol` or `file#Class.method` → the symbol. */
 function resolveSymbolPath(ctx: ProjectContext, file: string, symbol: string): Resolved<TS.Symbol> {
   const sf = projectFile(ctx, file);
@@ -106,8 +112,7 @@ function resolveSymbolPath(ctx: ProjectContext, file: string, symbol: string): R
   if (!sym) return fail(`${file} has no top-level symbol "${head}"`);
   for (const m of members) {
     const next: TS.Symbol | undefined =
-      sym.members?.get(m as TS.__String) ??
-      ctx.checker.getPropertyOfType(ctx.checker.getTypeOfSymbol(sym), m);
+      sym.getMembers().get(m as TS.__String) ?? propertyOf(ctx.checker, sym, m);
     if (!next) return fail(`${sym.name} has no member "${m}"`);
     sym = next;
   }
@@ -117,7 +122,7 @@ function resolveSymbolPath(ctx: ProjectContext, file: string, symbol: string): R
 export function resolveImpl(ctx: ProjectContext, ref: SymbolRef): Resolved<FunctionLike> {
   const sym = resolveSymbolPath(ctx, ref.file, ref.symbol);
   if (!sym.ok) return sym;
-  const fn = functionOfDeclaration(sym.value.valueDeclaration ?? sym.value.declarations?.[0]);
+  const fn = functionOfDeclaration(primaryDeclarationOf(sym.value));
   if (!fn) return fail(`${ref.file}#${ref.symbol} is not a function with a body`);
   return { ok: true, value: fn };
 }
@@ -140,7 +145,7 @@ export function resolveClient(ctx: ProjectContext, binding: ClientBinding): Reso
 export function resolveGuard(ctx: ProjectContext, binding: GuardBinding): Resolved<TS.Symbol> {
   const sym = resolveSymbolPath(ctx, binding.file, binding.symbol);
   if (!sym.ok) return sym;
-  const decl = sym.value.valueDeclaration ?? sym.value.declarations?.[0];
+  const decl = primaryDeclarationOf(sym.value);
   if (!functionOfDeclaration(decl)) {
     return fail(`${binding.file}#${binding.symbol} is not a function with a body`);
   }

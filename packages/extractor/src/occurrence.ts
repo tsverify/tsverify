@@ -4,11 +4,11 @@
  * not count), plus, for a call inside a helper, the most counted at any of the helper's call
  * sites in its callers. Same-gate calls inside *other* helpers are not counted.
  */
-import type * as TS from "@typescript/typescript6";
 import { frameCalls, type Reach } from "./callgraph";
 import { type FunctionLike, reachable } from "./cfg";
 import type { ClientCalls } from "./client-calls";
 import { cfgOf } from "./dominance";
+import type * as TS from "./ts-types";
 
 function localCount(frame: FunctionLike, node: TS.Node, gate: string, calls: ClientCalls): number {
   const cfg = cfgOf(frame);

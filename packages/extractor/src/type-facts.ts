@@ -1,14 +1,16 @@
 /**
- * Type facts the extractor needs from the TypeScript checker, behind a seam so a TS 7 (tsgo)
- * backend can replace the classic compiler API one (TS 5.4–6.x, `typescript.ts`) later (spike X1).
+ * Type facts the extractor needs from the TypeScript 7 checker (spike X1).
  *
  * Narrowing uses X1's **probe-first injection**: every candidate state write `W` is rewritten to
  * `(ref.field, W)` in an in-memory overlay of the program *before* the first type query. The comma operator
  * creates no flow node, so the probe read sees exactly the flow state just before `W`. No newline
  * is inserted, so lines never change and only columns on probed lines shift; `toOriginalPosition`
- * maps them back.
+ * maps them back. The overlay reaches the compiler as a second snapshot of the same process
+ * (`compiler.ts`), which re-reads only the probed files.
  */
-import type * as TS from "@typescript/typescript6";
+import type { CompilerSession } from "./compiler";
+import { declarationsOf, valueDeclarationOf } from "./declarations";
+import type * as TS from "./ts-types";
 import { ts } from "./typescript";
 
 /** Sorted literal values, or `"*"` when the type is not a finite literal set (`string`, `any`, …). */
@@ -55,7 +57,9 @@ export interface TypeFacts {
 
 // --- type → literal set ------------------------------------------------------------------
 
-export function literalsOf(type: TS.Type, checker: TS.TypeChecker): LiteralSet {
+/** `undefined` (the API found no type) reads as unknown: `"*"`. */
+export function literalsOf(type: TS.Type | undefined, checker: TS.Checker): LiteralSet {
+  if (!type) return "*";
   const F = ts.TypeFlags;
   if (type.flags & (F.Any | F.Unknown)) return "*";
   if (type.flags & F.Never) return [];
@@ -63,9 +67,9 @@ export function literalsOf(type: TS.Type, checker: TS.TypeChecker): LiteralSet {
     const c = checker.getBaseConstraintOfType(type);
     return c && c !== type ? literalsOf(c, checker) : "*";
   }
-  if (type.isIntersection()) {
+  if (type.isIntersectionType()) {
     let acc: Set<string> | undefined;
-    for (const part of type.types) {
+    for (const part of type.getTypes()) {
       const s = literalsOf(part, checker);
       if (s === "*") continue;
       const prev: Set<string> | undefined = acc;
@@ -74,8 +78,8 @@ export function literalsOf(type: TS.Type, checker: TS.TypeChecker): LiteralSet {
     return acc ? [...acc].sort() : "*";
   }
   const out = new Set<string>();
-  for (const part of type.isUnion() ? type.types : [type]) {
-    if (part.isStringLiteral() || part.isNumberLiteral()) out.add(String(part.value));
+  for (const part of type.isUnionType() ? type.getTypes() : [type]) {
+    if (part.isStringLiteralType() || part.isNumberLiteralType()) out.add(String(part.value));
     else if (part.flags & F.BooleanLiteral) out.add(checker.typeToString(part));
     else if (part.flags & (F.Undefined | F.Null | F.Void)) continue;
     else if (part !== type && part.flags & (F.Intersection | F.Instantiable)) {
@@ -88,8 +92,11 @@ export function literalsOf(type: TS.Type, checker: TS.TypeChecker): LiteralSet {
 }
 
 /** A single string/number/boolean literal value of an expression's type, if it has exactly one. */
-export function singleLiteralOf(type: TS.Type, checker: TS.TypeChecker): string | undefined {
-  if (type.isUnion()) return undefined;
+export function singleLiteralOf(
+  type: TS.Type | undefined,
+  checker: TS.Checker,
+): string | undefined {
+  if (!type || type.isUnionType()) return undefined;
   const s = literalsOf(type, checker);
   return s !== "*" && s.length === 1 ? s[0] : undefined;
 }
@@ -105,7 +112,7 @@ const TRANSPARENT_ALIASES: ReadonlySet<string> = new Set([
 ]);
 
 /** Names a type node refers to: `Row` → `Row` plus what `Row` aliases; `Pick<Order, …>` → `Order`. */
-function typeNodeNames(node: TS.TypeNode, checker: TS.TypeChecker, depth: number): string[] {
+function typeNodeNames(node: TS.TypeNode, checker: TS.Checker, depth: number): string[] {
   if (depth > 4) return [];
   if (ts.isParenthesizedTypeNode(node)) return typeNodeNames(node.type, checker, depth + 1);
   if (ts.isTypeReferenceNode(node)) {
@@ -121,17 +128,17 @@ function typeNodeNames(node: TS.TypeNode, checker: TS.TypeChecker, depth: number
  * the first argument of a transparent utility alias, and what a user alias stands for
  * (`type Shipment = Row; type Row = Pick<Order, …>` answers to `Order`).
  */
-export function typeNames(type: TS.Type, checker: TS.TypeChecker, depth = 0): string[] {
-  if (depth > 4) return [];
+export function typeNames(type: TS.Type | undefined, checker: TS.Checker, depth = 0): string[] {
+  if (!type || depth > 4) return [];
   const names = new Set<string>();
-  const alias = type.aliasSymbol;
+  const alias = type.getAliasSymbol();
   if (alias) {
     names.add(alias.name);
-    const first = type.aliasTypeArguments?.[0];
+    const first = type.getAliasTypeArguments()[0];
     if (TRANSPARENT_ALIASES.has(alias.name) && first) {
       for (const n of typeNames(first, checker, depth + 1)) names.add(n);
     } else {
-      for (const d of alias.declarations ?? []) {
+      for (const d of declarationsOf(alias)) {
         if (!ts.isTypeAliasDeclaration(d)) continue;
         for (const n of typeNodeNames(d.type, checker, depth + 1)) names.add(n);
       }
@@ -139,8 +146,8 @@ export function typeNames(type: TS.Type, checker: TS.TypeChecker, depth = 0): st
   }
   const sym = type.getSymbol();
   if (sym && !sym.name.startsWith("__")) names.add(sym.name);
-  if (type.isUnionOrIntersection()) {
-    for (const part of type.types)
+  if (type.isUnionType() || type.isIntersectionType()) {
+    for (const part of type.getTypes())
       for (const n of typeNames(part, checker, depth + 1)) names.add(n);
   }
   if (type.flags & ts.TypeFlags.TypeParameter) {
@@ -151,22 +158,23 @@ export function typeNames(type: TS.Type, checker: TS.TypeChecker, depth = 0): st
 }
 
 /** The declared (not flow-narrowed) type of a reference expression. */
-export function declaredTypeOfRef(ref: TS.Expression, checker: TS.TypeChecker): TS.Type {
+export function declaredTypeOfRef(ref: TS.Expression, checker: TS.Checker): TS.Type | undefined {
   const target = ts.isPropertyAccessExpression(ref) ? ref.name : ref;
   const sym =
     ref.kind === ts.SyntaxKind.ThisKeyword ? undefined : checker.getSymbolAtLocation(target);
   const type = sym ? checker.getTypeOfSymbol(sym) : checker.getTypeAtLocation(ref);
-  return checker.getNonNullableType(type);
+  return type && checker.getNonNullableType(type);
 }
 
 /** The declared type of `field` on a reference's declared type, if it has that property. */
 export function declaredFieldType(
   ref: TS.Expression,
   field: string,
-  checker: TS.TypeChecker,
+  checker: TS.Checker,
 ): TS.Type | undefined {
   const refType = declaredTypeOfRef(ref, checker);
-  const prop = checker.getPropertyOfType(checker.getApparentType(refType), field);
+  const apparent = refType && checker.getApparentType(refType);
+  const prop = apparent && checker.getPropertyOfType(apparent, field);
   return prop ? checker.getTypeOfSymbol(prop) : undefined;
 }
 
@@ -217,10 +225,10 @@ function refText(e: TS.Expression): string | undefined {
 }
 
 /** The `const` initializer an identifier stands for (through imports), if it has one. */
-function constInitializer(id: TS.Identifier, checker: TS.TypeChecker): TS.Expression | undefined {
+function constInitializer(id: TS.Identifier, checker: TS.Checker): TS.Expression | undefined {
   let sym = checker.getSymbolAtLocation(id);
   if (sym && sym.flags & ts.SymbolFlags.Alias) sym = checker.getAliasedSymbol(sym);
-  const decl = sym?.valueDeclaration;
+  const decl = valueDeclarationOf(sym);
   if (!decl || !ts.isVariableDeclaration(decl) || !decl.initializer) return undefined;
   const list = decl.parent;
   if (!ts.isVariableDeclarationList(list) || !(list.flags & ts.NodeFlags.Const)) return undefined;
@@ -228,11 +236,7 @@ function constInitializer(id: TS.Identifier, checker: TS.TypeChecker): TS.Expres
 }
 
 /** The string literals of an array literal (all elements must be literals). */
-function arrayLiterals(
-  e: TS.Expression,
-  checker: TS.TypeChecker,
-  depth: number,
-): string[] | undefined {
+function arrayLiterals(e: TS.Expression, checker: TS.Checker, depth: number): string[] | undefined {
   const x = stripExpr(e);
   if (ts.isIdentifier(x) && depth < 4) {
     const init = constInitializer(x, checker);
@@ -248,11 +252,7 @@ function arrayLiterals(
 }
 
 /** The literals of `new Set([...])` (or a `const` bound to one). */
-function setLiterals(
-  e: TS.Expression,
-  checker: TS.TypeChecker,
-  depth: number,
-): string[] | undefined {
+function setLiterals(e: TS.Expression, checker: TS.Checker, depth: number): string[] | undefined {
   const x = stripExpr(e);
   if (ts.isIdentifier(x) && depth < 4) {
     const init = constInitializer(x, checker);
@@ -271,7 +271,7 @@ interface MembershipTarget {
   field: string;
   /** The field's finite domain, needed to read a negative test (`!L.includes(x)`); else undefined. */
   domain: readonly string[] | undefined;
-  checker: TS.TypeChecker;
+  checker: TS.Checker;
 }
 
 /**
@@ -396,7 +396,7 @@ export function withMembershipGuards(
   at: TS.Node,
   ref: TS.Expression,
   field: string,
-  checker: TS.TypeChecker,
+  checker: TS.Checker,
 ): Narrowed {
   const text = refText(ref);
   if (text === undefined) return n;
@@ -412,7 +412,7 @@ export function withMembershipGuards(
   };
 }
 
-// --- classic compiler API implementation -------------------------------------------------
+// --- TypeScript 7 implementation ---------------------------------------------------------
 
 interface Insertion {
   /** Original offset the text is inserted at. */
@@ -434,78 +434,42 @@ function nodeAtSpan(sf: TS.SourceFile, start: number, end: number): TS.Node | un
   const visit = (n: TS.Node): void => {
     if (n.getStart(sf) <= start && n.getEnd() >= end) {
       if (n.getStart(sf) === start && n.getEnd() === end) found = n;
-      ts.forEachChild(n, visit);
+      n.forEachChild(visit);
     }
   };
-  ts.forEachChild(sf, visit);
+  sf.forEachChild(visit);
   return found;
 }
 
 /**
- * A compiler host over the real file system (plus optional in-memory `files`) that serves the
- * probed `overlay` text in place of a file's own, and hands out one `SourceFile` per file and text,
- * so the probed program reuses every unprobed file of the base program as is.
- */
-export interface OverlayHost extends TS.CompilerHost {
-  /** Probed text by file name, filled by `planNarrowing` before the probed program exists. */
-  readonly overlay: Map<string, string>;
-}
-
-export function createOverlayHost(
-  options: TS.CompilerOptions,
-  files: ReadonlyMap<string, string> = new Map(),
-): OverlayHost {
-  const overlay = new Map<string, string>();
-  const parsed = new Map<string, TS.SourceFile>();
-  const probed = new Map<string, TS.SourceFile>();
-  const host = ts.createCompilerHost(options, true);
-  const { fileExists, readFile, getSourceFile } = host;
-  // The default getSourceFile reads through `host.readFile`, so the overlay reaches it too.
-  host.fileExists = (name) => files.has(name) || fileExists.call(host, name);
-  host.readFile = (name) => overlay.get(name) ?? files.get(name) ?? readFile.call(host, name);
-  host.getSourceFile = (name, languageVersion, onError, shouldCreateNew) => {
-    const cache = overlay.has(name) ? probed : parsed;
-    let sf = cache.get(name);
-    if (sf === undefined) {
-      sf = getSourceFile.call(host, name, languageVersion, onError, shouldCreateNew);
-      if (sf !== undefined) cache.set(name, sf);
-    }
-    return sf;
-  };
-  return Object.assign(host, { overlay });
-}
-
-/**
- * `TypeFacts` over a classic `ts.Program`. `base` is the unprobed program, used for syntax only;
- * the probed program is created from it (reusing its unprobed files and module resolutions) with
- * `host`'s overlay on the first type query.
+ * `TypeFacts` over a TypeScript 7 project. `base` is the project as on disk, used for syntax
+ * only; on the first type query the probed project is opened from the same compiler process
+ * (`session.openWith(overlay)`), which re-reads only the probed files and keeps every other
+ * source file as is.
  */
 export class ProgramTypeFacts implements TypeFacts {
   private readonly planned: Planned[] = [];
   private readonly insertions = new Map<string, Insertion[]>();
-  private probed: TS.Program | undefined;
+  /** Probed text by file name, filled by `planNarrowing` before the probed project exists. */
+  private readonly overlay = new Map<string, string>();
+  private probed: TS.Project | undefined;
 
   constructor(
-    private readonly base: TS.Program,
-    private readonly host: OverlayHost,
+    private readonly session: CompilerSession,
+    private readonly base: TS.Project,
   ) {}
 
-  get checker(): TS.TypeChecker {
-    return this.program.getTypeChecker();
+  private get project(): TS.Project {
+    this.probed ??= this.overlay.size === 0 ? this.base : this.session.openWith(this.overlay);
+    return this.probed;
+  }
+
+  get checker(): TS.Checker {
+    return this.project.checker;
   }
 
   get program(): TS.Program {
-    this.probed ??=
-      this.host.overlay.size === 0
-        ? this.base
-        : ts.createProgram({
-            rootNames: this.base.getRootFileNames(),
-            options: this.base.getCompilerOptions(),
-            host: this.host,
-            oldProgram: this.base,
-            configFileParsingDiagnostics: this.base.getConfigFileParsingDiagnostics(),
-          });
-    return this.probed;
+    return this.project.program;
   }
 
   planNarrowing(requests: readonly NarrowRequest[]): readonly NarrowHandle[] {
@@ -522,9 +486,9 @@ export class ProgramTypeFacts implements TypeFacts {
     }
     for (const [file, indices] of byFile) {
       if (this.insertions.has(file)) throw new Error(`extractor: ${file} probed twice`);
-      const sf = this.base.getSourceFile(file);
+      const sf = this.base.program.getSourceFile(file);
       if (sf === undefined) throw new Error(`extractor: ${file} is not in the program`);
-      const text = sf.getFullText();
+      const text = sf.text;
       // Opens sort by start, outer (longer) first; closes come before opens at the same offset
       // and inner (shorter) first, so nested spans stay well-formed.
       type Edit = { at: number; open: boolean; len: number; planned: number };
@@ -561,7 +525,7 @@ export class ProgramTypeFacts implements TypeFacts {
       }
       out += text.slice(last);
       this.insertions.set(file, inserts);
-      this.host.overlay.set(file, out);
+      this.overlay.set(file, out);
     }
     return handles;
   }
@@ -584,7 +548,7 @@ export class ProgramTypeFacts implements TypeFacts {
       values,
       declared,
       unconstrained: declared !== "*" && values !== "*" && sameSet(values, declared),
-      typeText: checker.typeToString(type),
+      typeText: type ? checker.typeToString(type) : "unknown",
       declaredText: fieldType ? checker.typeToString(fieldType) : "unknown",
       refTypeNames: typeNames(declaredTypeOfRef(probe.expression, checker), checker),
     };

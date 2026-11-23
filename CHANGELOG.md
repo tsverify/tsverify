@@ -35,10 +35,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The `non-atomic` hint for `memory` persistence asks for a synchronous check and write (no `await`/`yield`
   between them) instead of a transaction or conditional update.
 - tsverify no longer bundles TypeScript (ts-morph and its private TypeScript 6.0.2, about 15 MB): it reads code
-  with the analyzed project's own `typescript` 5.4–6.x. TypeScript 7 has no JavaScript compiler API, so TS-7
-  projects add `@typescript/typescript6` as a devDependency; both are optional peer dependencies of
-  `@tsverify/cli`. Without either, `check` and `test` exit 2 with a message that names the project's TypeScript
-  version and the fix. Results are unchanged.
+  with the analyzed project's own `typescript`.
+- **TypeScript 7 or later is required.** tsverify reads code through TypeScript 7's API (`typescript/sync`;
+  `typescript/unstable/sync` on 7.0), which runs the project's native compiler, and no longer supports
+  TypeScript 5 or 6 or `@typescript/typescript6`. `typescript` (`>=7.0.0`) is an optional peer dependency of
+  `@tsverify/cli`. On TypeScript 5 or 6, `check` and `test` exit 2: "tsverify needs TypeScript 7 or later to read
+  your code. This project has TypeScript 5.9.3: upgrade it with `npm i -D typescript@latest`." A tsconfig that
+  TypeScript 7 rejects (it removed options TypeScript 6 only deprecated, such as `baseUrl` and
+  `moduleResolution: node10`) also exits 2, quoting TypeScript's message. Code models are unchanged.
 
 ### Added
 - `--strict` on `check` and `test`: `unanalyzable` warnings are reported as errors (exit 1), so code tsverify

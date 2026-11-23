@@ -6,10 +6,12 @@
  *   test` and `tsverify view` serving its bundled Mermaid;
  * - one without: everything but `tsverify test` works, which exits 2 and says how to install
  *   vitest. Its `node_modules`, minus the project's own TypeScript, is tsverify's footprint;
- * - one on TypeScript 7, which has no classic compiler API: `check` exits 2 and names
- *   `@typescript/typescript6`, and works once that is installed.
+ * - one on TypeScript 5.9, which has no TypeScript 7 API. npm refuses the install (the optional
+ *   peer `typescript@>=7.0.0` conflicts); installed anyway (`--legacy-peer-deps`), `check` exits
+ *   2 and says to upgrade, and works once TypeScript 7 is installed.
  *
- * Every project has its own TypeScript, an optional peer: tsverify never installs one.
+ * Every project has its own TypeScript, an optional peer: tsverify never installs one. tsverify
+ * reads code through it, starting its native compiler.
  *
  * Not part of `pnpm test`: the installs need the npm registry for the third-party dependencies.
  *
@@ -55,12 +57,12 @@ const NOT_INSTALLED = [
   "ts-morph",
   "@ts-morph/common",
 ];
-/** The project's own TypeScript (an optional peer): a classic-API version a typical project has. */
-const TYPESCRIPT = "typescript@5.9.3";
-/** A TypeScript 7 project, which has no classic compiler API… */
-const TYPESCRIPT_7 = "typescript@7.0.2";
-/** …and the official package that provides it. */
-const TYPESCRIPT_6_API = `@typescript/typescript6@${(JSON.parse(readFileSync(join(REPO, "package.json"), "utf8")) as { devDependencies: Record<string, string> }).devDependencies["@typescript/typescript6"]}`;
+/** The project's own TypeScript (an optional peer): the TypeScript 7 the monorepo uses. */
+const TYPESCRIPT = `typescript@${(JSON.parse(readFileSync(join(REPO, "package.json"), "utf8")) as { devDependencies: Record<string, string> }).devDependencies.typescript}`;
+/** A project on TypeScript 5.9, which has no TypeScript 7 API. */
+const TYPESCRIPT_5 = "typescript@5.9.3";
+const TYPESCRIPT_5_ERROR =
+  "error: tsverify needs TypeScript 7 or later to read your code. This project has TypeScript 5.9.3: upgrade it with `npm i -D typescript@latest`.\n";
 const keep = process.argv.includes("--keep");
 
 // pnpm's lifecycle variables (npm_package_*, npm_config_user_agent, …) must not leak into npm.
@@ -316,7 +318,7 @@ const tmp = mkdtempSync(join(tmpdir(), "tsverify-smoke-"));
 const packs = join(tmp, "packs");
 const project = join(tmp, "project");
 const bare = join(tmp, "project-without-vitest");
-const ts7 = join(tmp, "project-typescript-7");
+const ts5 = join(tmp, "project-typescript-5");
 process.stdout.write(`tsverify pack smoke test (${VERSION}, node ${process.version}) in ${tmp}\n`);
 
 try {
@@ -452,42 +454,51 @@ try {
     `exit ${bareTest.code}, stderr: ${JSON.stringify(bareTest.stderr)}`,
   );
 
-  // 6. A TypeScript 7 project: no classic compiler API until @typescript/typescript6 is added.
-  newProject(ts7, "tsverify-smoke-typescript-7");
-  const ts7Install = run(
-    "npm",
-    [
-      "install",
-      "--no-audit",
-      "--no-fund",
-      tarballs.cli as string,
-      tarballs.runtime as string,
-      TYPESCRIPT_7,
-    ],
-    ts7,
-  );
-  expectExit(`npm install of both tarballs and ${TYPESCRIPT_7}`, ts7Install, 0);
-  const ts7Check = tsverify(["check", "src"], ts7);
+  // 6. A TypeScript 5.9 project: no TypeScript 7 API. npm refuses the optional peer's conflict;
+  // installed anyway, `check` asks to upgrade.
+  newProject(ts5, "tsverify-smoke-typescript-5");
+  const ts5Args = [
+    "install",
+    "--no-audit",
+    "--no-fund",
+    tarballs.cli as string,
+    tarballs.runtime as string,
+    TYPESCRIPT_5,
+  ];
+  const ts5Refused = run("npm", ts5Args, ts5);
   check(
-    "TypeScript 7 alone: check exits 2 and names @typescript/typescript6",
-    ts7Check.code === 2 && ts7Check.stderr.includes("@typescript/typescript6"),
-    `exit ${ts7Check.code}, stderr: ${JSON.stringify(ts7Check.stderr.slice(0, 200))}`,
+    `npm install of both tarballs and ${TYPESCRIPT_5} fails on the typescript peer (ERESOLVE)`,
+    ts5Refused.code !== 0 &&
+      ts5Refused.stderr.includes("ERESOLVE") &&
+      ts5Refused.stderr.includes('peerOptional typescript@">=7.0.0"'),
+    `exit ${ts5Refused.code}`,
+  );
+  const ts5Install = run("npm", [...ts5Args, "--legacy-peer-deps"], ts5);
+  expectExit(`npm install --legacy-peer-deps of both tarballs and ${TYPESCRIPT_5}`, ts5Install, 0);
+  const ts5Check = tsverify(["check", "src"], ts5);
+  check(
+    "TypeScript 5.9: check exits 2 and says to upgrade",
+    ts5Check.code === 2 && ts5Check.stderr === TYPESCRIPT_5_ERROR && ts5Check.stdout === "",
+    `exit ${ts5Check.code}, stderr: ${JSON.stringify(ts5Check.stderr.slice(0, 200))}`,
   );
   expectExit(
-    `npm install ${TYPESCRIPT_6_API}`,
-    run("npm", ["install", "--no-audit", "--no-fund", TYPESCRIPT_6_API], ts7),
+    `npm install ${TYPESCRIPT}`,
+    run("npm", ["install", "--no-audit", "--no-fund", TYPESCRIPT], ts5),
     0,
   );
-  expectExit(
-    "TypeScript 7 + @typescript/typescript6: check src",
-    tsverify(["check", "src"], ts7),
-    0,
-  );
+  expectExit("upgraded to TypeScript 7: check src", tsverify(["check", "src"], ts5), 0);
 
-  // 7. Sizes. The project without vitest, minus its own TypeScript, is tsverify's footprint.
+  // 7. Sizes. The project without vitest, minus its own TypeScript (`typescript` and its native
+  // compiler, `@typescript/typescript-<platform>`), is tsverify's footprint.
   const modules = join(project, "node_modules");
   const withVitest = du(modules);
-  const typescriptSize = du(join(bareModules, "typescript"));
+  const typescriptDirs = [
+    join(bareModules, "typescript"),
+    ...readdirSync(join(bareModules, "@typescript")).map((name) =>
+      join(bareModules, "@typescript", name),
+    ),
+  ];
+  const typescriptSize = typescriptDirs.reduce((sum, dir) => sum + du(dir), 0);
   const without = du(bareModules) - typescriptSize;
   process.stdout.write(
     [
@@ -497,7 +508,7 @@ try {
         (pkg) =>
           `  @tsverify/${pkg} tarball: ${size(statSync(tarballs[pkg] as string).size)}, unpacked ${size(du(join(installed, pkg)))}`,
       ),
-      `  tsverify's footprint (node_modules without vitest, minus the project's own ${TYPESCRIPT}, ${size(typescriptSize)}): ${size(without)} (${countPackages(bareModules) - 1} packages), npm install ${seconds(bareInstall.ms)}`,
+      `  tsverify's footprint (node_modules without vitest, minus the project's own ${TYPESCRIPT}, ${size(typescriptSize)}): ${size(without)} (${countPackages(bareModules) - typescriptDirs.length} packages), npm install ${seconds(bareInstall.ms)}`,
       `  node_modules with vitest@${VITEST} and ${TYPESCRIPT}: ${size(withVitest)} (${countPackages(modules)} packages), npm install ${seconds(install.ms)}`,
       "",
     ].join("\n"),

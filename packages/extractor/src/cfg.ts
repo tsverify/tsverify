@@ -28,7 +28,7 @@
  * suspension point). An `await` adds no throw edge of its own: the awaited call's edge covers a
  * rejection.
  */
-import type * as TS from "@typescript/typescript6";
+import type * as TS from "./ts-types";
 import { ts } from "./typescript";
 
 export type FunctionLike =
@@ -410,7 +410,7 @@ class Builder {
       return this.node(e, this.expr(e.expression, f));
     }
     let cur = f;
-    ts.forEachChild(e, (c) => {
+    e.forEachChild((c) => {
       cur = this.expr(c, cur);
     });
     return cur;

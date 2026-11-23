@@ -13,8 +13,10 @@ tsverify is a local developer tool. It is worth knowing what it does on your mac
 
 - **No network.** `check`, `validate`, `render`, `diff`, `schema` and `view` never contact any server, and nothing
   is downloaded at run time.
-- **`tsverify check` reads your code; it does not run it.** It parses your TypeScript with your project's own
-  TypeScript compiler.
+- **`tsverify check` reads your code; it does not run it.** It parses and type-checks your TypeScript with your
+  project's own TypeScript 7 compiler. That compiler is a native program from your `node_modules`
+  (`@typescript/typescript-<platform>`, installed with `typescript`). tsverify starts it as a child process for each
+  project it reads, talks to it over a pipe, and ends it before `check` finishes, including when the check fails.
 - **`tsverify test` runs your code.** It generates tests into `.tsverify/generated/` and runs them with your
   project's vitest. They import and execute your project's modules, with storage and side-effect clients replaced
   by in-memory fakes. Run it only on code you would run your own tests on.

@@ -22,10 +22,11 @@
  * (`db["orders"]`), a destructured member (`const { orders } = db`), and a call's result as root.
  */
 import type { AtomicScope } from "@tsverify/ir";
-import type * as TS from "@typescript/typescript6";
 import type { PersistenceAdapter } from "./adapters/types";
 import { inlineCallbackCall } from "./cfg";
+import { valueDeclarationOf } from "./declarations";
 import { symbolOf } from "./resolve";
+import type * as TS from "./ts-types";
 import { ts } from "./typescript";
 
 export interface ScopeRef {
@@ -74,7 +75,7 @@ function stripExpr(n: TS.Expression): TS.Expression {
 }
 
 /** Declarations whose declared type identifies an injected client. */
-function isTypedHolder(decl: TS.Declaration): boolean {
+function isTypedHolder(decl: TS.Node): boolean {
   return (
     ts.isParameter(decl) ||
     ts.isPropertyDeclaration(decl) ||
@@ -90,7 +91,7 @@ export class ClientCalls {
   private clientTypes: Map<TS.Type, string[]> | undefined;
 
   constructor(
-    private readonly checker: TS.TypeChecker,
+    private readonly checker: TS.Checker,
     /** Resolved client symbol → client binding name. */
     private readonly clients: ReadonlyMap<TS.Symbol, string>,
     private readonly adapter: PersistenceAdapter,
@@ -178,9 +179,9 @@ export class ClientCalls {
   }
 
   private scopeAlias(sym: TS.Symbol): { client: string; scope: ScopeRef } | undefined {
-    const decl = sym.valueDeclaration;
+    const decl = valueDeclarationOf(sym);
     if (!decl || !ts.isParameter(decl) || !ts.isIdentifier(decl.name)) return undefined;
-    const fn = decl.parent;
+    const fn = decl.parent as TS.SignatureDeclaration;
     if (fn.parameters.indexOf(decl) !== this.adapter.scopeAliasParam) return undefined;
     const scope = this.scopeOfCallback(fn);
     if (!scope) return undefined;
@@ -190,10 +191,11 @@ export class ClientCalls {
 
   /** The one client whose export type is `sym`'s declared type (an injected client). */
   private byType(sym: TS.Symbol): string | undefined {
-    const decl = sym.valueDeclaration;
+    const decl = valueDeclarationOf(sym);
     if (!decl || !isTypedHolder(decl)) return undefined;
-    const type = this.checker.getNonNullableType(this.checker.getTypeOfSymbol(sym));
-    const names = this.typeIndex().get(type);
+    const declared = this.checker.getTypeOfSymbol(sym);
+    const type = declared && this.checker.getNonNullableType(declared);
+    const names = type && this.typeIndex().get(type);
     return names?.length === 1 ? names[0] : undefined;
   }
 
@@ -202,7 +204,7 @@ export class ClientCalls {
     const index = new Map<TS.Type, string[]>();
     for (const [sym, name] of this.clients) {
       const type = this.checker.getTypeOfSymbol(sym);
-      if (!this.identifiesClient(type)) continue;
+      if (!type || !this.identifiesClient(type)) continue;
       const names = index.get(type) ?? [];
       if (!names.includes(name)) names.push(name);
       index.set(type, names);
@@ -216,8 +218,8 @@ export class ClientCalls {
     if (!(type.flags & (ts.TypeFlags.Object | ts.TypeFlags.Intersection))) return false;
     return (
       this.checker.getPropertiesOfType(type).length > 0 ||
-      type.getCallSignatures().length > 0 ||
-      type.getConstructSignatures().length > 0
+      this.checker.getSignaturesOfType(type, ts.SignatureKind.Call).length > 0 ||
+      this.checker.getSignaturesOfType(type, ts.SignatureKind.Construct).length > 0
     );
   }
 }

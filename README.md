@@ -22,10 +22,12 @@ npm i -D @tsverify/cli vitest   # if you want `tsverify test`, which runs the ge
 and exits 2. Until it is published, run it from a checkout of this repository with `pnpm install`, then
 `pnpm tsverify <command>`.
 
-tsverify bundles no TypeScript: it reads your code with **your project's** `typescript`, through the compiler API
-of TypeScript 5.4–6.x, so those projects need nothing else. TypeScript 7 no longer ships that API: a TS-7 project
-also adds Microsoft's `@typescript/typescript6` (`npm install --save-dev @typescript/typescript6`), which tsverify
-uses instead.
+tsverify bundles no TypeScript: it reads your code with **your project's** `typescript`, which must be
+**TypeScript 7** or later (`npm i -D typescript@latest`). It uses TypeScript 7's API, which runs the project's own
+native compiler. On TypeScript 5 or 6, npm refuses to install tsverify (a peer-dependency conflict, `ERESOLVE`), and
+`check` and `test` exit 2 and ask you to upgrade. TypeScript 7 also removed some tsconfig options that TypeScript 6
+only deprecated, such as `baseUrl` and `moduleResolution: node10`. If `tsc --noEmit` rejects your tsconfig, tsverify
+quotes TypeScript's message and exits 2 as well.
 
 **2. Write a spec** next to the entity it describes, e.g. `src/orders/order.behavior.yaml`:
 
