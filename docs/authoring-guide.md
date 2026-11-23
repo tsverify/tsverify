@@ -566,6 +566,9 @@ How to find them:
 - **`atomic` is declared, not proven.** Name a function only if it really serializes the callback against
   other requests (a database transaction at a sufficient isolation level, or a lock). tsverify trusts the
   declaration and can't check what happens inside; the generated replay tests still run the race through it.
+- **In their own module.** Generated tests replace the functions by mocking the module that exports them, so a
+  call from inside that same module (an `impl` next to `getOrder` in `repo.ts`) still reaches the real one.
+  Keep the `impl`s in other files.
 - **Only the functions the transitions call.** One read, one save and the conditional saves and atomic
   wrappers that the `impl`s use are enough; list several of a kind if the code uses several.
 - **Use a preset instead** (`storage: assign`, `prisma` or `memory`) when there is no such layer: the `impl`s
