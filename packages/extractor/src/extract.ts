@@ -590,5 +590,34 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
     if (reached.length > 0) unreadWrites[impl.name] = reached;
   }
   if (Object.keys(unreadWrites).length > 0) model.unreadWrites = unreadWrites;
+  assumeUnconfirmed(spec, model);
   return { spec: behavior, model, findings: sorted };
+}
+
+/**
+ * A spec transition whose impl reaches no readable write of its `to`, but a write tsverify
+ * couldn't read that may be it (`unreadWrites`: its value is not a literal, or is `to`), is
+ * unconfirmed: conformance says so (`unanalyzable`), and the code model takes it as specified,
+ * like a transition without `impl`: copied unchanged and without `sites`. Leaving it out would
+ * make the code model lose behavior the code may well have, and the checker report stuck states
+ * and `eventually` violations that only come from what tsverify couldn't read.
+ */
+function assumeUnconfirmed(spec: BehaviorModel, model: BehaviorModel): void {
+  let added = false;
+  for (const t of spec.transitions) {
+    const unread = model.unreadWrites?.[t.name] ?? [];
+    if (!unread.some((u) => u.value === undefined || u.value === t.to)) continue;
+    const written = model.transitions.some(
+      (c) => c.sites?.specTransition === t.name && c.to === t.to,
+    );
+    if (written || model.transitions.some((c) => c.name === t.name)) continue;
+    model.transitions.push(structuredClone(t));
+    model.concurrency[t.name] = spec.concurrency[t.name] ?? 2;
+    added = true;
+  }
+  if (!added) return;
+  model.transitions.sort((a, b) => compareStrings(a.name, b.name));
+  model.concurrency = Object.fromEntries(
+    model.transitions.map((t) => [t.name, model.concurrency[t.name] as number]),
+  );
 }

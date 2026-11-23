@@ -522,10 +522,16 @@ export async function reply(id: string) {
     expect(finding("unanalyzable:Fixture orders:write-shape:heldLet")?.hint).toContain(
       "Restructuring unanalyzable code",
     );
-    const names = result.model?.transitions.map((x) => x.name) ?? [];
+    // Not extracted: the code model has each unconfirmed transition as specified, without sites
+    // (like a transition without `impl`), so it doesn't lose behavior the code may have.
     for (const n of ["heldValue", "heldLater", "heldLet", "builderNoRead"]) {
-      expect(names).not.toContain(n);
+      const copies = result.model?.transitions.filter((x) => x.name === n) ?? [];
+      expect(copies.every((c) => c.sites === undefined)).toBe(true);
     }
+    expect(result.model?.transitions.find((x) => x.name === "heldLater")).toMatchObject({
+      to: "cancelled",
+      impl: { symbol: "heldLater" },
+    });
   });
 
   it("records the unread writes each impl reaches, for conformance", () => {

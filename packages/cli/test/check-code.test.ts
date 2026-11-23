@@ -559,22 +559,47 @@ export async function mitigateInline(input: { id: number }) {
     expect(unconfirmed[0]?.message).toBe(
       "mitigate: couldn't confirm that setStatus writes status = mitigated: it changes status at verbs.ts:6 in a form tsverify can't read (the value `input.status` is not a single literal).",
     );
-    // The code model is stuck in `open`: a consequence of the unconfirmed transitions.
-    const stuck = findings.find((f) => f.property === "no-stuck-states");
-    expect(stuck?.causedBy).toEqual([
-      "unanalyzable:Incidents:mitigate:unconfirmed",
-      "unanalyzable:Incidents:resolve:unconfirmed",
-    ]);
+    // Unconfirmed transitions are taken as specified in the code model, like ones without
+    // `impl`: no stuck state or other artifact of what tsverify couldn't read. Only warnings.
+    expect(findings.filter((f) => f.category === "implementation-property")).toEqual([]);
+    expect(findings.filter((f) => f.severity === "error")).toEqual([]);
+    expect(r.code).toBe(0);
 
     const pretty = await tsverify(["check"], { cwd });
     expect(pretty.stdout).toContain(
       "    ↳ consequence: ⚠ unanalyzable  src/incident.behavior.yaml:11:3 · src/verbs.ts:6:21",
     );
-    expect(pretty.stdout).toContain("      ↳ consequence: ✗ implementation-property");
 
     const strict = await tsverify(["check", "--strict"], { cwd });
     expect(strict.code).toBe(1);
     expect(strict.stdout).toContain("--strict: 3 unanalyzable findings reported as errors.");
+  });
+
+  it("a transition whose impl writes nothing at all is still missing, with its consequences", async () => {
+    // `reply` writes no Incident status: `mitigate` is missing, and with `resolve` only from
+    // `mitigated` (unconfirmed, so taken as specified), nothing leaves `open` any more.
+    const cwd = await tempSpecDir({
+      "tsconfig.json": TSCONFIG,
+      "src/repo.ts": REPO,
+      "src/verbs.ts": VERBS,
+      "src/incident.behavior.yaml": SPEC.replace(
+        "verbs.ts#IMPL_MITIGATE",
+        "verbs.ts#reply",
+      ).replace("from: [open, mitigated]", "from: mitigated"),
+    });
+    const r = await tsverify(["check", "--format", "json"], { cwd });
+    expect(r.code).toBe(1);
+    const findings = parse(r.stdout).findings;
+    const missing = findings.find((f) => f.id === "missing-transition:Incidents:mitigate");
+    expect(missing).toMatchObject({ severity: "error" });
+    expect(findings.some((f) => f.id === "unanalyzable:Incidents:mitigate:unconfirmed")).toBe(
+      false,
+    );
+    expect(
+      findings.find((f) => f.id === "unanalyzable:Incidents:resolve:unconfirmed"),
+    ).toBeDefined();
+    const stuck = findings.find((f) => f.property === "no-stuck-states");
+    expect(stuck?.causedBy).toEqual([missing?.id]);
   });
 
   it("an unbound write gets only its unanalyzable finding, no non-atomic", async () => {

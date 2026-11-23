@@ -37,8 +37,12 @@ export function linkTransitions(spec: BehaviorModel, code: BehaviorModel): Links
   const unlinked: Transition[] = [];
   const sorted = [...code.transitions].sort((a, b) => compareStrings(a.name, b.name));
   for (const c of sorted) {
-    // A spec transition without `impl`, copied into the code model as assumed behavior.
-    if (c.sites === undefined && specByName.get(c.name)?.impl === undefined) continue;
+    // A spec transition copied into the code model as assumed behavior: it has no `impl`, or its
+    // impl only reaches writes tsverify couldn't read (`unreadWrites`; reported in `checkLinked`).
+    if (c.sites === undefined && specByName.has(c.name)) {
+      const t = specByName.get(c.name) as Transition;
+      if (t.impl === undefined || (code.unreadWrites?.[t.name]?.length ?? 0) > 0) continue;
+    }
     const target = sitesOf(c).specTransition;
     if (target === undefined) {
       unlinked.push(c);

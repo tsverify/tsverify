@@ -306,7 +306,9 @@ export interface Bindings {
  *   - effect multiplicity comes from the spec declaration of that effect (`at-least-once` if undeclared)
  *   - `concurrency` copies the linked spec transition's bound (2 when unlinked)
  *   - spec transitions without `impl` are copied unchanged and without `sites` (assumed to behave
- *     as specified), so the code model stays complete; conformance skips them
+ *     as specified), so the code model stays complete; conformance skips them. So is a transition
+ *     whose impl writes its `to` only in forms tsverify can't read (`unreadWrites`): it is
+ *     unconfirmed, not missing
  */
 /**
  * Values generated tests use to drive the real code. Opaque JSON, passed through verbatim, except
@@ -359,7 +361,8 @@ export interface BehaviorModel {
    * that is not a literal, a patch object built up before it is saved, …), reached from a spec
    * transition's `impl`, keyed by transition name. Each is already an `unanalyzable` finding
    * (`finding` is its id). Conformance reports a transition with no readable write but one of
-   * these as unconfirmed (`unanalyzable`) instead of `missing-transition`.
+   * these as unconfirmed (`unanalyzable`) instead of `missing-transition`, and the code model has
+   * it as specified (copied without `sites`, like a transition without `impl`).
    */
   unreadWrites?: Record<string, UnreadWrite[]>;
 }
