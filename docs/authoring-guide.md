@@ -404,7 +404,7 @@ a redelivered `idempotent` event.
 | `implementation-property` | error (1) | The **code's** model breaks a property, with a trace. Usually a `↳ consequence` of a conformance finding | Fix the root cause. If it stands alone, the code reaches a bad state the spec forbids. Fix the code |
 | `undeclared-transition` | error (1) | The code writes a state change that no transition declares, or a linked function writes a different `to` | A legit transition: declare it with that `impl`. A bug (B1 "reopen"): remove the write. Test or seed code: keep it out of the tsconfig `include` |
 | `missing-transition` | error (1) | A transition has `impl`, but nothing reached from it writes `state = to`. When the impl reaches a state write `tsverify` can't read, it says "couldn't confirm" instead (an `unanalyzable` warning) | Wrong `impl`, a write `tsverify` doesn't see at all (a raw query), or the code really doesn't do it |
-| `from-state-unconstrained` | error (1) | The code writes `to` from **any** state: nothing before the write consults the state. When the code checks another state-like field instead, the message says so ("the code checks `snapshot.executionStatus` instead, which this spec doesn't model"): see [§7.7](#77-coupled-state-fields). (A field typed `string` is reported once, as `unanalyzable`, instead; so is a state the code does consult in a form `tsverify` can't read: "the from-state check at … is in a form tsverify can't read", see below) | Add the check (`if (x.status !== "paid") throw`) in the same atomic scope, or put the state in the update's `where`. A passing `forbidden` test from `tsverify test` means a check exists that `tsverify` can't see: restructure it ([§7.5](#75-restructuring-unanalyzable-code)) |
+| `from-state-unconstrained` | error (1) | The code writes `to` from **any** state: nothing before the write consults the state. When the code checks another state-like field instead, the message says so ("the code checks `shipment.phase` instead, which this spec doesn't model"): see [§7.7](#77-coupled-state-fields). (A field typed `string` is reported once, as `unanalyzable`, instead; so is a state the code does consult in a form `tsverify` can't read: "the from-state check at … is in a form tsverify can't read", see below) | Add the check (`if (x.status !== "paid") throw`) in the same atomic scope, or put the state in the update's `where`. A passing `forbidden` test from `tsverify test` means a check exists that `tsverify` can't see: restructure it ([§7.5](#75-restructuring-unanalyzable-code)) |
 | `from-state-mismatch` | error (1), or warning | Error: the code allows extra from-states. Warning: the code is stricter than the spec | Error: tighten the code's check. Warning: confirm which is intended. Narrow the spec only if the stricter code is the intent |
 | `guard-not-dominating` | error (1) | A guard in the transition's `requires` is never called, or is skipped on some path (an early return, a flag) before the write: "`ship: role(admin) (requireRole) is called on some paths but not all before the write`". With several actors in `by`: some path passes none of the listed actors' guards in full: "`cancel: cancelOrder reaches the write on a path that passes only {verified}; it must pass owner to act as customer, or role(admin) to act as admin.`" (one finding per such path) | Call the guards on every path before the write: on each path, those of the actor the caller acts as. Don't remove them from the spec |
 | `undeclared-effect` | error (1) | The code calls a bound client on the transition's path that the transition doesn't declare | An intended effect: declare it with the right multiplicity. Not intended (B5: a refund on expiry): remove the call |
@@ -718,8 +718,8 @@ How to find them:
   A conditional update keeps its own from-state, with a warning that it sets the state of whichever entity has
   that key.
 - **The rest of a bound interface.** Binding some methods of an interface, class or object
-  (`RunStore.findRun`, `RunStore.expireRun`) says nothing about its other methods: tsverify doesn't look inside
-  them, so a write of the state hidden in one (`RunStore.parkRun`, implemented in another package) would go
+  (`OrderStore.findOrder`, `OrderStore.expireOrder`) says nothing about its other methods: tsverify doesn't look
+  inside them, so a write of the state hidden in one (`OrderStore.holdOrder`, implemented in another package) would go
   unseen. `check` lists the ones the impls call that the spec doesn't bind, in one `info` finding per spec, each
   with one call site. Bind those that change the state (an `update` with its `from` and `to`); the others only
   read, or touch other tables.
@@ -786,8 +786,8 @@ Example: [`examples/orders-functions`](../examples/orders-functions/src/orders/o
 ### 7.7 Coupled state fields
 
 A spec models **one** state field of one entity. Code sometimes guards a write of it with another state: a
-second entity's (`if (snapshot.executionStatus === "FINISHED") throw …` before writing the run's `status`), or a
-second field of the same row (`phase` next to `status`). tsverify doesn't model that other state, so it can't
+second entity's (`if (shipment.phase === "sent") throw …` before writing the order's `status`), or a second
+field of the same row (`phase` next to `status`). tsverify doesn't model that other state, so it can't
 tell that the check keeps the write safe, and when nothing checks the spec's own field it still reports
 `from-state-unconstrained`, saying what the code checks instead:
 
@@ -798,10 +798,10 @@ tell that the check keeps the write safe, and when nothing checks the spec's own
 
 That is a modelling question, not necessarily a bug:
 
-- When the other state really decides (the snapshot's `executionStatus` moves in step with the run's `status`),
+- When the other state really decides (the shipment's `phase` moves in step with the order's `status`),
   write a **second spec for the other entity**, with its own states, transitions and storage bindings, so its
   writes and checks are checked too. Then make the coupling explicit in the code: check the spec's own field
-  before the write as well (`if (run.status !== "EXECUTING") throw …`), which is cheap and makes the first spec
+  before the write as well (`if (order.status !== "paid") throw …`), which is cheap and makes the first spec
   pass for the right reason.
 - When the spec's field is the one that matters, the finding is right: add its check, in the same atomic scope.
 

@@ -171,8 +171,8 @@ export function unreadCheckOf(
 
 /**
  * A check on another state-like field before a write whose own state nothing checks: a comparison
- * of a field with a string literal (`snapshot.executionStatus === "FINISHED"`), a `switch` on it,
- * `.includes` / `.has` of it, or the field passed to a function (`isFinished(run.executionStatus)`),
+ * of a field with a string literal (`shipment.phase === "sent"`), a `switch` on it, `.includes` /
+ * `.has` of it, or the field passed to a function (`isSent(shipment.phase)`),
  * where the field's type is a union of two or more string literals and it is not the write's own
  * state field (`isOwnState`). Searched like `unreadCheckOf`: the write's function with its inline
  * callbacks, before the write. Of several, the first whose name says state (`…status`, `…state`)

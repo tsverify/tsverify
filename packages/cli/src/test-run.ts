@@ -188,7 +188,7 @@ interface ReportedError {
   cause?: unknown;
 }
 
-/** `LibsqlError: URL_INVALID: …`; a plain `Error` is just its message. */
+/** `ConnectionError: DATABASE_URL is not set`; a plain `Error` is just its message. */
 function errorText(e: ReportedError): string {
   const message = String(e.message ?? "");
   const name = typeof e.name === "string" ? e.name : "Error";

@@ -89,10 +89,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Call chains** for `undeclared-effect` and `missing-effect` reached through helpers: "Call chain:
   refundOrder → notifyRefund (refund.ts:30) → email.send (receipts.ts:9)" (`CallSite.via`, `CodeSites.via`).
 - `from-state-unconstrained` says when the code checks another state-like field instead (`the code checks
-  \`snapshot.executionStatus\` instead, which this spec doesn't model`), with a hint towards a spec for that
+  \`shipment.phase\` instead, which this spec doesn't model`), with a hint towards a spec for that
   entity (`FromState.otherCheck`; authoring guide §7.7, coupled state fields).
 - One `info` finding per spec lists the methods of a bound storage interface, class or object that the impls
-  call but the spec doesn't bind (`RunStore.parkRun`), each at one call site: a write in one of them is not seen.
+  call but the spec doesn't bind (`OrderStore.holdOrder`), each at one call site: a write in one of them is not seen.
 - `Finding.detail`: the full error behind a failed or unstartable generated test (each stack and cause). JSON
   has it whole; pretty output prints its first lines under `detail:`.
 
@@ -119,7 +119,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   (`from any state`) and render summaries.
 - `tsverify diff` (markdown, pretty) shows a spec outside the cwd by its absolute path, as `check` does.
 - A client bound to a type alias is "the type X", not "the interface X".
-- The render summary calls an internal actor "the ttl actor", not "the ttl".
+- The render summary calls an internal actor "the expiry actor", not "the expiry".
 - **A check before an unconditional update counts.** An update bound with every `from` state, after a bound
   read of the same key and a check of its state, writes from the checked states. It is atomic when the read and
   the update run inside one bound `atomic` function (as declared), else `non-atomic`: "the check of status on

@@ -117,7 +117,7 @@ export interface FromState {
   reason?: string;
   /**
    * Unconstrained only: another state-like field the code checks before the write instead
-   * (`snapshot.executionStatus`), a state the spec doesn't model (another entity's, or a second
+   * (`shipment.phase`), a state the spec doesn't model (another entity's, or a second
    * field of this one).
    */
   otherCheck?: string;

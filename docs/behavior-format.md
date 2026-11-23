@@ -9,7 +9,7 @@ executable source of truth; this page is its human reference. Canonical example:
 `impl`, `bindings.clients.*.module`, `bindings.guards` and `bindings.storage` paths are relative to the **project root**: the nearest
 directory at or above the behavior file that contains a `tsconfig.json` (overridable with `tsverify check --project`).
 
-A path may leave the project root (`../run-store/src/types.ts#RunStore.findRun`, for a storage interface in
+A path may leave the project root (`../order-store/src/types.ts#OrderStore.findOrder`, for a storage interface in
 another package of a monorepo). It resolves like any other, as long as the file is part of the project's
 TypeScript program as source: the project imports it, and the import resolves to its `.ts` file (tsconfig `paths`,
 `customConditions`, or a workspace package whose `exports` point at its sources), not to a `.d.ts` or a file

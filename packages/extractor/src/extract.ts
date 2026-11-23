@@ -426,7 +426,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
   // Bindings `tsverify test` can't replace with a fake (`BehaviorModel.unfakeable`).
   const unfakeable: { binding: string; reason: string }[] = [];
   // Methods of the interfaces, classes and objects some `bindings.storage` functions belong to
-  // (`RunStore` of `RunStore.findRun`), with their names, minus the bound ones (below).
+  // (`OrderStore` of `OrderStore.findOrder`), with their names, minus the bound ones (below).
   const siblings = new Map<TS.Symbol, string>();
   if (storageBinding) {
     const bound = new Map<TS.Symbol, BoundFunction>();

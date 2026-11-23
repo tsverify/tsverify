@@ -67,11 +67,11 @@ describe("summarize", () => {
 
   it("names an internal actor as an actor, so a job's name reads naturally", () => {
     const model = orderModel();
-    model.actors.ttl = { name: "ttl", trust: "internal", requires: [] };
+    model.actors.expiry = { name: "expiry", trust: "internal", requires: [] };
     const expire = model.transitions.find((t) => t.name === "expire");
-    if (expire) expire.by = ["ttl"];
+    if (expire) expire.by = ["expiry"];
     expect(summarize(model)).toContain(
-      "**expire**: the ttl actor can move a pending_payment order",
+      "**expire**: the expiry actor can move a pending_payment order",
     );
   });
 
