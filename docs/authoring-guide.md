@@ -624,7 +624,10 @@ How to find them:
   `update(key, from, to)`, `atomic(callback)`), give them with `args`, e.g.
   `{ fn: src/repo.ts#findOrder, args: [_, key] }` for `findOrder(tenantId, id)`. A save that takes the key and
   some fields is `args: [key, patch]`. An update with the states built in (`markPaid(id)`) is
-  `{ fn: …, from: [pending], to: paid }`.
+  `{ fn: …, from: [pending], to: paid }`. Each role is one positional argument: a function that takes one object
+  of named arguments (`getIncident({ tx, id, workspaceId })`) isn't supported yet, and binding its object as the
+  `key` gets a warning ("argument 1 … is an object"). Bind a thin wrapper that takes the key as an argument of its
+  own (`getIncidentById(tx, workspaceId, id)` with `args: [_, _, key]`).
 - **`returns`.** Say what an update returns when the state check fails: `changed` (`false`, the default),
   `count` (`0`), `entity` (`undefined`) or `throws`. The code is expected to stop when it does
   (`if (!(await setStatusIf(…))) throw …`, `if (updated === undefined) return`): an effect that can run before

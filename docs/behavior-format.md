@@ -219,6 +219,11 @@ Argument roles:
 | `callback` | the function the atomic function runs | atomic |
 | `_` | anything tsverify should ignore | all |
 
+Each role is one positional argument. Functions that take one object of named arguments
+(`getIncident({ tx, id })`) aren't supported yet: a `key`, `from` or `to` role on an argument whose type is an
+object gets an `unanalyzable` warning (`…:binding:storage.<symbol>.args`); bind a wrapper that takes it as its own
+argument.
+
 How the code check and the generated tests see these functions:
 
 - a call to one is recognised by the callee's resolved symbol (imports, renamed re-exports, namespace imports

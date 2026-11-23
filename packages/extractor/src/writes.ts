@@ -646,7 +646,7 @@ function scopeOf(decl: TS.Node): TS.Node {
 export function oneLine(node: TS.Node): string {
   return node
     .getText()
-    .replace(/\s*\n\s*/g, "")
+    .replace(/\s*\n\s*(?=\??\.)/g, "")
     .replace(/\s+/g, " ");
 }
 

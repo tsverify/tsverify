@@ -68,6 +68,10 @@ export async function cancelOrThrow(id: string): Promise<void> {
   if (!(await setStatusIf(id, "pending_payment", "cancelled"))) throw new Error("changed");
 }
 export const repo = { get: getOrder, save: saveOrder };
+/** One object of named arguments: no argument of its own carries the key. */
+export async function getByArgs(args: { id: string; tenant: string }): Promise<Order | undefined> {
+  return getOrder(args.id);
+}
 /** A storage interface the app injects (\`deps.orders.get(id)\`). */
 export interface OrderStore { get(id: string): Promise<Order | undefined> }
 `;
@@ -1026,6 +1030,33 @@ export async function cancel(id: string) {
     const s = transitionOf(result, "cancel");
     expect(s.from).toEqual(["pending_payment"]);
     expect(s.sites?.read?.gate).toBe("storage.findLocal");
+  });
+
+  it("warns when a role's argument is an object of named arguments", () => {
+    const result = extract(
+      `${IMPORTS}
+import { getByArgs } from "./repo";
+export async function ship(id: string) {
+  const order = await getByArgs({ id, tenant: "t1" });
+  if (order?.status !== "paid") throw new Error("not paid");
+  if (!(await setStatusIf(id, "paid", "shipped"))) throw new Error("changed");
+}
+`,
+      [t("ship", "shipped")],
+      storageOf({
+        read: ["src/repo.ts#getByArgs"],
+        update: ["src/repo.ts#setStatusIf"],
+      }),
+      true,
+    );
+    const f = result.findings.find((x) => x.id.endsWith(":binding:storage.getByArgs.args"));
+    expect(f).toMatchObject({ severity: "warning" });
+    expect(f?.message).toBe(
+      "argument 1 of storage read function src/repo.ts#getByArgs is an object ({ id: string; tenant: string }), but its `key` role needs a string or number: tsverify can't tell which of its fields that is",
+    );
+    expect(f?.hint).toContain("aren't supported yet");
+    // `from` as a list of states is fine.
+    expect(result.findings.some((x) => x.id.includes("setStatusIf.args"))).toBe(false);
   });
 
   it("warns about a bound function (any kind) that no call resolves to", () => {

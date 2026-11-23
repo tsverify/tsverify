@@ -21,6 +21,7 @@ import type {
   Finding,
   PersistenceKind,
   SourceLocation,
+  StorageFunction,
   UnreadWrite,
 } from "@tsverify/ir";
 import { compareStrings, formatSymbolRef, storageFunctions } from "@tsverify/ir";
@@ -38,6 +39,7 @@ import { assemble, type Draft, type MatchedWrite } from "./assemble";
 import { Callees, frameCalls, frameNaming, frameOf, type Reach, reach } from "./callgraph";
 import type { FunctionLike } from "./cfg";
 import { ClientCalls } from "./client-calls";
+import { primaryDeclarationOf } from "./declarations";
 import { Dominance, type GuardMiss } from "./dominance";
 import { matchesEntity, writtenValue } from "./entity";
 import { brokenLink, sortFindings, unanalyzable, uniqueIds } from "./findings";
@@ -45,6 +47,7 @@ import { guardArgs } from "./guard-args";
 import { loadTypeScript, TypeScriptSetupError } from "./load-typescript";
 import { type LoadedProject, loadProject, ProjectContext } from "./project";
 import {
+  functionOfDeclaration,
   isExportedPath,
   isInstanceMember,
   pathHeadKind,
@@ -322,6 +325,22 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
       }
       if (r.ok) {
         bound.set(r.value, { kind: fnKind, fn, path: fn.ref.symbol });
+        const objectArg = objectRoleArgument(ctx, r.value, fn);
+        if (objectArg) {
+          const at = fn.at ?? storageBinding.at;
+          findings.push({
+            ...unanalyzable(
+              behavior,
+              "binding",
+              `${STORAGE_CLIENT}.${fn.ref.symbol}.args`,
+              `argument ${objectArg.index + 1} of storage ${fnKind} function ${formatSymbolRef(fn.ref)} is an object (${objectArg.text}), but its \`${objectArg.role}\` role needs ${objectArg.role === "key" ? "a string or number" : "a state, or a list of states"}: tsverify can't tell which of its fields that is`,
+              {
+                hint: `Bind a function that takes the ${objectArg.role} as an argument of its own: a thin wrapper such as \`(tx, id) => ${head}({ tx, id, … })\`, bound with \`args: [_, ${objectArg.role}]\`. Functions that take one object of named arguments aren't supported yet.`,
+              },
+            ),
+            ...(at ? { specAt: at } : {}),
+          });
+        }
         // Still read as bound, so the rest of the check stays accurate; but generated tests
         // replace storage functions by mocking the module that exports them.
         if (!isExportedPath(ctx, fn.ref)) {
@@ -676,6 +695,43 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
   if (Object.keys(unreadWrites).length > 0) model.unreadWrites = unreadWrites;
   assumeUnconfirmed(spec, model);
   return { spec: behavior, model, findings: sorted };
+}
+
+/**
+ * The first argument of a bound storage function whose role is `key`, `from` or `to` but whose
+ * parameter is an object (`getIncident({ tx, id, workspaceId })` bound with `args: [key]`): the
+ * code check would take the whole object as the key, and the generated tests' fake too.
+ */
+function objectRoleArgument(
+  ctx: ProjectContext,
+  sym: TS.Symbol,
+  fn: StorageFunction,
+): { index: number; role: string; text: string } | undefined {
+  const decl = primaryDeclarationOf(sym);
+  const params =
+    decl && "parameters" in decl
+      ? (decl as { parameters: readonly TS.ParameterDeclaration[] }).parameters
+      : functionOfDeclaration(decl)?.parameters;
+  if (!params) return undefined;
+  for (const [index, role] of fn.args.entries()) {
+    if (role !== "key" && role !== "from" && role !== "to") continue;
+    const param = params[index];
+    if (!param || param.dotDotDotToken) continue;
+    const type = ctx.checker.getTypeAtLocation(param);
+    if (!type) continue;
+    const parts = type.isUnionType() ? type.getTypes() : [type];
+    // An array or tuple of states (`from`) has an index signature; a plain object has none.
+    const isObject = (t: TS.Type) =>
+      (t.flags & ts.TypeFlags.Object) !== 0 && ctx.checker.getIndexInfosOfType(t).length === 0;
+    if (!parts.some(isObject)) continue;
+    const text = ts.isObjectBindingPattern(param.name)
+      ? oneLine(param.name)
+      : param.type
+        ? oneLine(param.type)
+        : ctx.checker.typeToString(type);
+    return { index, role, text: text.length > 40 ? `${text.slice(0, 39)}…` : text };
+  }
+  return undefined;
 }
 
 /**
