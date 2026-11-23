@@ -146,6 +146,12 @@ function formatFinding(
     out.push(`    ${pad}${f.dim("hint:")} ${first}`);
     for (const line of rest) out.push(`          ${pad}${line}`);
   }
+  if (finding.detail !== undefined) {
+    out.push(`    ${pad}${f.dim("detail:")}`);
+    for (const line of detailLines(finding.detail, finding.message)) {
+      out.push(`      ${pad}${f.dim(line)}`);
+    }
+  }
   if (finding.trace) {
     out.push(`    ${pad}${f.dim("trace:")}`);
     for (const line of traceToText(finding.trace).trimEnd().split("\n")) {
@@ -153,6 +159,31 @@ function formatFinding(
     }
   }
   return out;
+}
+
+/** Lines of a finding's `detail` shown in the terminal (the JSON output has it whole). */
+export const DETAIL_LINES = 8;
+
+/**
+ * A finding's `detail`, trimmed for the terminal: its first line when the message already says it,
+ * and stack frames in `node_modules` and Node's own, are left out (the error's own lines and
+ * `Caused by:` lines stay), then at most `DETAIL_LINES` lines, the last saying how many more
+ * there are.
+ */
+export function detailLines(detail: string, message = ""): string[] {
+  const all = detail.split(/\r?\n/);
+  const first = (all[0] ?? "").replace(/^[A-Za-z]*Error: /, "").trim();
+  if (first !== "" && message.includes(first)) all.shift();
+  const lines = all
+    .map((line) => line.trimEnd())
+    .filter((line) => line !== "" && !/^\s*at .*(node_modules|node:internal|\(node:)/.test(line))
+    .map((line) => line.replace(/^\s+at /, "at "));
+  if (lines.length <= DETAIL_LINES) return lines;
+  const more = lines.length - (DETAIL_LINES - 1);
+  return [
+    ...lines.slice(0, DETAIL_LINES - 1),
+    `… ${more} more line${more === 1 ? "" : "s"} (the JSON output has them all)`,
+  ];
 }
 
 function compareFindings(a: Finding, b: Finding): number {
