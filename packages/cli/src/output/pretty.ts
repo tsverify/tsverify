@@ -1,5 +1,10 @@
 import type { CheckStats } from "@tsverify/checker";
-import { type Formatter, formatFindings, plainFormatter } from "@tsverify/render";
+import {
+  declaredAtomicText,
+  type Formatter,
+  formatFindings,
+  plainFormatter,
+} from "@tsverify/render";
 import pc from "picocolors";
 import type { Io } from "../io";
 import { allFindings, countSeverity, type Report, type SpecReport } from "../report";
@@ -34,6 +39,7 @@ export function formatPretty(report: Report, io: Io): string {
   if (report.specs.some((s) => s.project !== undefined)) {
     for (const spec of report.specs) {
       out += `${f.bold(spec.file)}  ${f.dim(projectLabel(spec, report))}\n`;
+      out += declaredNote(spec, f);
       out += `${formatFindings(spec.findings, options)}\n`;
     }
     if (report.command === "test") {
@@ -46,6 +52,22 @@ export function formatPretty(report: Report, io: Io): string {
   out += enforcedOnlyNote(report, f);
   out += strictNote(report, f);
   return `${out}${summaryLine(report, f)}\n`;
+}
+
+/**
+ * One line per atomic function the spec declares and the code relies on, e.g.
+ * `ship, cancel: atomic, as declared by \`withTransaction\` (not checked inside it)`.
+ */
+function declaredNote(spec: SpecReport, f: Formatter): string {
+  const byFunction = new Map<string, string[]>();
+  for (const d of spec.declaredAtomic ?? []) {
+    byFunction.set(d.by, [...(byFunction.get(d.by) ?? []), d.transition]);
+  }
+  let out = "";
+  for (const [by, transitions] of byFunction) {
+    out += `${f.dim(`${transitions.join(", ")}: ${declaredAtomicText(by)} (not checked inside it)`)}\n`;
+  }
+  return out;
 }
 
 /** Why an `--enforced-only` run is empty, or how many specs it skipped. */

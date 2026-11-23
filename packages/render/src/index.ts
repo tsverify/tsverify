@@ -1,3 +1,4 @@
+export { declaredAtomicBy, declaredAtomicText, declaredAtomicTransitions } from "./atomicity";
 export type { DiffEntry, DiffRenderOptions, DiffTextOptions } from "./diff";
 export {
   DIFF_COMMENT_MARKER,
