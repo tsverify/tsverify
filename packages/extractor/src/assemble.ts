@@ -50,8 +50,8 @@ import { traceToRoot } from "./invocation";
 import { occurrenceOf } from "./occurrence";
 import type { ProjectContext } from "./project";
 import type * as TS from "./ts-types";
-import type { Narrowed } from "./type-facts";
-import { unreadCheckOf } from "./unread-check";
+import { type Narrowed, typeNames } from "./type-facts";
+import { otherFieldCheckOf, unreadCheckOf } from "./unread-check";
 import { referenceText, type WriteNode } from "./writes";
 
 export interface MatchedWrite {
@@ -333,7 +333,7 @@ function buildTransition(
         )
       : undefined;
   const unreadAt = unread && ctx.loc(unread.at);
-  const { hint: fromStateHint, ...fromState } =
+  const { hint: fromStateHint, ...decidedState } =
     unread && unreadAt
       ? {
           values: "*" as const,
@@ -342,6 +342,17 @@ function buildTransition(
           hint: UNREAD_CHECK_HINT,
         }
       : decided;
+  // Nothing checks the state, but the code may check another state-like field instead: a state
+  // the spec doesn't model, which the `from-state-unconstrained` message names.
+  const otherCheck = decidedState.unconstrained
+    ? otherFieldCheckOf(m.write, m.frame, ctx.checker, (access) => {
+        if (access.name.text !== spec.entity.stateField) return false;
+        const names = typeNames(ctx.checker.getTypeAtLocation(access.expression), ctx.checker);
+        return names.length === 0 || names.includes(spec.entity.name);
+      })
+    : undefined;
+  const fromState: FromState =
+    otherCheck === undefined ? decidedState : { ...decidedState, otherCheck };
   const from =
     fromState.values === "*"
       ? "*"

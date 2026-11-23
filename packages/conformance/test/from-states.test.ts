@@ -51,6 +51,22 @@ describe("from-states", () => {
     );
   });
 
+  it("says when the code checks another field instead: still an error, a modelling question", () => {
+    const states = specModel().entity.states;
+    const writes = patchWrite(cleanWrites(), "ship", (w) => ({
+      ...w,
+      fromState: { values: states, unconstrained: true, otherCheck: "shipment.phase" },
+    }));
+    const [finding] = run(writes);
+    expect(finding).toMatchObject({ category: "from-state-unconstrained", severity: "error" });
+    expect(finding?.message).toBe(
+      "ship: shipOrder writes shipped from any state (status is not checked before the write; the code checks `shipment.phase` instead, which this spec doesn't model); the spec allows only paid.",
+    );
+    expect(finding?.hint).toContain(
+      "If the check of `shipment.phase` is what keeps this write safe, the spec models another state than the one the code guards with",
+    );
+  });
+
   it("leaves an unknown from-state to the extractor's unanalyzable finding", () => {
     // `values: "*"` (e.g. a `string`-typed field) is reported once, by the extractor.
     expect(run(withFrom("ship", "*", false))).toEqual([]);

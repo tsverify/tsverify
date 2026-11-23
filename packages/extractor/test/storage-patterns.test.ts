@@ -1560,3 +1560,40 @@ export async function refund(id: string) {
     expect(sites?.commit?.via).toMatchObject([doRefund]);
   });
 });
+
+describe("a check on another field", () => {
+  const impl = (check: string) => `${IMPORTS}
+interface Shipment { id: string; phase: "packing" | "sent"; status: "open" | "closed" }
+declare function shipmentOf(id: string): Promise<Shipment>;
+declare function isSent(phase: Shipment["phase"]): boolean;
+export async function ship(id: string) {
+  const shipment = await shipmentOf(id);
+  ${check}
+  await patchOrder(id, { status: "shipped" });
+}
+`;
+
+  it("is named when nothing checks the state: another entity's state guards the write", () => {
+    for (const [check, text] of [
+      ['if (shipment.phase === "sent") throw new Error("sent");', "shipment.phase"],
+      ["if (isSent(shipment.phase)) return;", "shipment.phase"],
+      // Same name as the state field, on another entity: still another state.
+      ['if (shipment.status !== "open") return;', "shipment.status"],
+    ] as const) {
+      const sites = transitionOf(extract(impl(check), [t("ship", "shipped")]), "ship").sites;
+      expect(sites?.fromState).toMatchObject({ unconstrained: true, otherCheck: text });
+    }
+  });
+
+  it("is not named when the code checks nothing, or checks the state itself", () => {
+    const none = transitionOf(extract(impl(""), [t("ship", "shipped")]), "ship").sites;
+    expect(none?.fromState.otherCheck).toBeUndefined();
+    const own = transitionOf(
+      extract(impl('const order = await getOrder(id); if (order?.status !== "paid") return;'), [
+        t("ship", "shipped"),
+      ]),
+      "ship",
+    ).sites;
+    expect(own?.fromState.otherCheck).toBeUndefined();
+  });
+});
