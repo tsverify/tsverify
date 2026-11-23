@@ -66,7 +66,8 @@ export function stateLimitHint(layout: Layout, maxStates: number, model: Behavio
   if (layout.effects.length > 0) {
     const caps = [...new Set(layout.effects.map((e) => e.cap))].sort((a, b) => a - b);
     const range = caps.length === 1 ? `0–${caps[0]}` : `0–${caps[0]} to 0–${caps[caps.length - 1]}`;
-    parts.push(`${layout.effects.length} effect counters (${range} each)`);
+    const n = layout.effects.length;
+    parts.push(n === 1 ? `1 effect counter (${range})` : `${n} effect counters (${range} each)`);
   }
   const lines = [`The explored states multiply: ${parts.join(" × ")}.`];
 

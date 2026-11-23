@@ -445,6 +445,15 @@ describe("state limit", () => {
     );
   });
 
+  it("counts one effect counter in the singular", () => {
+    const m = orderModel();
+    for (const t of m.transitions) t.effects = t.effects.filter((e) => e.name === "stripe.refund");
+    const [limit] = check(m, { maxStates: 3 }).findings.filter(
+      (f) => f.category === "unanalyzable",
+    );
+    expect(limit?.hint?.split("\n")[0]).toMatch(/ × 1 effect counter \(0–2\)\.$/);
+  });
+
   it("never suggests more concurrency; says when the effect counters weigh most", () => {
     const m = orderModel();
     transition(m, "checkout").atomic = false;
