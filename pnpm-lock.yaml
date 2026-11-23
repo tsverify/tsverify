@@ -68,11 +68,8 @@ importers:
       '@tsverify/runtime':
         specifier: workspace:*
         version: link:../runtime
-      '@typescript/typescript6':
-        specifier: '>=6.0.0'
-        version: 6.0.2
       typescript:
-        specifier: '>=5.4'
+        specifier: '>=7.0.0'
         version: 7.0.2
     devDependencies:
       '@tsverify/checker':
@@ -957,10 +954,6 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@typescript/typescript6@6.0.2':
-    resolution: {integrity: sha512-mbCddXd+jm7hfx7w2YU64/Av4/NqqeG3GoRZgxPcgoTxYjhrcfJRw9ULch71SS4G+Q3bOXFhRvPqjguN0Hyp5w==}
-    hasBin: true
-
   '@upsetjs/venn.js@2.0.0':
     resolution: {integrity: sha512-WbBhLrooyePuQ1VZxrJjtLvTc4NVfpOyKx0sKqioq9bX1C1m7Jgykkn8gLrtwumBioXIqam8DLxp88Adbue6Hw==}
 
@@ -1442,11 +1435,6 @@ packages:
   tsx@4.23.15:
     resolution: {integrity: sha512-Yiex1Ovn8z2xPpOWckIiysV1SSyRMY9BkLF++q0yKiDxCqRhosKfMg3janKkiLBwZ5c/YryloKwGZcrEmtwxKw==}
     engines: {node: '>=18.0.0'}
-    hasBin: true
-
-  typescript@6.0.3:
-    resolution: {integrity: sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==}
-    engines: {node: '>=14.17'}
     hasBin: true
 
   typescript@7.0.2:
@@ -2075,10 +2063,6 @@ snapshots:
   '@typescript/typescript-win32-x64@7.1.0-beta':
     optional: true
 
-  '@typescript/typescript6@6.0.2':
-    dependencies:
-      '@typescript/old': typescript@6.0.3
-
   '@upsetjs/venn.js@2.0.0':
     optionalDependencies:
       d3-selection: 3.0.1
@@ -2583,8 +2567,6 @@ snapshots:
       esbuild: 0.28.2
     optionalDependencies:
       fsevents: 2.3.3
-
-  typescript@6.0.3: {}
 
   typescript@7.0.2:
     optionalDependencies:
