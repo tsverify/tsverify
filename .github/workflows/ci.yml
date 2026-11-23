@@ -23,6 +23,8 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+      # The extractor suite again on the next TypeScript (7.1 beta, stable `typescript/sync`).
+      - run: pnpm --filter @tsverify/extractor test:ts7.1
       - run: pnpm verify
   # Packs @tsverify/runtime and @tsverify/cli, installs the tarballs with npm into a copy of
   # examples/orders-app and runs the installed CLI (scripts/smoke-pack.ts). Needs the registry.
