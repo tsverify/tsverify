@@ -4,11 +4,14 @@ import type { Layout } from "./encode";
 /**
  * The spec transition a model transition stands for: itself in a spec model; in a code model the
  * spec transition whose impl reaches the write (`sites.specTransition`: `cancel` for `cancel~2`
- * or `cancel->x`), and undefined for a write no spec transition reaches.
+ * or `cancel->x`), itself for one copied from the spec (no `sites`), and undefined for a write no
+ * spec transition reaches.
  */
 function specNameOf(model: BehaviorModel, name: string): string | undefined {
   if (model.origin !== "code") return name;
-  return model.transitions.find((t) => t.name === name)?.sites?.specTransition;
+  const t = model.transitions.find((x) => x.name === name);
+  // Without sites: a spec transition taken as specified (no impl, or a write tsverify can't read).
+  return t?.sites === undefined ? name : t.sites.specTransition;
 }
 
 /** `a, b and c` (at most `max` names, then `and N more`). */
