@@ -214,11 +214,21 @@ Argument roles:
 | `callback` | the function the atomic function runs | atomic |
 | `_` | anything tsverify should ignore | all |
 
-How the code check and the generated tests see these functions (the code check doesn't recognise them yet):
+How the code check and the generated tests see these functions:
 
-- a call to one is a storage call site `storage.<symbol>` (`CallSite` with `client: "storage"`)
-- a conditional save is atomic on its own (`AtomicScope.kind: "conditional-update"`); a read and save inside an
-  `atomic` function is atomic **as declared** (`kind: "declared"`)
+- a call to one is recognised by the callee's resolved symbol (imports, renamed re-exports, namespace imports
+  and bound methods included), never by name, and is a storage call site `storage.<symbol>` (`CallSite` with
+  `client: "storage"`); tsverify never looks inside the functions
+- the write is an assignment or spread on the entity a `read` returned, committed by a later `save` of it; the
+  state field in a `patch` passed to a `save`; or a call to an `update`, whose `to` argument (a literal type)
+  or fixed `to` is the target and whose `from` argument (a literal, literal union, or array or tuple of them)
+  or fixed `from` gives the from-states
+- a conditional save is atomic on its own (`AtomicScope.kind: "conditional-update"`); a read and save inside the
+  `callback` of an `atomic` function, also through helpers, is atomic **as declared** (`kind: "declared"`), and
+  `tsverify check` says so (`specs[].declaredAtomic` in JSON); a read outside and a save inside is not atomic
+- `returns` tells the code check which branch runs when an update saved nothing: effects only there are not the
+  transition's, and an effect that can run before the update's result is checked makes it `non-atomic`
+- a write that no named function saves is `unanalyzable` (`--strict`: an error)
 - `tsverify test` replaces each named function with an in-memory version (`instrument.storage`) by mocking its
   module; the module's other exports stay real
 
@@ -232,7 +242,8 @@ Errors (`invalid-spec`, at the offending YAML node):
 - an update without its from-states (a `from` argument or a fixed `from:`) or its target (a `to` argument or a
   fixed `to:`), or with either given both ways; a fixed state that isn't declared
 - a role used twice in one function (`_` may repeat), or a role the kind doesn't take
-- the same symbol name twice anywhere in the block (calls are identified by name)
+- the same symbol name twice anywhere in the block (call sites are labelled by name)
+- a `bindings.clients` entry named `storage` (the gates `storage.<symbol>` are the named functions')
 
 ## `fixtures`
 
