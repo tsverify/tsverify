@@ -135,6 +135,31 @@ export function pathHeadKind(ctx: ProjectContext, ref: SymbolRef): "class" | "ty
 }
 
 /**
+ * The methods of the head of a `file#Head.method` path (an interface, a class, an object), each
+ * with its name: what an impl can call on a value of that type. Undefined for a path without a
+ * head (`file#fn`) or one that doesn't resolve.
+ */
+export function pathHeadMembers(
+  ctx: ProjectContext,
+  ref: SymbolRef,
+): { head: string; members: Map<TS.Symbol, string> } | undefined {
+  const [head, member] = ref.symbol.split(".");
+  if (head === undefined || member === undefined) return undefined;
+  const sf = ctx.sourceFile(ctx.abs(ref.file));
+  const sym = sf && topLevelSymbol(ctx, sf, head);
+  if (!sym) return undefined;
+  const members = new Map<TS.Symbol, string>();
+  for (const [name, m] of sym.getMembers()) {
+    if (m.flags & (ts.SymbolFlags.Method | ts.SymbolFlags.Property)) members.set(m, String(name));
+  }
+  if (sym.flags & ts.SymbolFlags.Value && !(sym.flags & ts.SymbolFlags.Class)) {
+    const type = ctx.checker.getTypeOfSymbol(sym);
+    for (const p of type ? ctx.checker.getPropertiesOfType(type) : []) members.set(p, p.name);
+  }
+  return { head, members };
+}
+
+/**
  * Whether an impl function is an instance member of a class: a method (or accessor) without
  * `static`, or a function held in an instance field (`handle = async () => …`).
  */

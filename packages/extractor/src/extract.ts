@@ -26,7 +26,13 @@ import type {
   StorageRole,
   UnreadWrite,
 } from "@tsverify/ir";
-import { compareStrings, formatStorageArg, formatSymbolRef, storageFunctions } from "@tsverify/ir";
+import {
+  compareStrings,
+  formatStorageArg,
+  formatSymbolRef,
+  shortLocation,
+  storageFunctions,
+} from "@tsverify/ir";
 import { assignAdapter } from "./adapters/assign";
 import {
   type BoundFunction,
@@ -61,6 +67,7 @@ import {
   isExportedPath,
   isInstanceMember,
   pathHeadKind,
+  pathHeadMembers,
   resolveClient,
   resolveGuard,
   resolveImpl,
@@ -363,6 +370,37 @@ function extractLoaded(
   };
 }
 
+/** How many unbound methods the `storage.unbound-methods` finding names before "and N more". */
+const MAX_LISTED = 12;
+
+/**
+ * Calls the impls make (anywhere in their reach) to a method in `siblings`, one per method, at its
+ * first call (in impl order, then reach and source order), sorted by name.
+ */
+function unboundSiblingCalls(
+  ctx: ProjectContext,
+  siblings: ReadonlyMap<TS.Symbol, string>,
+  impls: readonly { reach: Reach }[],
+): { name: string; at: SourceLocation }[] {
+  if (siblings.size === 0) return [];
+  const first = new Map<string, SourceLocation>();
+  const seen = new Set<FunctionLike>();
+  for (const { reach } of impls) {
+    for (const frame of reach.frames) {
+      if (seen.has(frame)) continue;
+      seen.add(frame);
+      for (const call of frameCalls(frame)) {
+        const sym = symbolOf(call.expression, ctx.checker);
+        const name = sym && siblings.get(sym);
+        if (name !== undefined && !first.has(name)) first.set(name, ctx.loc(call));
+      }
+    }
+  }
+  return [...first]
+    .map(([name, at]) => ({ name, at }))
+    .sort((a, b) => compareStrings(a.name, b.name));
+}
+
 /** A file's name without directory and extension: the subject of findings outside any function. */
 function moduleName(ctx: ProjectContext, node: TS.Node): string {
   const rel = ctx.rel(node.getSourceFile().fileName);
@@ -387,8 +425,15 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
   let storage: StorageFunctions | undefined;
   // Bindings `tsverify test` can't replace with a fake (`BehaviorModel.unfakeable`).
   const unfakeable: { binding: string; reason: string }[] = [];
+  // Methods of the interfaces, classes and objects some `bindings.storage` functions belong to
+  // (`RunStore` of `RunStore.findRun`), with their names, minus the bound ones (below).
+  const siblings = new Map<TS.Symbol, string>();
   if (storageBinding) {
     const bound = new Map<TS.Symbol, BoundFunction>();
+    for (const { fn } of storageFunctions(storageBinding)) {
+      const owner = pathHeadMembers(ctx, fn.ref);
+      for (const [sym, name] of owner?.members ?? []) siblings.set(sym, `${owner?.head}.${name}`);
+    }
     for (const { kind: fnKind, fn } of storageFunctions(storageBinding)) {
       const r = resolveStorageFunction(ctx, fn);
       const head = fn.ref.symbol.split(".")[0] as string;
@@ -404,6 +449,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
       }
       if (r.ok) {
         bound.set(r.value, { kind: fnKind, fn, path: fn.ref.symbol });
+        siblings.delete(r.value);
         const issue = roleArgumentIssue(ctx, r.value, fn, storageBinding.key);
         if (issue) {
           const at = fn.at ?? storageBinding.at;
@@ -610,6 +656,30 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
         ),
       );
     }
+  }
+
+  const unboundSiblings = unboundSiblingCalls(ctx, siblings, impls);
+  if (unboundSiblings.length > 0 && storageBinding) {
+    const owners = [...new Set(unboundSiblings.map((u) => u.name.split(".")[0]))];
+    const shown = unboundSiblings.slice(0, MAX_LISTED);
+    const more = unboundSiblings.length - shown.length;
+    const list =
+      shown.map((u) => `${u.name} (${shortLocation(u.at)})`).join(", ") +
+      (more > 0 ? ` and ${more} more` : "");
+    findings.push({
+      ...unanalyzable(
+        behavior,
+        "binding",
+        "storage.unbound-methods",
+        `the impls call methods of ${owners.join(", ")} that \`bindings.storage\` doesn't bind: ${list}. tsverify doesn't look inside them, so a change of ${spec.entity.name}.${spec.entity.stateField} they make is not seen`,
+        {
+          codeAt: (unboundSiblings[0] as { at: SourceLocation }).at,
+          hint: `If one of them changes ${spec.entity.stateField}, bind it under \`bindings.storage\` (an \`update\` with its \`from\` and \`to\`, or a \`save\`), so tsverify reads it as a write; one that only reads can be bound under \`read\` or left as it is.`,
+        },
+      ),
+      severity: "info",
+      ...(storageBinding.at ? { specAt: storageBinding.at } : {}),
+    });
   }
 
   // Writes of this spec's entity.

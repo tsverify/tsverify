@@ -1597,3 +1597,71 @@ export async function ship(id: string) {
     expect(own?.fromState.otherCheck).toBeUndefined();
   });
 });
+
+describe("methods of a bound storage interface that the spec doesn't bind", () => {
+  it("are listed once per spec, each at its first call, as info", () => {
+    const result = extract(
+      `${IMPORTS}
+import type { Order } from "./repo";
+export interface Ledger {
+  get(id: string): Promise<Order | undefined>;
+  archive(id: string): Promise<void>;
+  touch(id: string): Promise<void>;
+  unused(): void;
+}
+async function tidy(ledger: Ledger, id: string) {
+  await ledger.touch(id);
+}
+export async function ship(ledger: Ledger, id: string) {
+  const order = await ledger.get(id);
+  if (order?.status !== "paid") throw new Error("not paid");
+  await ledger.archive(id);
+  await patchOrder(id, { status: "shipped" });
+  await ledger.archive(id);
+  await tidy(ledger, id);
+}
+`,
+      [t("ship", "shipped")],
+      storageOf({
+        read: ["src/impl.ts#Ledger.get"],
+        save: [{ fn: "src/repo.ts#patchOrder", args: ["key", "patch"] }],
+      }),
+      true,
+    );
+    const listed = result.findings.filter((f) => f.id.endsWith(":storage.unbound-methods"));
+    expect(listed).toEqual([
+      expect.objectContaining({
+        id: "unanalyzable:Fixture orders:binding:storage.unbound-methods",
+        category: "unanalyzable",
+        severity: "info",
+        message:
+          "the impls call methods of Ledger that `bindings.storage` doesn't bind: Ledger.archive (impl.ts:20), Ledger.touch (impl.ts:15). tsverify doesn't look inside them, so a change of Order.status they make is not seen",
+        codeAt: expect.objectContaining({ file: "src/impl.ts", line: 20 }),
+      }),
+    ]);
+  });
+
+  it("are not reported when the impls call only bound ones", () => {
+    const result = extract(
+      `${IMPORTS}
+import type { Order } from "./repo";
+export interface Ledger {
+  get(id: string): Promise<Order | undefined>;
+  archive(id: string): Promise<void>;
+}
+export async function ship(ledger: Ledger, id: string) {
+  const order = await ledger.get(id);
+  if (order?.status !== "paid") throw new Error("not paid");
+  await patchOrder(id, { status: "shipped" });
+}
+`,
+      [t("ship", "shipped")],
+      storageOf({
+        read: ["src/impl.ts#Ledger.get"],
+        save: [{ fn: "src/repo.ts#patchOrder", args: ["key", "patch"] }],
+      }),
+      true,
+    );
+    expect(result.findings.filter((f) => f.id.endsWith(":storage.unbound-methods"))).toEqual([]);
+  });
+});
