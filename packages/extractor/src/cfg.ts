@@ -21,7 +21,10 @@
  * `callgraph.ts`).
  *
  * With `readsOf: field`, every read `x.<field>` (not an assignment target) is a node too, after
- * its object expression (`atomicity.ts` uses them as re-checks).
+ * its object expression (`atomicity.ts` uses them as re-checks). With `nodesOf`, so is every
+ * other expression or variable declaration it picks (a variable's read, its initialization),
+ * after its operands or initializer. With `exhaustive`, a
+ * `switch` without `default` that it says has a case for every value has no path past its cases.
  *
  * Not modelled (over-approximations): truthiness of conditions (both branches are always
  * possible), `return` inside `try` skipping `finally`, generator resumption (a `yield` is only a
@@ -94,6 +97,10 @@ export interface Cfg {
 export interface CfgOptions {
   /** Also make a node of every read of this property (`x.status`, `x?.status`). */
   readsOf?: string;
+  /** Also make a node of each expression or variable declaration this picks (once evaluated). */
+  nodesOf?: (e: TS.Node) => boolean;
+  /** Whether a `switch` without `default` has a case for every value its expression can take. */
+  exhaustive?: (s: TS.SwitchStatement) => boolean;
 }
 
 type Frontier = number[];
@@ -287,7 +294,8 @@ class Builder {
         fall = cur;
       }
       this.jumps.pop();
-      return [...fall, breakTo, ...(hasDefault ? [] : e)];
+      const unmatched = hasDefault || this.options.exhaustive?.(s) ? [] : e;
+      return [...fall, breakTo, ...unmatched];
     }
     if (ts.isLabeledStatement(s)) {
       const inner = s.statement;
@@ -325,7 +333,10 @@ class Builder {
 
   private varList(list: TS.VariableDeclarationList, f: Frontier): Frontier {
     let cur = f;
-    for (const d of list.declarations) cur = this.expr(d.initializer, cur);
+    for (const d of list.declarations) {
+      cur = this.expr(d.initializer, cur);
+      if (this.options.nodesOf?.(d)) cur = this.node(d, cur);
+    }
     return cur;
   }
 
@@ -413,7 +424,7 @@ class Builder {
     e.forEachChild((c) => {
       cur = this.expr(c, cur);
     });
-    return cur;
+    return this.options.nodesOf?.(e) ? this.node(e, cur) : cur;
   }
 }
 

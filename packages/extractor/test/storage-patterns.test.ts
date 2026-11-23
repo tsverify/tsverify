@@ -1041,6 +1041,232 @@ export async function shipUnchecked(id: string) {
   });
 });
 
+describe("a conditional save's result held in a `let`, assigned in each branch", () => {
+  const result = extract(
+    `${IMPORTS}
+type How = "card" | "cash";
+/** Each case assigns a save's result; \`default\` throws. */
+export async function refundSwitch(id: string, how: How | "voucher") {
+  let ok: boolean;
+  switch (how) {
+    case "card":
+      ok = await setStatusIf(id, "paid", "refunded");
+      break;
+    case "cash":
+      ok = await setStatusIf(id, "shipped", "refunded");
+      break;
+    default:
+      throw new Error("no refunds by voucher");
+  }
+  if (!ok) throw new Error("changed concurrently");
+  await stripe.refunds.create({ charge: "ch" });
+}
+/** \`default\` returns early. */
+export async function refundSwitchReturn(id: string, how: How | "voucher") {
+  let ok: boolean;
+  switch (how) {
+    case "card":
+      ok = await setStatusIf(id, "paid", "refunded");
+      break;
+    case "cash":
+      ok = await setStatusIf(id, "shipped", "refunded");
+      break;
+    default:
+      return;
+  }
+  if (!ok) throw new Error("changed concurrently");
+  await stripe.refunds.create({ charge: "ch" });
+}
+/** No \`default\`, but a case for every member of the union. */
+export async function refundExhaustive(id: string, how: How) {
+  let ok: boolean | undefined;
+  switch (how) {
+    case "card":
+      ok = await setStatusIf(id, "paid", "refunded");
+      break;
+    case "cash":
+      ok = await setStatusIf(id, "shipped", "refunded");
+      break;
+  }
+  if (!ok) throw new Error("changed concurrently");
+  await stripe.refunds.create({ charge: "ch" });
+}
+/** An \`if\` / \`else\` chain, \`returns: entity\`. */
+export async function refundIfElse(id: string, how: How | "voucher") {
+  let updated: Awaited<ReturnType<typeof refundIf>>;
+  if (how === "card") updated = await refundIf(id, "paid");
+  else if (how === "cash") updated = await refundIf(id, "shipped");
+  else throw new Error("no refunds by voucher");
+  if (updated === undefined) return;
+  await stripe.refunds.create({ charge: updated.chargeId });
+}
+/** \`returns: count\`. */
+export async function shipCounted(id: string, express: boolean) {
+  let n: number;
+  if (express) n = await markShipped(id);
+  else n = await markShipped(id);
+  if (n === 0) return;
+  await email.send(id, "shipped");
+}
+/** \`returns: throws\`: the save stops the function itself. */
+export async function cancelThrows(id: string, why: "late" | "fraud") {
+  let done: void;
+  switch (why) {
+    case "late":
+      done = await cancelOrThrow(id);
+      break;
+    case "fraud":
+      done = await cancelOrThrow(id);
+      break;
+  }
+  await email.send(id, "cancelled");
+  return done;
+}
+/** \`default\` assigns nothing: the test also passes when no save ran. */
+export async function refundDefaultUnassigned(id: string, how: How | "voucher") {
+  let ok: boolean | undefined;
+  switch (how) {
+    case "card":
+      ok = await setStatusIf(id, "paid", "refunded");
+      break;
+    case "cash":
+      ok = await setStatusIf(id, "shipped", "refunded");
+      break;
+    default:
+      break;
+  }
+  if (ok === false) throw new Error("changed concurrently");
+  await stripe.refunds.create({ charge: "ch" });
+}
+/** No \`default\`, and a string: not every value has a case. */
+export async function refundOpenSwitch(id: string, how: string) {
+  let ok: boolean | undefined;
+  switch (how) {
+    case "card":
+      ok = await setStatusIf(id, "paid", "refunded");
+      break;
+    case "cash":
+      ok = await setStatusIf(id, "shipped", "refunded");
+      break;
+  }
+  if (!ok) throw new Error("changed concurrently");
+  await stripe.refunds.create({ charge: "ch" });
+}
+/** One branch assigns something else than a save's result. */
+export async function refundOtherValue(id: string, how: How, force: boolean) {
+  let ok: boolean;
+  if (force) ok = true;
+  else if (how === "card") ok = await setStatusIf(id, "paid", "refunded");
+  else ok = await setStatusIf(id, "shipped", "refunded");
+  if (!ok) throw new Error("changed concurrently");
+  await stripe.refunds.create({ charge: "ch" });
+}
+/** Another assignment between the save and the test: the first save's failure is lost. */
+export async function refundTwice(id: string, again: boolean) {
+  let ok = await setStatusIf(id, "paid", "refunded");
+  if (again) ok = await setStatusIf(id, "shipped", "refunded");
+  if (!ok) throw new Error("changed concurrently");
+  await stripe.refunds.create({ charge: "ch" });
+}
+/** A \`let\` set once, by its declaration; a \`var\` assigned in each branch. */
+export async function refundLetOnce(id: string) {
+  let ok = await setStatusIf(id, "paid", "refunded");
+  if (!ok) throw new Error("changed concurrently");
+  await stripe.refunds.create({ charge: "ch" });
+}
+export async function refundVar(id: string, how: How) {
+  var ok;
+  if (how === "card") ok = await setStatusIf(id, "paid", "refunded");
+  else ok = await setStatusIf(id, "shipped", "refunded");
+  if (!ok) throw new Error("changed concurrently");
+  await stripe.refunds.create({ charge: "ch" });
+}
+/** A retry loop: an earlier attempt's failure isn't what the test sees. */
+export async function refundRetry(id: string) {
+  let ok: boolean;
+  let tries = 0;
+  do ok = await setStatusIf(id, "paid", "refunded");
+  while (!ok && ++tries < 3);
+  if (!ok) throw new Error("changed concurrently");
+  await stripe.refunds.create({ charge: "ch" });
+}
+/** A compound assignment. */
+export async function refundCompound(id: string, how: How) {
+  let ok = how === "card";
+  ok &&= await setStatusIf(id, "paid", "refunded");
+  if (!ok) throw new Error("changed concurrently");
+  await stripe.refunds.create({ charge: "ch" });
+}
+`,
+    [
+      ...[
+        "refundSwitch",
+        "refundSwitchReturn",
+        "refundExhaustive",
+        "refundIfElse",
+        "refundLetOnce",
+        "refundVar",
+        "refundDefaultUnassigned",
+        "refundOpenSwitch",
+        "refundOtherValue",
+        "refundTwice",
+        "refundRetry",
+        "refundCompound",
+      ].map((name) =>
+        t(name, "refunded", {
+          from: ["paid", "shipped"],
+          effects: [{ name: "stripe.refund", multiplicity: "exactly-once" }],
+        }),
+      ),
+      t("shipCounted", "shipped", {
+        effects: [{ name: "email.receipt", multiplicity: "exactly-once" }],
+      }),
+      t("cancelThrows", "cancelled", {
+        from: ["pending_payment"],
+        effects: [{ name: "email.receipt", multiplicity: "exactly-once" }],
+      }),
+    ],
+  );
+
+  it("an effect after the one test of every branch's result is behind it", () => {
+    for (const name of [
+      "refundSwitch",
+      "refundSwitchReturn",
+      "refundExhaustive",
+      "refundIfElse",
+      "refundLetOnce",
+      "refundVar",
+      "shipCounted",
+      "cancelThrows",
+    ]) {
+      const s = transitionOf(result, name);
+      expect({ name, atomic: s.atomic, note: s.sites?.atomicNote }).toEqual({
+        name,
+        atomic: true,
+        note: undefined,
+      });
+    }
+  });
+
+  it("a path that assigns nothing or something else, or a later assignment, keeps it unchecked", () => {
+    for (const name of [
+      "refundDefaultUnassigned",
+      "refundOpenSwitch",
+      "refundOtherValue",
+      "refundTwice",
+      "refundRetry",
+      "refundCompound",
+    ]) {
+      const s = transitionOf(result, name);
+      expect({ name, atomic: s.atomic, note: s.sites?.atomicNote?.message }).toEqual({
+        name,
+        atomic: false,
+        note: "stripe.refunds.create can run although storage.setStatusIf found status changed: the call is not behind a check of the save's result",
+      });
+    }
+  });
+});
+
 describe("checks before an unconditional (blind) update", () => {
   const ALL = ["draft", "pending_payment", "paid", "shipped", "refunded", "cancelled"];
   const result = extract(
