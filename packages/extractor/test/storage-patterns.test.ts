@@ -131,6 +131,11 @@ export const orm = {
   },
 };
 export const bus = { async publish(_e: { id: string; status: import("./repo").Status }) {} };
+// A logger's metadata: an object of anything, unrelated to the entity.
+export const logger = { warn(_msg: string, _meta?: Record<string, unknown>) {} };
+// A data layer whose parameter says nothing (\`any\`): the object's own type speaks for it.
+// biome-ignore lint/suspicious/noExplicitAny: the point of the fixture
+export const loose = { async put(_id: string, _p: any) {} };
 `;
 
 type FnSpec = string | ({ fn: string } & Partial<StorageFunction>);
@@ -225,7 +230,7 @@ const IMPORTS = `
 import { getOrder, findOrder, saveOrder, patchOrder, setStatusIf, markShipped, refundIf, cancelOrThrow, repo } from "./repo";
 import { loadOrder, updateIf, store } from "./index";
 import { withTransaction } from "./db";
-import { stripe, email, legacy, qb, http, bus, orm } from "./clients";
+import { stripe, email, legacy, qb, http, bus, orm, logger, loose } from "./clients";
 `;
 
 function t(name: string, to: string, extra: Partial<TransitionSpec> = {}): TransitionSpec {
@@ -516,6 +521,18 @@ export async function ormUpdate(id: string) {
 export async function announce(id: string) {
   await bus.publish({ id, status: "cancelled" });
 }
+export async function logState(id: string) {
+  const order = await getOrder(id);
+  if (!order) return;
+  logger.warn("checked", { id, status: order.status });
+  const meta = { id, status: order.status };
+  logger.warn("checked again", meta);
+}
+export async function looseSave(id: string, next: Status) {
+  const order = await getOrder(id);
+  if (order?.status !== "pending_payment") throw new Error("not pending");
+  await loose.put(id, { status: next });
+}
 `,
     [
       t("heldConst", "cancelled", { from: ["pending_payment"] }),
@@ -544,7 +561,12 @@ export async function announce(id: string) {
       "unanalyzable:Fixture orders:write-shape:heldLater",
       "unanalyzable:Fixture orders:write-shape:heldLet",
       "unanalyzable:Fixture orders:write-value:heldValue",
+      // Passed where the parameter is \`any\`: the object's own type says it holds a state.
+      "unanalyzable:Fixture orders:write-value:looseSave",
     ]);
+    // A logger's metadata (\`Record<string, unknown>\`) is not the entity's, though its
+    // \`status\` holds one: neither \`logState\` call is a write.
+    expect(result.findings.some((f) => f.id.includes("logState"))).toBe(false);
   });
 
   it("a const patch passed to one bound save is read like a patch written into the call", () => {

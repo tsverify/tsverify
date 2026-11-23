@@ -71,6 +71,10 @@
  * patch typed from the table, whose `status` column has exactly the spec's states. So
  * `c.json({ status: "ok" })` is not a write, `notify({ status: "resolved" })` with a parameter
  * typed `{ status: OrderStatus }` is not either (not an update), and both Drizzle updates are.
+ * The object's own type (or a held variable's inferred one) counts only where the parameter's
+ * type says nothing about it (none, `any`, `unknown`, a type parameter): the metadata of
+ * `logger.warn("…", { id, status: order.status })`, typed `Record<string, unknown>`, is not a
+ * patch, though its `status` holds every state.
  *
  * **Anything else.** A write that no bound save commits (it goes to an unbound data layer), or
  * a patch passed to an unbound function, is `unanalyzable` (`PersistenceFacts.unbound`). A raw
@@ -871,11 +875,22 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
   };
 
   /** Whether a held patch is the entity's (see "Whose patch"). */
+  /**
+   * A parameter type that says nothing about what the argument is: none, `any`, `unknown` or a
+   * type parameter. Only then does the object's own type speak for it (see "Whose patch").
+   */
+  const openType = (type: TS.Type | undefined): boolean =>
+    type === undefined ||
+    (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0;
+
   const heldIsEntity = (h: Held): boolean => {
     if (h.sinks.length === 0) return false;
     const declared = checker.getTypeAtLocation(h.decl.name);
     if (typeNamesEntity(declared)) return true;
-    let exact = exactStates(declared);
+    // An annotated type is the code's word for it; an inferred one only counts where the
+    // parameter's type is open (a logger's `Record<string, unknown>` metadata is not a patch).
+    let exact = h.decl.type !== undefined && exactStates(declared);
+    const ownExact = h.decl.type === undefined && exactStates(declared);
     let update = false;
     for (const { call, arg } of h.sinks) {
       const b = fns.of(call);
@@ -884,7 +899,7 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
       if (b) continue;
       const contextual = checker.getContextualType(arg);
       if (typeNamesEntity(contextual)) return true;
-      exact ||= exactStates(contextual);
+      exact ||= exactStates(contextual) || (ownExact && openType(contextual));
       update ||= isUpdateLike(call);
     }
     return exact && (update || readBefore(h.decl, h.decl.getStart()));
@@ -894,7 +909,9 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
   const unboundPatchIsEntity = (write: WriteNode, call: TS.CallExpression): boolean => {
     const contextual = checker.getContextualType(write.expr);
     if (typeNamesEntity(contextual)) return true;
-    const exact = exactStates(contextual) || exactStates(checker.getTypeAtLocation(write.expr));
+    const exact =
+      exactStates(contextual) ||
+      (openType(contextual) && exactStates(checker.getTypeAtLocation(write.expr)));
     return exact && (isUpdateLike(call) || readBefore(call, call.getStart()));
   };
 
