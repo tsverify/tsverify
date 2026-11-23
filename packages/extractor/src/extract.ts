@@ -84,6 +84,17 @@ export interface ExtractResult {
   findings: Finding[];
 }
 
+export interface ExtractAllResult {
+  /** One per spec, in order. */
+  results: ExtractResult[];
+  stats: ExtractStats;
+  /**
+   * The project tsconfig's `customConditions`, when it sets any: the package `exports`
+   * conditions its imports resolve with (generated tests resolve with them too).
+   */
+  customConditions?: string[];
+}
+
 export interface ExtractStats {
   /** Source files analyzed (project files, no declarations, no `node_modules`). */
   files: number;
@@ -193,10 +204,7 @@ function requireTypeScript(projectRoot: string): TypeScript {
  * `TypeScriptSetupError` when the project cannot be read as set up (no TypeScript 7, a tsconfig
  * TypeScript rejects).
  */
-export function extractAll(
-  specs: BehaviorModel[],
-  options: ExtractOptions,
-): { results: ExtractResult[]; stats: ExtractStats } {
+export function extractAll(specs: BehaviorModel[], options: ExtractOptions): ExtractAllResult {
   const start = now();
   useTypeScript(options.typescript ?? requireTypeScript(options.projectRoot));
   const loaded = loadProject(options.projectRoot, options.tsconfig);
@@ -229,7 +237,7 @@ function extractLoaded(
   specs: BehaviorModel[],
   loaded: LoadedProject,
   start: number,
-): { results: ExtractResult[]; stats: ExtractStats } {
+): ExtractAllResult {
   // Phase 1 (syntax) and probe planning: no type query before planNarrowing.
   const fields = new Set(specs.map((s) => s.entity.stateField));
   const patch = patchOptions(specs);
@@ -269,6 +277,7 @@ function extractLoaded(
   const results = specs.map((spec) => extractSpec(spec, env));
   return {
     results,
+    ...(loaded.customConditions ? { customConditions: loaded.customConditions } : {}),
     stats: {
       files: loaded.files.length,
       writes: candidates.length,

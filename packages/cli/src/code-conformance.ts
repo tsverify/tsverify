@@ -45,6 +45,8 @@ export interface CodeOutcome {
   spec?: BehaviorModel;
   /** The as-implemented model (locations relative to `root`), when the extractor built one. */
   code?: BehaviorModel;
+  /** The project tsconfig's `customConditions`, when it sets any (`tsverify test` resolves with them). */
+  customConditions?: string[];
 }
 
 /**
@@ -92,7 +94,7 @@ export async function checkCode(
     if ("error" in typescript) throw new SetupError(typescript.error);
     const models = members.map((m) => rebaseLocations(m.model, cwd, root));
     const tsconfig = root === options.project?.root ? options.project.tsconfig : undefined;
-    const { results, stats } = extract(models, root, typescript.ts, tsconfig);
+    const { results, stats, customConditions } = extract(models, root, typescript.ts, tsconfig);
     members.forEach(({ index }, k) => {
       const spec = models[k] as BehaviorModel;
       const result = results[k];
@@ -101,6 +103,7 @@ export async function checkCode(
       const findings = [...result.findings];
       outcome.extract = stats;
       outcome.spec = spec;
+      if (customConditions) outcome.customConditions = customConditions;
       if (result.model) {
         outcome.code = result.model;
         findings.push(...compare(spec, result.model));

@@ -61,6 +61,50 @@ describe("testFindings", () => {
     });
   });
 
+  describe("tests that fail before they run (setup)", () => {
+    const forbidden: GeneratedTest = { ...path, file: "forbidden.test.ts", kind: "forbidden" };
+    const resolveError =
+      'Failed to resolve entry for package "@acme/run-store". The package may have incorrect main/module/exports specified in its package.json.';
+
+    it("reports them once per error, with a setup hint and the original error", () => {
+      const { findings, counts } = map(
+        [path, forbidden, replay],
+        [
+          outcome(path, { state: "failed", errors: [resolveError], setup: true }),
+          outcome(forbidden, { state: "failed", errors: [resolveError], setup: true }),
+          outcome(replay, { state: "failed", errors: [resolveError], setup: true }),
+        ],
+      );
+      expect(counts).toEqual({ total: 3, passed: 0, failed: 3, missing: 0 });
+      expect(findings).toEqual([
+        {
+          id: "generated-test-failed:Order lifecycle:setup:paths.test.ts",
+          category: "generated-test-failed",
+          severity: "error",
+          message: `The generated tests in paths.test.ts, forbidden.test.ts and replay-1.test.ts could not start (3 tests), before any of the code under test ran: ${resolveError}`,
+          behavior: "Order lifecycle",
+          hint: expect.stringMatching(/^A setup problem, not a behavior the spec forbids\./),
+        },
+      ]);
+      expect(findings[0]?.hint).not.toContain("The real code");
+    });
+
+    it("also knows a setup error by its message", () => {
+      const { findings } = map(
+        [forbidden],
+        [
+          outcome(forbidden, {
+            state: "failed",
+            errors: ["[vitest] There was an error when mocking a module. Cause: TypeError: …"],
+          }),
+        ],
+      );
+      expect(findings.map((f) => f.id)).toEqual([
+        "generated-test-failed:Order lifecycle:setup:forbidden.test.ts",
+      ]);
+    });
+  });
+
   it("maps a failed path test to generated-test-failed at the write", () => {
     const { findings, counts } = map(
       [path],

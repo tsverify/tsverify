@@ -1,5 +1,10 @@
 export type { PersistenceAdapter, PersistenceFacts } from "./adapters/types";
-export type { ExtractOptions, ExtractResult, ExtractStats } from "./extract";
+export type {
+  ExtractAllResult,
+  ExtractOptions,
+  ExtractResult,
+  ExtractStats,
+} from "./extract";
 export { extractAll } from "./extract";
 export type { LoadedTypeScript, TypeScriptLoadError } from "./load-typescript";
 export {
