@@ -27,8 +27,9 @@ Files that teach a coding agent to work with `tsverify` in your repository:
    | Anything else | Wherever it reads project instructions. The snippet is plain Markdown with no tool-specific syntax |
 
 3. **Make `tsverify` runnable** where the agent works. `tsverify` is not published yet: until it is, run it from a
-   checkout of this repository (`pnpm tsverify …`), and replace `tsverify` in the snippet with the command you use. Once it
-   is published, a `devDependency` plus `npx tsverify` will do.
+   checkout of this repository (`pnpm exec tsverify …`, which keeps the exit codes; `pnpm tsverify …` reports 2 and 3
+   as 1), and replace `tsverify` in the snippet with the command you use. Once it is published, a `devDependency`
+   plus `npx tsverify` will do.
 4. **Optional: editor support for the agent too.** Point `yaml-language-server` at the JSON Schema
    ([guide §9](../authoring-guide.md#9-editor-support-json-schema)), so editor-integrated agents see schema errors
    inline.
