@@ -333,7 +333,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
         kind,
         `persistence "${kind}" is not supported yet; no code model was extracted`,
         {
-          hint: "Only the `assign`, `memory` and `prisma` adapters exist in this version; set `bindings.persistence: assign` if the code assigns and saves whole objects, `prisma` for a Prisma client, or `memory` for in-process objects.",
+          hint: "Name the app's own storage functions in `bindings.storage` (`read`, `save`, `update`, `atomic`), which works whatever database is underneath (docs/authoring-guide.md §7.6). The presets are `assign` (repository objects on a bound client), `prisma` and `memory`.",
         },
       ),
     );
