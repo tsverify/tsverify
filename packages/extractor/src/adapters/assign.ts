@@ -92,7 +92,7 @@ function chainRoot(
 }
 
 /** Expressions `fn` returns (its expression body, or its `return`s outside nested functions). */
-function returnedExpressions(fn: FunctionLike): TS.Expression[] {
+export function returnedExpressions(fn: FunctionLike): TS.Expression[] {
   if (!fn.body) return [];
   if (!ts.isBlock(fn.body)) return [fn.body];
   const out: TS.Expression[] = [];
@@ -106,7 +106,11 @@ function returnedExpressions(fn: FunctionLike): TS.Expression[] {
 }
 
 /** A returned local variable of `fn`, replaced by its initializer. */
-function throughLocal(e: TS.Expression, fn: FunctionLike, checker: TS.Checker): TS.Expression {
+export function throughLocal(
+  e: TS.Expression,
+  fn: FunctionLike,
+  checker: TS.Checker,
+): TS.Expression {
   if (!ts.isIdentifier(e)) return e;
   const decl = valueDeclarationOf(symbolOf(e, checker));
   if (decl && ts.isVariableDeclaration(decl) && decl.initializer && contains(fn, decl)) {

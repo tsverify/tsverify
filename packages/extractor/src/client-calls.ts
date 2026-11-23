@@ -17,6 +17,10 @@
  *   clients, or one that is not an object or function type (`any`, primitives, `{}`), matches
  *   none.
  *
+ * A call to a named storage function (`bindings.storage`) is classified first, by the callee's
+ * resolved symbol (`storage`, from the `functions` adapter): client `storage`, path = the bound
+ * symbol, gate `storage.<symbol>`.
+ *
  * A bare call on a client that is an exported function (`sendMail(…)`, bound as
  * `email: { export: sendMail }`) has path `""` and gate `email`. Not recognized: element access
  * (`db["orders"]`), a destructured member (`const { orders } = db`), and a call's result as root.
@@ -95,6 +99,8 @@ export class ClientCalls {
     /** Resolved client symbol → client binding name. */
     private readonly clients: ReadonlyMap<TS.Symbol, string>,
     private readonly adapter: PersistenceAdapter,
+    /** Named storage functions: a call to one, as a `storage.<symbol>` client call. */
+    private readonly storage?: (call: TS.CallExpression) => ClientCall | undefined,
   ) {}
 
   classify(call: TS.CallExpression): ClientCall | undefined {
@@ -135,6 +141,8 @@ export class ClientCalls {
   }
 
   private compute(call: TS.CallExpression): ClientCall | undefined {
+    const stored = this.storage?.(call);
+    if (stored) return stored;
     const root = this.chainRoot(call.expression);
     // A scope alias is a stand-in for the client object; calling it is not a client call.
     if (!root || (root.scope && root.segments.length === 0)) return undefined;
