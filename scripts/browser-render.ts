@@ -42,37 +42,84 @@ export interface DiagramRender {
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function waitForFile(path: string, ms: number): Promise<string> {
+/** How long one Chrome start may take: a CI runner's first launch can be slow. */
+const START_MS = 45_000;
+/** Starts after the first fails: a cold start that timed out usually works the second time. */
+const START_ATTEMPTS = 2;
+
+interface Started {
+  proc: ChildProcess;
+  profile: string;
+  port: string;
+}
+
+/**
+ * Starts Chrome with a fresh profile and waits for its DevTools port. Fails early if Chrome exits,
+ * and either way says what Chrome printed, so a CI log shows why it didn't start.
+ */
+async function startChrome(chrome: string): Promise<Started> {
+  const profile = mkdtempSync(join(tmpdir(), "tsverify-chrome-"));
+  const proc = spawn(
+    chrome,
+    [
+      "--headless=new",
+      "--no-sandbox",
+      "--disable-gpu",
+      "--disable-dev-shm-usage",
+      "--no-first-run",
+      `--user-data-dir=${profile}`,
+      "--remote-debugging-port=0",
+      "about:blank",
+    ],
+    { stdio: ["ignore", "ignore", "pipe"] },
+  );
+  let stderr = "";
+  proc.stderr?.on("data", (d: Buffer) => {
+    stderr = (stderr + d.toString()).slice(-2000);
+  });
+  let exited: string | undefined;
+  proc.on("exit", (code, signal) => {
+    exited = signal ?? `exit ${code}`;
+  });
+  proc.on("error", (e) => {
+    exited = e.message;
+  });
+  const fail = (why: string): never => {
+    proc.kill("SIGKILL");
+    rmSync(profile, { recursive: true, force: true });
+    const said = stderr.trim().split("\n").slice(-5).join(" | ");
+    throw new Error(`Chrome ${why}${said ? `; Chrome said: ${said}` : ""}`);
+  };
   const start = performance.now();
   for (;;) {
     try {
-      return readFileSync(path, "utf8");
+      // Chrome writes the file in place: read it only once the port line is complete.
+      const port = /^(\d+)\n/.exec(readFileSync(join(profile, "DevToolsActivePort"), "utf8"))?.[1];
+      if (port !== undefined) return { proc, profile, port };
     } catch {
-      if (performance.now() - start > ms) throw new Error(`${path} did not appear`);
-      await wait(100);
+      // not written yet
     }
+    if (exited !== undefined) fail(`exited before opening its DevTools port (${exited})`);
+    if (performance.now() - start > START_MS) {
+      fail(`opened no DevTools port within ${START_MS / 1000} s`);
+    }
+    await wait(100);
   }
 }
 
 /** Loads `url`, waits for the diagram to settle, and reports it. */
 export async function renderDiagram(chrome: string, url: string): Promise<DiagramRender> {
-  const profile = mkdtempSync(join(tmpdir(), "tsverify-chrome-"));
-  let proc: ChildProcess | undefined;
+  let started: Started | undefined;
+  for (let attempt = 1; started === undefined; attempt++) {
+    try {
+      started = await startChrome(chrome);
+    } catch (e) {
+      if (attempt >= START_ATTEMPTS) throw e;
+      process.stdout.write(`      (retrying: ${e instanceof Error ? e.message : String(e)})\n`);
+    }
+  }
+  const { proc, profile, port } = started;
   try {
-    proc = spawn(
-      chrome,
-      [
-        "--headless=new",
-        "--no-sandbox",
-        "--disable-gpu",
-        "--no-first-run",
-        `--user-data-dir=${profile}`,
-        "--remote-debugging-port=0",
-        "about:blank",
-      ],
-      { stdio: "ignore" },
-    );
-    const [port] = (await waitForFile(join(profile, "DevToolsActivePort"), 20_000)).split("\n");
     let target: { type: string; webSocketDebuggerUrl: string } | undefined;
     for (let i = 0; i < 50 && target === undefined; i++) {
       const list = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()) as {
@@ -134,7 +181,7 @@ export async function renderDiagram(chrome: string, url: string): Promise<Diagra
     ws.close();
     return { ...render, errors };
   } finally {
-    proc?.kill("SIGKILL");
+    proc.kill("SIGKILL");
     rmSync(profile, { recursive: true, force: true });
   }
 }
