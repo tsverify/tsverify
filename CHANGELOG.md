@@ -73,7 +73,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A bound client or `bindings.storage` function that no call in the project resolves to gets an `unanalyzable`
   warning ("bound but never called"); `missing-effect` for an effect on such a client is a warning that says
   tsverify couldn't see the call, instead of an error saying the code never makes it.
-- A client may be bound to an exported interface (`export: RunStore`), like a class: every value typed as it is
+- A client may be bound to an exported interface (`export: OrderStore`), like a class: every value typed as it is
   the client. Such a spec gets no generated tests (`not-generated`, with the reason).
 - Guard bindings take list arguments (`requireRole(["owner", "admin"])`, either quote style), matched against
   an array literal (or a `const` holding one) among the call's arguments. Arguments that could never match a

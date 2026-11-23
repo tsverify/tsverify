@@ -704,7 +704,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
 
 /**
  * The first argument of a bound storage function whose role is `key`, `from` or `to` but whose
- * parameter is an object (`getIncident({ tx, id, workspaceId })` bound with `args: [key]`): the
+ * parameter is an object (`getOrder({ tx, id, tenantId })` bound with `args: [key]`): the
  * code check would take the whole object as the key, and the generated tests' fake too.
  */
 function objectRoleArgument(

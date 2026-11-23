@@ -70,7 +70,7 @@
  * entity before them: Drizzle's `tx.update(table).set({ status: "resolved" }).where(…)` takes a
  * patch typed from the table, whose `status` column has exactly the spec's states. So
  * `c.json({ status: "ok" })` is not a write, `notify({ status: "resolved" })` with a parameter
- * typed `{ status: IncidentStatus }` is not either (not an update), and both Drizzle updates are.
+ * typed `{ status: OrderStatus }` is not either (not an update), and both Drizzle updates are.
  *
  * **Anything else.** A write that no bound save commits (it goes to an unbound data layer), or
  * a patch passed to an unbound function, is `unanalyzable` (`PersistenceFacts.unbound`). A raw
@@ -1102,8 +1102,8 @@ export function functionsAdapter(input: FunctionsAdapterInput): PersistenceAdapt
      * that can't find the state changed (`returns: throws`, or `from` every state) on every path
      * to `node`, or one whose "saved" branch `node` is in. Such an effect is that write's (it
      * follows a state change that did happen), so it doesn't run "although this save found the
-     * state changed": `if (await promote(id)) { await queue.enqueue(…); return; }` before
-     * `await expire(id)`.
+     * state changed": `if (await reserve(id)) { await email.send(…); return; }` before
+     * `await cancel(id)`.
      */
     const afterAnotherWrite = (node: TS.Node, fn: FunctionLike): boolean => {
       for (const c of frameCalls(fn)) {

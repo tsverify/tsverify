@@ -460,7 +460,7 @@ database. It is conservative: when unsure, it reports `unanalyzable` or "unconst
 | **Call graph** | Helpers in project files, followed up to 8 levels below the impl | Calls through `node_modules`, dynamic dispatch, callbacks stored and called later |
 | **From-state checks** (narrowing) | `if (x.status !== "a") throw`, early `return`, `switch (x.status)`, `x.status === "a" \|\| x.status === "b"`, assertion functions (`asserts x is Paid`), type predicates (`x is Paid`, incl. inferred `return s === "a"`), ternaries, checks inside the transaction callback; membership on a list of literals, inline or a `const` (`if (!["a", "b"].includes(x.status)) throw`, `ALLOWED.includes(x.status)` with `const ALLOWED = ["a", "b"]`, `OPEN.has(x.status)` with `const OPEN = new Set([…])`), combined with `!`, `&&`, `\|\|` | A lookup table (`NEXT[x.status].includes(to)`), a list that can change (a `let`), `const s = x.status; if (s …)`, `const { status } = x`, `const ok = x.status === "a"; if (!ok)` on a mutable field, `: boolean` helpers, the entity passed to a helper that throws → compare `x.status` directly, or use an assertion function. When the code consults the state in such a form, the write's from-state is reported unknown (`unanalyzable`, "the from-state check at … is in a form tsverify can't read"), not unchecked |
 | **Written value** | A string literal, or a constant with a literal type (`JobStatus.Done`) | A variable or parameter (`x.status = next`) → `unanalyzable`, and the write is not checked: a transition whose impl reaches it is reported as "couldn't confirm", not `missing-transition`. Write the literal at each call site |
-| **Guards** | A call to the bound function, with literal arguments equal to the binding's (`requireRole(actor, "admin")` = `role(admin)`), on every path before the write. Arguments that aren't literals (`actor`, `{ orUserId }`) are skipped, so `requireRole(tx, ctx, ["owner", "admin"], { orUserId })` matches the binding `requireRole(["owner", "admin"])`; a list matches an array literal (or a `const` holding one) with the same items, whatever the quotes. A call with other literal arguments is reported as "called, but not with …". A project function that calls the guard on every path counts as that guard | Middleware registered elsewhere (route-level `app.use(auth)`), decorators → call the guard (or a wrapper) inside the impl's reach. Arguments built at runtime (`requireRole(actor, roles)` with a parameter) → pass the literals, or bind a wrapper (`requireAdmin`) |
+| **Guards** | A call to the bound function, with literal arguments equal to the binding's (`requireRole(actor, "admin")` = `role(admin)`), on every path before the write. Arguments that aren't literals (`actor`, `{ ownerId }`) are skipped, so `requireRole(tx, ctx, ["owner", "admin"], { ownerId })` matches the binding `requireRole(["owner", "admin"])`; a list matches an array literal (or a `const` holding one) with the same items, whatever the quotes. A call with other literal arguments is reported as "called, but not with …". A project function that calls the guard on every path counts as that guard | Middleware registered elsewhere (route-level `app.use(auth)`), decorators → call the guard (or a wrapper) inside the impl's reach. Arguments built at runtime (`requireRole(actor, roles)` with a parameter) → pass the literals, or bind a wrapper (`requireAdmin`) |
 | **Clients** (database, effects) | Calls on an exported object or function, imported directly (also aliased, re-exported or through a namespace import): `stripe.refunds.create(…)`, or `sendMail(…)` for `export async function sendMail` (map its effect to the client name, [§8](#8-fixtures-for-tsverify-test)); the transaction alias `tx`; a client injected as a parameter or field typed as the export (`constructor(private prisma: PrismaClient)`, `deps: { db: typeof db }`); and, for a client bound to an exported **class** or **interface**, any value of that type held that way (see "Injected clients" below) | Destructured (`const { orders } = db`), element access (`db["orders"]`), a call's result as the root, an injected client typed `any`, as another interface than the one bound, or with a type several clients share → import the bound export, or type the parameter as the export's type. A bound client that no call resolves to gets an `unanalyzable` warning ("bound but never called") |
 | **Effects** | A bound-client call that can run on a path that performs the write and completes normally (before the write, or after the commit) | A call only on a path that throws or returns before the write is not attributed. That is correct |
 
@@ -469,8 +469,8 @@ matched by the declared type of what holds them. Bind the export that type names
 `runQueue: RunQueue`, bind the class, `queue: { module: src/run-queue/index.ts, export: RunQueue }`; every
 instance typed `RunQueue` (a field, a parameter, a property of an injected object) is then the `queue` client,
 and `this.$.runQueue.acknowledgeMessage(…)` is the call `queue.acknowledgeMessage`. When the code only knows
-the client by an interface (`runStore: RunStore`), bind the interface the same way
-(`store: { module: …, export: RunStore }`): every value typed `RunStore` is then the client. Types compare by
+the client by an interface (`orders: OrderStore`), bind the interface the same way
+(`store: { module: …, export: OrderStore }`): every value typed `OrderStore` is then the client. Types compare by
 identity: an instance held as an interface the class implements (with the class bound), as a subclass or as
 `any` is not matched. `tsverify test` can't replace a class or an interface with a fake by mocking a module, so
 a spec binding one gets no generated tests (`not-generated`, naming the binding); `check` is unaffected. When nothing
@@ -498,7 +498,7 @@ transitions' impls reach it, the ones whose `to` is the written state win. Trans
 *and* a `to` are each compared with every write of that state the impl reaches: each gets all of them. Their
 from-states are checked together (a `from-state-mismatch` warning only for a state none of the writes accepts),
 but the transitions themselves can't be told apart, so a write meant for one is checked against the other's
-`from`, `requires` and `effects` too: `regress` (mitigated → open) and `reopen` (resolved → open) with one impl
+`from`, `requires` and `effects` too: `retry` (failed → pending) and `resume` (paused → pending) with one impl
 each get a `from-state-mismatch` error for the other's state, which says that they share the impl and `to`.
 Declare them as one transition with the union of their `from` (comment which code path covers which state), or
 point each at the function that only does its part. Don't widen each one's `from` to the union.
@@ -591,7 +591,7 @@ Prefer a small, behavior-preserving refactor that makes the code checkable over 
 | "assigned a value that is not a single literal" (`setStatus(order, next)`), and "couldn't confirm that … writes …" on the transitions it serves | One function per transition, each writing a literal (`order.status = "paid"`). A generic verb that takes the target state (`setStatus(id, input.status)`) can stay as the entry point if it calls one of those per target state, or a conditional save with literal states (`setStatusIf(id, "open", "mitigated")`, bound as `update`) |
 | "is set in `patch` …" / "is set on `patch` … after the object is built" | Build the patch as one `const` object literal with the state as a literal (`const patch = { status: "resolved", resolvedAt: now }`) and pass it to one bound save. Setting other fields on it afterwards is fine; setting the state field is not |
 | "written in a patch passed to `tx.update(…).set`, which is not a `bindings.storage.save` function" | Move the query into a named function (`setIncidentStatusIf(tx, id, from, to)`) and bind it in `bindings.storage` (`update` for a conditional save, `save` otherwise) |
-| "Nothing reads one … before this update" (a bulk `update(…).set({ status })` over the rows a query matches) | Move it into a named function, bound as an `update` with the states its query requires as `from` (`resolveOpenIncidents(tx, monitorIds)` with `from: [open, investigating]`, `to: resolved`) |
+| "Nothing reads one … before this update" (a bulk `update(…).set({ status })` over the rows a query matches) | Move it into a named function, bound as an `update` with the states its query requires as `from` (`cancelStaleOrders(tx, customerIds)` with `from: [draft, pending_payment]`, `to: cancelled`) |
 | "the from-state of this write is unknown: … is typed string" | `status: OrderStatus` with `type OrderStatus = "draft" \| …` |
 | "the from-state check at … is in a form tsverify can't read" (a lookup table `NEXT[x.status].includes(to)`, the entity passed to a helper that throws, `assertTransition(x, to)`, a copy `const { status } = x`, a list that can change) | Compare the field directly in an `if`/`switch` (or `.includes` / `Set.has` on a `const` list of literals), or declare the helper as an assertion function (`function assertPaid(x: Order): asserts x is Order & { status: "paid" }`). tsverify doesn't follow a helper's body. Until then the write's from-state is unknown (a warning), not unchecked |
 | `from-state-unconstrained`, although a check exists | The check compares the field with a literal but doesn't stop the write on the other branch (no `throw` or `return`), or it checks another variable. Make it exit |
@@ -631,17 +631,17 @@ How to find them:
   `{ fn: src/repo.ts#findOrder, args: [_, key] }` for `findOrder(tenantId, id)`. A save that takes the key and
   some fields is `args: [key, patch]`. An update with the states built in (`markPaid(id)`) is
   `{ fn: …, from: [pending], to: paid }`. Each role is one positional argument: a function that takes one object
-  of named arguments (`getIncident({ tx, id, workspaceId })`) isn't supported yet, and binding its object as the
+  of named arguments (`getOrder({ tx, id, tenantId })`) isn't supported yet, and binding its object as the
   `key` gets a warning ("argument 1 … is an object"). Bind a thin wrapper that takes the key as an argument of its
-  own (`getIncidentById(tx, workspaceId, id)` with `args: [_, _, key]`).
+  own (`getOrderById(tx, tenantId, id)` with `args: [_, _, key]`).
 - **`returns`.** Say what an update returns when the state check fails: `changed` (`false`, the default),
   `count` (`0`), `entity` (`undefined`) or `throws`. The code is expected to stop when it does
   (`if (!(await setStatusIf(…))) throw …`, `if (updated === undefined) return`): an effect that can run before
   that check (or before the update) fires even when nothing was saved, and `check` reports the transition as
   `non-atomic`. An effect only in the "nothing saved" branch is not the transition's. An effect that runs only
   once another conditional save went through (in its "saved" branch, or after one bound with `returns: throws`)
-  is that save's, not one that runs "although nothing was saved" (`if (await promote(id)) { await
-  queue.enqueue(…); return; }` before `await expire(id)`). Only spec effects (named in `bindings.effects` or
+  is that save's, not one that runs "although nothing was saved" (`if (await reserve(id)) { await
+  email.send(…); return; }` before `await cancel(id)`). Only spec effects (named in `bindings.effects` or
   declared on a transition) count: another call is reported as `undeclared-effect` instead. A `count` may also be
   a count object (`r.count === 0`), as Prisma's `updateMany` returns.
 - **An unconditional ("blind") update** writes its state whatever the stored one is (`update({ where: { id } })`
@@ -682,7 +682,7 @@ How to find them:
   either a bound `read` of the entity comes before it in the same function, or the call is an update: a method
   named `update`, `updateMany`, `updateOne`, `updateTable` or `upsert`, or `set` called on what one returned.
   That last rule catches bulk updates with no read of one entity before them: Drizzle's
-  `tx.update(incidents).set({ status: "resolved" }).where(…)` takes a patch typed from the table, whose `status`
+  `tx.update(orders).set({ status: "cancelled" }).where(…)` takes a patch typed from the table, whose `status`
   column has exactly the spec's states. Such a write is reported (its from-state is unknown: it changes
   whichever rows its query matches), never skipped. Other objects with a `status` key are not writes: a response
   body (`c.json({ status: "ok" })`), or an event passed to a function that isn't an update
@@ -744,7 +744,7 @@ fixtures:
   `{ ctx, input }` object with other fields), or when the trace fails ("can't tell which arguments of … carry the
   key": a key read from a parsed input, or through a helper). With `args`, nothing is traced. Inside `args`,
   `$id` is the seeded entity's key and `$actor` is the acting actor's fixture, e.g.
-  `approve: [{ ctx: { workspace: { id: 1 }, actor: $actor }, input: { id: $id } }]`.
+  `refund: [{ ctx: { tenant: t1, actor: $actor }, input: { orderId: $id } }]`.
 - Only the bound export of a client module is replaced; its other exports (a guard or helper next to `db`) stay
   real. A client may be a bare exported function (`email: { module: src/mail.ts, export: sendMail }`): map its
   effect to the client name (`bindings.effects: { email.welcome: email }`) and the fake is a recording function.

@@ -4,8 +4,8 @@
  * value (`"admin"` → `admin`), a list of those is `formatGuardArgList` of its items
  * (`['owner', "admin"]` → `["owner", "admin"]`). A list is read from an array literal (also
  * through `as const`, `satisfies` and parentheses) or from a `const` initialised with one.
- * Arguments that are none of these (`ctx`, `{ orUserId }`, a computed list) are left out, so
- * `requireRole(tx, ctx, ["owner", "admin"], { orUserId })` passes `[["owner", "admin"]]`.
+ * Arguments that are none of these (`ctx`, `{ ownerId }`, a computed list) are left out, so
+ * `requireRole(tx, ctx, ["owner", "admin"], { ownerId })` passes `[["owner", "admin"]]`.
  */
 import { formatGuardArgList } from "@tsverify/ir";
 import type * as TS from "./ts-types";

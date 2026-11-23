@@ -6,9 +6,9 @@ export async function requireRoles(
   _tx: unknown,
   actor: Actor,
   roles: readonly string[],
-  opts: { orUserId?: string } = {},
+  opts: { ownerId?: string } = {},
 ): Promise<void> {
-  if (opts.orUserId === actor.id) return;
+  if (opts.ownerId === actor.id) return;
   if (!roles.some((r) => actor.roles.includes(r))) throw new Error("forbidden");
 }
 
@@ -25,7 +25,7 @@ async function ship(orderId: string): Promise<void> {
 
 /** An array literal among other arguments matches the binding's list. */
 export async function shipAsStaff(actor: Actor, orderId: string): Promise<void> {
-  await requireRoles(db, actor, ["owner", "admin"], { orUserId: actor.id });
+  await requireRoles(db, actor, ["owner", "admin"], { ownerId: actor.id });
   await ship(orderId);
 }
 
