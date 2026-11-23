@@ -129,6 +129,25 @@ describe("tsverify diff", () => {
       expect(doc.specs.map((s) => s.diff.kind)).toEqual(["changed"]);
     });
 
+    it("shows a spec outside the cwd by its absolute path in markdown and pretty, as check does", async () => {
+      const specs = await changed();
+      const cwd = await tempSpecDir({});
+      const file = join(specs, "specs/order.behavior.yaml");
+      for (const format of ["markdown", "pretty"]) {
+        const r = await tsverify(["diff", "--base", "HEAD", "--format", format, file], {
+          cwd,
+          env: { NO_COLOR: "1" },
+        });
+        expect(r.stderr).toBe("");
+        expect(r.stdout).toContain(file);
+        expect(r.stdout).not.toContain("../");
+      }
+      const json = parse(
+        (await tsverify(["diff", "--base", "HEAD", "--format", "json", file], { cwd })).stdout,
+      );
+      expect(json.specs[0]?.file.startsWith("../")).toBe(true);
+    });
+
     it("reads a spec from its own repository when the cwd is in another one", async () => {
       const specs = await changed();
       const cwd = await repo({ "README.md": "another repository\n" });
