@@ -71,6 +71,7 @@ function report(
   const subject = rest.length > 0 ? `"${field(rest)}" ` : "";
   const got = ` (got ${describeValue(issue.input)})`;
   let problem: string;
+  let hint: string | undefined;
   switch (issue.code) {
     case "invalid_type":
       problem = `must be ${expected(issue.expected)}${got}`;
@@ -78,12 +79,18 @@ function report(
     case "invalid_union":
       problem = `must be ${unionExpected(issue)}${got}`;
       break;
-    case "invalid_value":
+    case "invalid_value": {
       problem =
         issue.values.length === 1
           ? `must be ${JSON.stringify(issue.values[0])}${got}`
           : `must be one of ${issue.values.map(String).join(", ")}${got}`;
+      const guess =
+        typeof issue.input === "string"
+          ? suggest(issue.input, issue.values.map(String))
+          : undefined;
+      if (guess !== undefined) hint = `did you mean "${guess}"?`;
       break;
+    }
     case "too_small":
       problem =
         issue.origin === "array" || issue.origin === "string"
@@ -98,7 +105,10 @@ function report(
     default:
       problem = issue.message;
   }
-  out.error(locator.value(path), `${ctx}: ${subject}${problem}`, { transition });
+  out.error(locator.value(path), `${ctx}: ${subject}${problem}`, {
+    transition,
+    ...(hint !== undefined && { hint }),
+  });
 }
 
 /** Replaces each `invalid_union` with the issues of the branch that got furthest, when one did. */

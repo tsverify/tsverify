@@ -274,9 +274,347 @@
       "type": "object",
       "properties": {
         "persistence": {
-          "description": "Persistence adapter; omitted means auto-detected",
+          "description": "Alias of the preset form of `storage` (kept for existing specs); omitted means auto-detected",
           "type": "string",
           "enum": ["assign", "prisma", "drizzle", "memory"]
+        },
+        "storage": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": ["assign", "prisma", "memory"],
+              "description": "A built-in storage style (same meaning as `persistence:`)"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "description": "The entity's key field (default `id`)",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "read": {
+                  "description": "Function that loads one entity by key, or a list of them",
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "description": "The app's function: `path/to/file.ts#symbol`"
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "fn": {
+                              "type": "string",
+                              "description": "The app's function: `path/to/file.ts#symbol`"
+                            },
+                            "args": {
+                              "description": "Role of each positional argument (default [key])",
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": ["key", "entity", "patch", "from", "to", "callback", "_"],
+                                "description": "`key`, `entity`, `patch` (some fields), `from` (state or states), `to` (state), `callback`, or `_` (ignored)"
+                              }
+                            }
+                          },
+                          "required": ["fn"],
+                          "additionalProperties": false,
+                          "description": "Function that loads one entity by key, with the role of each argument"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "description": "The app's function: `path/to/file.ts#symbol`"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "fn": {
+                                "type": "string",
+                                "description": "The app's function: `path/to/file.ts#symbol`"
+                              },
+                              "args": {
+                                "description": "Role of each positional argument (default [key])",
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "enum": ["key", "entity", "patch", "from", "to", "callback", "_"],
+                                  "description": "`key`, `entity`, `patch` (some fields), `from` (state or states), `to` (state), `callback`, or `_` (ignored)"
+                                }
+                              }
+                            },
+                            "required": ["fn"],
+                            "additionalProperties": false,
+                            "description": "Function that loads one entity by key, with the role of each argument"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "save": {
+                  "description": "Function that persists an entity, or a list of them",
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "description": "The app's function: `path/to/file.ts#symbol`"
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "fn": {
+                              "type": "string",
+                              "description": "The app's function: `path/to/file.ts#symbol`"
+                            },
+                            "args": {
+                              "description": "Role of each positional argument (default [entity])",
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": ["key", "entity", "patch", "from", "to", "callback", "_"],
+                                "description": "`key`, `entity`, `patch` (some fields), `from` (state or states), `to` (state), `callback`, or `_` (ignored)"
+                              }
+                            }
+                          },
+                          "required": ["fn"],
+                          "additionalProperties": false,
+                          "description": "Function that persists an entity, with the role of each argument"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "description": "The app's function: `path/to/file.ts#symbol`"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "fn": {
+                                "type": "string",
+                                "description": "The app's function: `path/to/file.ts#symbol`"
+                              },
+                              "args": {
+                                "description": "Role of each positional argument (default [entity])",
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "enum": ["key", "entity", "patch", "from", "to", "callback", "_"],
+                                  "description": "`key`, `entity`, `patch` (some fields), `from` (state or states), `to` (state), `callback`, or `_` (ignored)"
+                                }
+                              }
+                            },
+                            "required": ["fn"],
+                            "additionalProperties": false,
+                            "description": "Function that persists an entity, with the role of each argument"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "update": {
+                  "description": "Conditional save: checks the state and saves in one step, or a list of them",
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "description": "The app's function: `path/to/file.ts#symbol`"
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "fn": {
+                              "type": "string",
+                              "description": "The app's function: `path/to/file.ts#symbol`"
+                            },
+                            "args": {
+                              "description": "Role of each positional argument (default [key, from, to], without the roles a fixed `from` / `to` replaces)",
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": ["key", "entity", "patch", "from", "to", "callback", "_"],
+                                "description": "`key`, `entity`, `patch` (some fields), `from` (state or states), `to` (state), `callback`, or `_` (ignored)"
+                              }
+                            },
+                            "returns": {
+                              "description": "What it returns: `changed` (true, or false when the state check fails; the default), `count` (1 or 0), `entity` (the updated entity, or undefined), `throws` (throws when the check fails)",
+                              "type": "string",
+                              "enum": ["changed", "count", "entity", "throws"]
+                            },
+                            "from": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  }
+                                }
+                              ],
+                              "description": "Fixed from-state, when no argument has the `from` role, or a list of them"
+                            },
+                            "to": {
+                              "description": "Fixed target state, when no argument has the `to` role",
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": ["fn"],
+                          "additionalProperties": false,
+                          "description": "Conditional save: checks the state and saves in one step, with the role of each argument"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "description": "The app's function: `path/to/file.ts#symbol`"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "fn": {
+                                "type": "string",
+                                "description": "The app's function: `path/to/file.ts#symbol`"
+                              },
+                              "args": {
+                                "description": "Role of each positional argument (default [key, from, to], without the roles a fixed `from` / `to` replaces)",
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "enum": ["key", "entity", "patch", "from", "to", "callback", "_"],
+                                  "description": "`key`, `entity`, `patch` (some fields), `from` (state or states), `to` (state), `callback`, or `_` (ignored)"
+                                }
+                              },
+                              "returns": {
+                                "description": "What it returns: `changed` (true, or false when the state check fails; the default), `count` (1 or 0), `entity` (the updated entity, or undefined), `throws` (throws when the check fails)",
+                                "type": "string",
+                                "enum": ["changed", "count", "entity", "throws"]
+                              },
+                              "from": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    }
+                                  }
+                                ],
+                                "description": "Fixed from-state, when no argument has the `from` role, or a list of them"
+                              },
+                              "to": {
+                                "description": "Fixed target state, when no argument has the `to` role",
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            },
+                            "required": ["fn"],
+                            "additionalProperties": false,
+                            "description": "Conditional save: checks the state and saves in one step, with the role of each argument"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "atomic": {
+                  "description": "Function that runs its callback as one indivisible step (declared, not proven), or a list of them",
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "description": "The app's function: `path/to/file.ts#symbol`"
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "fn": {
+                              "type": "string",
+                              "description": "The app's function: `path/to/file.ts#symbol`"
+                            },
+                            "args": {
+                              "description": "Role of each positional argument (default [callback])",
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": ["key", "entity", "patch", "from", "to", "callback", "_"],
+                                "description": "`key`, `entity`, `patch` (some fields), `from` (state or states), `to` (state), `callback`, or `_` (ignored)"
+                              }
+                            }
+                          },
+                          "required": ["fn"],
+                          "additionalProperties": false,
+                          "description": "Function that runs its callback as one indivisible step (declared, not proven), with the role of each argument"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "description": "The app's function: `path/to/file.ts#symbol`"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "fn": {
+                                "type": "string",
+                                "description": "The app's function: `path/to/file.ts#symbol`"
+                              },
+                              "args": {
+                                "description": "Role of each positional argument (default [callback])",
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "enum": ["key", "entity", "patch", "from", "to", "callback", "_"],
+                                  "description": "`key`, `entity`, `patch` (some fields), `from` (state or states), `to` (state), `callback`, or `_` (ignored)"
+                                }
+                              }
+                            },
+                            "required": ["fn"],
+                            "additionalProperties": false,
+                            "description": "Function that runs its callback as one indivisible step (declared, not proven), with the role of each argument"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false,
+              "description": "The app's own storage functions; at least one read, save or update"
+            }
+          ],
+          "description": "How the entity is stored: a preset (assign, prisma, memory), or the app's own read, save, update and atomic functions"
         },
         "clients": {
           "type": "object",
