@@ -103,6 +103,55 @@ describe("from-states", () => {
     ]);
   });
 
+  describe("an impl with several writes of `to`", () => {
+    // expire: from [draft, pending_payment]; the impl reaches two writes of cancelled.
+    const strict = () => patchSpec(specModel(), "expire", strictExpire);
+    const twoSites = (first: string[], second: string[]): Write[] => {
+      const writes = withFrom("expire", first);
+      const expire = writes.find((w) => w.name === "expire") as Write;
+      return [
+        ...writes,
+        {
+          ...expire,
+          name: "expire~2",
+          fn: "expireDraft",
+          write: [40, 5],
+          fromState: { values: second, unconstrained: false },
+        },
+      ];
+    };
+
+    it("compares the from-states the writes accept together", () => {
+      expect(run(twoSites(["pending_payment"], ["draft"]), strict())).toEqual([]);
+    });
+
+    it("reports what none of them accepts once, naming every write's function", () => {
+      const spec = patchSpec(strict(), "expire", (t) => ({
+        ...t,
+        from: ["draft", "pending_payment", "paid"],
+        fromAt: [
+          ...(t.fromAt ?? []),
+          { file: "src/orders/order.behavior.yaml", line: 38, column: 30 },
+        ],
+      }));
+      expect(run(twoSites(["pending_payment"], ["draft"]), spec)).toEqual([
+        expect.objectContaining({
+          id: "from-state-mismatch:Order lifecycle:expire:paid",
+          severity: "warning",
+          message:
+            "expire: its 2 writes of cancelled (in expireOrder, expireDraft) together only write it from {draft, pending_payment}; the spec also allows paid.",
+          specAt: { file: "src/orders/order.behavior.yaml", line: 38, column: 30 },
+        }),
+      ]);
+    });
+
+    it("still reports a state one write accepts against the spec, per write", () => {
+      expect(
+        run(twoSites(["pending_payment"], ["draft", "paid"]), strict()).map((f) => f.id),
+      ).toEqual(["from-state-mismatch:Order lifecycle:expire:paid:expire~2"]);
+    });
+  });
+
   it("points at the from item of whichever state the code does not accept", () => {
     const spec = patchSpec(specModel(), "expire", strictExpire);
     const writes = withFrom("expire", ["draft"]);

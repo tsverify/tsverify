@@ -21,11 +21,12 @@ function fromItemAt(t: Transition, state?: string): SourceLocation | undefined {
  *
  * A spec `from: "*"` (or a list naming every entity state) allows any source state, so an
  * unconstrained write conforms to it; a code from-set is then compared with `entity.states`.
- * Extra and missing states can both occur (incomparable sets): each gets its own finding, with
- * the states as the id subject. A mismatch's `specAt` is the `from` item of the first missing
- * state, or the first `from` item for extra states; an unconstrained write's is the first `from`
- * item. An unknown from-state (`values: "*"`, e.g. a `string`-typed field) gives no finding here:
- * the extractor reports it once, as `unanalyzable`.
+ * Extra states (an error: this write accepts a state the spec doesn't allow) are reported per
+ * write, with the states as the id subject, at the first `from` item; an unconstrained write's is
+ * at the first `from` item too. Missing states are not decided per write: an impl can reach
+ * several writes of `t.to`, each for some of the from-states (`checkMissingFromStates`). An
+ * unknown from-state (`values: "*"`, e.g. a `string`-typed field) gives no finding here: the
+ * extractor reports it once, as `unanalyzable`.
  */
 export function checkFromStates(p: Pairing): Finding[] {
   const { spec, t, code, sites } = p;
@@ -56,7 +57,6 @@ export function checkFromStates(p: Pairing): Finding[] {
 
   const findings: Finding[] = [];
   const extra = codeFrom.filter((s) => !specFrom.includes(s));
-  const missing = specFrom.filter((s) => !codeFrom.includes(s));
   if (extra.length > 0) {
     const specAt = fromItemAt(t);
     findings.push(
@@ -73,21 +73,52 @@ export function checkFromStates(p: Pairing): Finding[] {
       }),
     );
   }
-  if (missing.length > 0) {
-    const specAt = fromItemAt(t, missing[0]);
-    findings.push(
-      pairingFinding(p, {
+  return findings;
+}
+
+/**
+ * The spec's from-states of `t` that none of its writes of `t.to` accepts (the code is stricter):
+ * one `from-state-mismatch` **warning** for the transition, with the states as the id subject, at
+ * the `from` item of the first one. `pairings` are all of `t`'s primary writes: when the impl
+ * reaches several (`t`, `t~2`, …, e.g. one per code path), the from-states they accept together
+ * are compared, since each path may handle some of them. A write whose from-state is unknown
+ * (`*`) or unconstrained accepts every state, so nothing is missing.
+ */
+export function checkMissingFromStates(pairings: readonly Pairing[]): Finding[] {
+  const [first] = pairings;
+  if (first === undefined) return [];
+  const { spec, t } = first;
+  const specFrom = t.from === "*" ? spec.entity.states : t.from;
+  const accepted = new Set<string>();
+  for (const { code, sites } of pairings) {
+    if (code.from === "*" || sites.fromState.values === "*" || sites.fromState.unconstrained) {
+      return [];
+    }
+    for (const s of code.from) accepted.add(s);
+  }
+  const missing = specFrom.filter((s) => !accepted.has(s));
+  if (missing.length === 0) return [];
+  const codeFrom = specFrom.filter((s) => accepted.has(s));
+  const extraFrom = [...accepted].filter((s) => !specFrom.includes(s));
+  const from = formatStates([...codeFrom, ...extraFrom]);
+  const functions = [...new Set(pairings.map((p) => p.sites.function.name))];
+  const who =
+    pairings.length === 1
+      ? `${first.sites.function.name} only writes ${t.to}`
+      : `its ${pairings.length} writes of ${t.to} (in ${functions.join(", ")}) together only write it`;
+  const specAt = fromItemAt(t, missing[0]);
+  return [
+    pairingFinding(
+      { ...first, code: { ...first.code, name: t.name } },
+      {
         category: "from-state-mismatch",
         severity: "warning",
         subject: missing.join(","),
-        message:
-          `${t.name}: ${sites.function.name} only writes ${t.to} from ${formatStates(codeFrom)}; ` +
-          `the spec also allows ${formatStates(missing)}.`,
+        message: `${t.name}: ${who} from ${from}; the spec also allows ${formatStates(missing)}.`,
         hint: `Remove ${formatStates(missing)} from ${t.name}.from, or let the code accept it.`,
         ...(specAt === undefined ? {} : { specAt }),
-        codeAt: sites.write,
-      }),
-    );
-  }
-  return findings;
+        codeAt: first.sites.write,
+      },
+    ),
+  ];
 }
