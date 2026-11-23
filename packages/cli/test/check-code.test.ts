@@ -255,6 +255,31 @@ describe("check: code conformance", () => {
     ]);
   });
 
+  it("--project takes a tsconfig file: its directory is the root, the file is the project", async () => {
+    // tsconfig.json includes nothing; tsconfig.src.json includes src/.
+    const cwd = await tempSpecDir({
+      ...lightProject("app/", UNGUARDED_CODE),
+      "app/tsconfig.json": JSON.stringify({ files: [] }),
+      "app/tsconfig.src.json": TSCONFIG,
+    });
+    const r = await tsverify(
+      ["check", "app", "--project", "app/tsconfig.src.json", "--format", "json"],
+      { cwd },
+    );
+    expect(r.stderr).toBe("");
+    expect(r.code).toBe(1);
+    const doc = parse(r.stdout);
+    expect(doc.specs[0]).toMatchObject({ project: "app" });
+    expect(doc.findings.find((f) => f.category === "from-state-unconstrained")).toMatchObject({
+      codeAt: { file: "app/src/light.ts" },
+    });
+    // With the directory, tsconfig.json (which includes nothing) is the project.
+    const dirOnly = await tsverify(["check", "app", "--project", "app", "--format", "json"], {
+      cwd,
+    });
+    expect(parse(dirOnly.stdout).findings.map((f) => f.category)).toContain("broken-link");
+  });
+
   it("--project lets a spec live outside its project", async () => {
     const cwd = await tempSpecDir({
       "app/tsconfig.json": TSCONFIG,
@@ -294,7 +319,7 @@ describe("check: code conformance", () => {
     const r = await tsverify(["check", "--project", "nope"], { cwd });
     expect(r.code).toBe(2);
     expect(r.stdout).toBe("");
-    expect(r.stderr).toContain("error: --project: no such directory: nope");
+    expect(r.stderr).toContain("error: --project: no such directory or tsconfig file: nope");
     expect(r.stderr).toContain("$ tsverify check [...paths] [options]");
   });
 
@@ -316,7 +341,7 @@ describe("check: code conformance", () => {
           "no tsconfig.json in the current directory or any directory above it, so the code behind `impl` and `bindings` can't be located",
         behavior: "Order lifecycle",
         specAt: { file: "order.behavior.yaml", line: 1, column: 1 },
-        hint: "Pass --project <dir> to name the TypeScript project root, or --spec-only to check the spec alone.",
+        hint: "Pass --project <dir> (or --project <dir>/tsconfig.<name>.json) to name the TypeScript project, or --spec-only to check the spec alone.",
       },
     ]);
 

@@ -12,14 +12,14 @@ import type { BehaviorModel, Finding } from "@tsverify/ir";
 import { SetupError } from "./exit-codes";
 import type { LoadedSpec } from "./inputs";
 import { rebaseFile, rebaseLocations } from "./locations";
-import { findProjectRoot, TSCONFIG } from "./project-root";
+import { findProjectRoot, type ProjectRef, TSCONFIG } from "./project-root";
 import { linkRootCauses } from "./root-causes";
 
 export interface CodeConformanceOptions {
   /** Absolute; spec files are relative to it, and so are the returned locations. */
   cwd: string;
-  /** Absolute `--project` directory, used for every spec instead of discovery. */
-  project?: string;
+  /** `--project`: the project used for every spec instead of discovery. */
+  project?: ProjectRef;
   maxStates?: number;
 }
 
@@ -66,7 +66,7 @@ export async function checkCode(
 ): Promise<CodeOutcome[]> {
   const { cwd, maxStates } = options;
   const roots = await Promise.all(
-    specs.map((s) => options.project ?? findProjectRoot(resolve(cwd, s.file))),
+    specs.map((s) => options.project?.root ?? findProjectRoot(resolve(cwd, s.file))),
   );
   const outcomes: CodeOutcome[] = roots.map((root) => ({
     project: root === undefined ? null : rebaseFile(root, cwd, cwd),
@@ -91,7 +91,8 @@ export async function checkCode(
     const typescript = loadTypeScript(root);
     if ("error" in typescript) throw new SetupError(typescript.error);
     const models = members.map((m) => rebaseLocations(m.model, cwd, root));
-    const { results, stats } = extract(models, root, typescript.ts);
+    const tsconfig = root === options.project?.root ? options.project.tsconfig : undefined;
+    const { results, stats } = extract(models, root, typescript.ts, tsconfig);
     members.forEach(({ index }, k) => {
       const spec = models[k] as BehaviorModel;
       const result = results[k];
@@ -117,9 +118,14 @@ function extract(
   models: BehaviorModel[],
   root: string,
   typescript: TypeScript,
+  tsconfig: string | undefined,
 ): ReturnType<typeof extractAll> {
   try {
-    return extractAll(models, { projectRoot: root, typescript });
+    return extractAll(models, {
+      projectRoot: root,
+      typescript,
+      ...(tsconfig === undefined ? {} : { tsconfig }),
+    });
   } catch (error) {
     if (error instanceof TypeScriptSetupError) throw new SetupError(error.message);
     throw error;
@@ -145,6 +151,6 @@ function noProject(file: string, model: BehaviorModel): Finding {
     message: `no ${TSCONFIG} in ${dir === "." ? "the current directory" : dir} or any directory above it, so the code behind \`impl\` and \`bindings\` can't be located`,
     behavior: model.name,
     specAt: { file, line: 1, column: 1 },
-    hint: "Pass --project <dir> to name the TypeScript project root, or --spec-only to check the spec alone.",
+    hint: "Pass --project <dir> (or --project <dir>/tsconfig.<name>.json) to name the TypeScript project, or --spec-only to check the spec alone.",
   };
 }

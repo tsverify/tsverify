@@ -143,7 +143,7 @@ describe("tsverify view", () => {
     expect(r.stdout).toMatch(/--host <address> .*\(default: 127\.0\.0\.1\)/);
     expect(r.stdout).toMatch(/--open +Open the viewer in the default browser/);
     expect(r.stdout).toMatch(/--spec-only/);
-    expect(r.stdout).toMatch(/--project <dir>/);
+    expect(r.stdout).toMatch(/--project <path>/);
   });
 
   it("refuses a non-loopback --host with exit 2 and points to SSH forwarding", async () => {

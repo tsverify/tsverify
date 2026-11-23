@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { findProjectRoot, resolveProjectDir } from "./project-root";
+import { findProjectRoot, resolveProject } from "./project-root";
 
 let dir = "";
 
@@ -40,14 +40,23 @@ describe("findProjectRoot", () => {
   });
 });
 
-describe("resolveProjectDir", () => {
-  it("resolves against the cwd", async () => {
-    expect(await resolveProjectDir("outer/inner", dir)).toBe(join(dir, "outer/inner"));
-    expect(await resolveProjectDir(join(dir, "outer"), "/")).toBe(join(dir, "outer"));
+describe("resolveProject", () => {
+  it("resolves a directory against the cwd: the root, with its tsconfig.json", async () => {
+    expect(await resolveProject("outer/inner", dir)).toEqual({ root: join(dir, "outer/inner") });
+    expect(await resolveProject(join(dir, "outer"), "/")).toEqual({ root: join(dir, "outer") });
   });
 
-  it("rejects missing directories and files", async () => {
-    expect(await resolveProjectDir("nope", dir)).toBeUndefined();
-    expect(await resolveProjectDir("outer/tsconfig.json", dir)).toBeUndefined();
+  it("takes a tsconfig file: its directory is the root", async () => {
+    await writeFile(join(dir, "outer/tsconfig.src.json"), "{}");
+    expect(await resolveProject("outer/tsconfig.src.json", dir)).toEqual({
+      root: join(dir, "outer"),
+      tsconfig: "tsconfig.src.json",
+    });
+    expect(await resolveProject("outer/tsconfig.json", dir)).toEqual({ root: join(dir, "outer") });
+  });
+
+  it("rejects a path that doesn't exist", async () => {
+    expect(await resolveProject("nope", dir)).toBeUndefined();
+    expect(await resolveProject("outer/tsconfig.nope.json", dir)).toBeUndefined();
   });
 });

@@ -20,7 +20,7 @@ stop, and 2 for bad options or paths without specs, as with `check`.
 | `--port <n>` | `0` | Port to listen on; `0` picks a free one |
 | `--host <address>` | `127.0.0.1` | Loopback address to listen on: `127.0.0.1`, `::1` or `localhost`. Anything else is refused (exit 2) |
 | `--open` | off | Open the page in the default browser (`open`, `xdg-open` or `start`). Never done by default |
-| `--spec-only`, `--project <dir>`, `--max-states <n>`, `--enforced-only` | | As for `tsverify check` |
+| `--spec-only`, `--project <path>`, `--max-states <n>`, `--enforced-only` | | As for `tsverify check` |
 
 ## Viewing from another machine
 
