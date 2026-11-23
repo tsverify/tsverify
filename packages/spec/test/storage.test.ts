@@ -150,6 +150,13 @@ describe("bindings.storage: validation", () => {
       'remove "persistence: assign" and keep the storage functions',
     ],
     [
+      "a client named storage with the named-function form",
+      "  storage:\n    read: src/a.ts#get\n  clients:\n    storage: { module: src/s.ts, export: storage }\n",
+      'bindings.clients: "storage" is reserved when bindings.storage names the app\'s functions (a call to one is the gate storage.<symbol>, which a client of that name would share)',
+      [19, 5],
+      "rename the client (e.g. `blob`), and the paths in bindings.effects that start with `storage.`",
+    ],
+    [
       "no read, save or update",
       "  storage:\n    key: id\n    atomic: src/db.ts#tx\n",
       "bindings.storage: names no read, save or update function (at least one is required)",
@@ -346,6 +353,17 @@ describe("bindings.storage: validation", () => {
     save: src/a.ts#save
     update: src/a.ts#setStatusIf
     atomic: src/a.ts#tx
+`,
+      FILE,
+    );
+    expect(findings).toEqual([]);
+  });
+
+  it("allows a client named storage with a preset (no storage.<symbol> gates then)", () => {
+    const { findings } = parseSpec(
+      `${BASE}  storage: assign
+  clients:
+    storage: { module: src/s.ts, export: storage }
 `,
       FILE,
     );
