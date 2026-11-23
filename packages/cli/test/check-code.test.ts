@@ -271,6 +271,24 @@ describe("check: code conformance", () => {
     });
   });
 
+  it("prints paths outside the cwd absolute in pretty output, relative in JSON", async () => {
+    const dir = await tempSpecDir({ ...lightProject("app/", UNGUARDED_CODE), "work/.keep": "" });
+    const cwd = join(dir, "work");
+    const pretty = await tsverify(["check", "../app"], { cwd });
+    expect(pretty.code).toBe(1);
+    expect(pretty.stdout).toContain(
+      `${join(dir, "app/src/light.behavior.yaml")}  project: ${join(dir, "app")}\n`,
+    );
+    expect(pretty.stdout).toContain(`${join(dir, "app/src/light.ts")}:7:3`);
+    expect(pretty.stdout).not.toContain("../");
+    const json = parse((await tsverify(["check", "../app", "--format", "json"], { cwd })).stdout);
+    expect(json.specs[0]).toMatchObject({
+      file: "../app/src/light.behavior.yaml",
+      project: "../app",
+    });
+    expect(json.findings.map((f) => f.codeAt?.file)).toContain("../app/src/light.ts");
+  });
+
   it("rejects a --project directory that doesn't exist (exit 2)", async () => {
     const cwd = await tempSpecDir(lightProject());
     const r = await tsverify(["check", "--project", "nope"], { cwd });

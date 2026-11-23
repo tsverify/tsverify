@@ -1,4 +1,5 @@
 import type { CheckStats } from "@tsverify/checker";
+import type { Finding } from "@tsverify/ir";
 import {
   declaredAtomicText,
   type Formatter,
@@ -7,6 +8,7 @@ import {
 } from "@tsverify/render";
 import pc from "picocolors";
 import type { Io } from "../io";
+import { displayLocations, displayPath } from "../locations";
 import { allFindings, countSeverity, type Report, type SpecReport } from "../report";
 import type { TestCounts } from "../test-findings";
 
@@ -30,24 +32,26 @@ export function terminalFormatter(io: Io): Formatter {
 /**
  * The findings (via `@tsverify/render`), then one summary line. `check` reports (specs with a
  * `project`) get one section per spec, headed by the spec file and its project root. Findings
- * with `causedBy` are printed under their cause (`groupCauses`); the counts include them.
+ * with `causedBy` are printed under their cause (`groupCauses`); the counts include them. A path
+ * outside the cwd is shown absolute (`displayPath`), not as a chain of `../`.
  */
 export function formatPretty(report: Report, io: Io): string {
   const f = terminalFormatter(io);
   const options = { formatter: f, cwd: io.cwd, countLine: false, groupCauses: true };
+  const shown = (findings: Finding[]) => displayLocations(findings, io.cwd);
   let out = "";
   if (report.specs.some((s) => s.project !== undefined)) {
     for (const spec of report.specs) {
-      out += `${f.bold(spec.file)}  ${f.dim(projectLabel(spec, report))}\n`;
+      out += `${f.bold(displayPath(spec.file, io.cwd))}  ${f.dim(projectLabel(spec, report, io.cwd))}\n`;
       out += declaredNote(spec, f);
-      out += `${formatFindings(spec.findings, options)}\n`;
+      out += `${formatFindings(shown(spec.findings), options)}\n`;
     }
     if (report.command === "test") {
       out += `${f.dim("Generated-test results only: static findings (model checking, conformance) come from `tsverify check`.")}\n`;
     }
   } else {
     const findings = allFindings(report);
-    if (findings.length > 0) out += formatFindings(findings, options);
+    if (findings.length > 0) out += formatFindings(shown(findings), options);
   }
   out += enforcedOnlyNote(report, f);
   out += strictNote(report, f);
@@ -93,14 +97,15 @@ function strictNote(report: Report, f: Formatter): string {
   );
 }
 
-function projectLabel(spec: SpecReport, report: Report): string {
+function projectLabel(spec: SpecReport, report: Report, cwd: string): string {
   const enforced = spec.enforced ? " · enforced" : "";
   if (report.specOnly) return `spec only${enforced}`;
-  const project = (spec.project ? `project: ${spec.project}` : "no project") + enforced;
+  const project =
+    (spec.project ? `project: ${displayPath(spec.project, cwd)}` : "no project") + enforced;
   const g = spec.generated;
   if (g === undefined)
     return report.command === "test" ? `${project} · no tests generated` : project;
-  return `${project} · ${g.dir}: ${testCountText(g.tests)}`;
+  return `${project} · ${displayPath(g.dir, cwd)}: ${testCountText(g.tests)}`;
 }
 
 /** e.g. `35 tests, 34 passed, 1 failed`. */

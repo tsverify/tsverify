@@ -1,6 +1,6 @@
 import type { Finding } from "@tsverify/ir";
 import { describe, expect, it } from "vitest";
-import { rebaseFile, rebaseLocations } from "./locations";
+import { displayLocations, displayPath, rebaseFile, rebaseLocations } from "./locations";
 
 const CWD = "/work";
 const ROOT = "/work/apps/shop";
@@ -63,5 +63,33 @@ describe("rebaseLocations", () => {
 
   it("returns the value itself when the directories are the same", () => {
     expect(rebaseLocations(finding, CWD, "/work/")).toBe(finding);
+  });
+});
+
+describe("displayPath / displayLocations (pretty output)", () => {
+  it.each([
+    ["src/a.ts", "src/a.ts"],
+    [".", "."],
+    ["..", "/"],
+    ["../other/a.ts", "/other/a.ts"],
+    ["../../x/b.yaml", "/x/b.yaml"],
+    ["..foo/a.ts", "..foo/a.ts"],
+  ])("%s → %s", (file, expected) => {
+    expect(displayPath(file, CWD)).toBe(expected);
+  });
+
+  it("makes locations outside the cwd absolute, and leaves the rest", () => {
+    const finding: Finding = {
+      id: "x",
+      category: "non-atomic",
+      severity: "error",
+      message: "…",
+      specAt: { file: "../specs/o.behavior.yaml", line: 1, column: 1 },
+      codeAt: { file: "src/a.ts", line: 2, column: 3 },
+    };
+    expect(displayLocations([finding], CWD)[0]).toEqual({
+      ...finding,
+      specAt: { file: "/specs/o.behavior.yaml", line: 1, column: 1 },
+    });
   });
 });
