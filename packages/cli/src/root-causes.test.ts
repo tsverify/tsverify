@@ -20,6 +20,10 @@ function codeModel(patch: (m: BehaviorModel) => void): BehaviorModel {
   return m;
 }
 
+function at(line: number) {
+  return { file: "src/payments/webhook.ts", line, column: 5 };
+}
+
 function mismatch(category: FindingCategory, transition: string): Finding {
   return {
     id: `${category}:${BEHAVIOR}:${transition}`,
@@ -113,6 +117,151 @@ describe("linkRootCauses", () => {
     const traced = linked.filter((f) => f.trace !== undefined);
     expect(traced.length).toBeGreaterThan(0);
     for (const f of traced) expect(f.causedBy).toEqual([undeclared.id]);
+  });
+
+  it("links `t` also writing another state only to steps of that write, not of `t` itself", () => {
+    // b4's counterexamples take steps of payment_succeeded (its write of paid): the code's
+    // other write (`payment_succeeded->cancelled`) is not in them.
+    const alsoWrites: Finding = {
+      ...mismatch("undeclared-transition", "payment_succeeded"),
+      id: `undeclared-transition:${BEHAVIOR}:payment_succeeded:payment_succeeded->cancelled`,
+    };
+    const linked = link(b4(), [alsoWrites]);
+    expect(linked.filter((f) => f.trace !== undefined).length).toBeGreaterThan(0);
+    expect(linked.every((f) => f.causedBy === undefined)).toBe(true);
+  });
+
+  it("links a from-state finding only to steps of the write it is about", () => {
+    // Two writes of paid: the unconstrained one is `payment_succeeded~2`, at line 30.
+    const code = codeModel((m) => {
+      const paid = transition(m, "payment_succeeded");
+      paid.sites = { specTransition: "payment_succeeded", write: at(10) } as CodeSites;
+      m.transitions.push({
+        ...structuredClone(paid),
+        name: "payment_succeeded~2",
+        from: "*",
+        sites: { specTransition: "payment_succeeded", write: at(30) } as CodeSites,
+      });
+      m.concurrency["payment_succeeded~2"] = 2;
+    });
+    const atSite = (line: number): Finding => ({
+      ...mismatch("from-state-unconstrained", "payment_succeeded"),
+      id: `from-state-unconstrained:${BEHAVIOR}:payment_succeeded:${line}`,
+      codeAt: at(line),
+    });
+    const findings = [atSite(30), atSite(10), ...check(code).findings];
+    const linked = linkRootCauses(findings, orderModel(), code).filter((f) => f.trace);
+    expect(linked.length).toBeGreaterThan(0);
+    for (const f of linked) expect(f.causedBy).toEqual([atSite(30).id]);
+  });
+
+  it("never links a stricter from-state warning through a step", () => {
+    const stricter = {
+      ...mismatch("from-state-mismatch", "payment_succeeded"),
+      severity: "warning",
+    };
+    const linked = link(b4(), [stricter as Finding]);
+    expect(linked.every((f) => f.causedBy === undefined)).toBe(true);
+  });
+
+  describe("effect mismatches: only rules that count the effect, in the direction it moves", () => {
+    const withRule = (rule: BehaviorModel["rules"][number]) => {
+      const spec = orderModel();
+      spec.rules = [rule];
+      return spec;
+    };
+    const effectFinding = (category: FindingCategory, t: string, effect: string): Finding => ({
+      ...mismatch(category, t),
+      id: `${category}:${BEHAVIOR}:${t}:${effect}`,
+    });
+
+    it("links a missing effect to a rule that fewer of it breaks", () => {
+      // Every paid order got its receipt; the code never sends it.
+      const spec = withRule({
+        name: "Paid orders got a receipt",
+        kind: "never",
+        source: "status == paid and count(effect email.receipt) < 1",
+        expr: {
+          type: "and",
+          left: { type: "status-cmp", op: "==", value: "paid" },
+          right: { type: "effect-count", effect: "email.receipt", op: "<", value: 1 },
+        },
+      });
+      const code = codeModel((m) => {
+        m.rules = spec.rules;
+        transition(m, "payment_succeeded").effects = [];
+      });
+      const missing = effectFinding("missing-effect", "payment_succeeded", "email.receipt");
+      const other = effectFinding("missing-effect", "refund", "stripe.refund");
+      const linked = linkRootCauses([missing, other, ...check(code).findings], spec, code);
+      const rule = linked.find((f) => f.property === "rule:Paid orders got a receipt");
+      expect(rule?.causedBy).toEqual([missing.id]);
+    });
+
+    it("never links a missing effect to a rule that only more of it breaks", () => {
+      // The trial's case: "never: … and count(effect x) > 0" fails because of an extra step
+      // (here, ship from any state), never because the code calls x less.
+      // The trace takes a refund step, and the rule counts stripe.refund: only its direction
+      // rules the missing effect out.
+      const code = codeModel((m) => {
+        transition(m, "ship").from = "*";
+      });
+      const missing = effectFinding("missing-effect", "refund", "stripe.refund");
+      const unconstrained = mismatch("from-state-unconstrained", "ship");
+      const linked = linkRootCauses(
+        [missing, unconstrained, ...check(code).findings],
+        orderModel(),
+        code,
+      );
+      const shipped = linked.find((f) => f.property === "rule:Shipped orders are never refunded");
+      expect(shipped?.trace?.steps.some((s) => s.action?.transition === "refund")).toBe(true);
+      expect(shipped?.causedBy).toEqual([unconstrained.id]);
+    });
+
+    it("links an undeclared effect to a rule that more of it breaks", () => {
+      const spec = withRule({
+        name: "Cancelled orders are never refunded",
+        kind: "never",
+        source: "status == cancelled and count(effect stripe.refund) > 0",
+        expr: {
+          type: "and",
+          left: { type: "status-cmp", op: "==", value: "cancelled" },
+          right: { type: "effect-count", effect: "stripe.refund", op: ">", value: 0 },
+        },
+      });
+      const code = codeModel((m) => {
+        m.rules = spec.rules;
+        transition(m, "expire").effects = [{ name: "stripe.refund", multiplicity: "exactly-once" }];
+      });
+      const extra = effectFinding("undeclared-effect", "expire", "stripe.refund");
+      const linked = linkRootCauses([extra, ...check(code).findings], spec, code);
+      const rule = linked.find((f) => f.property === "rule:Cancelled orders are never refunded");
+      expect(rule?.causedBy).toEqual([extra.id]);
+    });
+
+    it("never links a missing-effect warning (tsverify couldn't confirm it)", () => {
+      const spec = withRule({
+        name: "Paid orders got a receipt",
+        kind: "always",
+        source: "status != paid or count(effect email.receipt) >= 1",
+        expr: {
+          type: "or",
+          left: { type: "status-cmp", op: "!=", value: "paid" },
+          right: { type: "effect-count", effect: "email.receipt", op: ">=", value: 1 },
+        },
+      });
+      const code = codeModel((m) => {
+        m.rules = spec.rules;
+        transition(m, "payment_succeeded").effects = [];
+      });
+      const unconfirmed: Finding = {
+        ...effectFinding("missing-effect", "payment_succeeded", "email.receipt"),
+        severity: "warning",
+      };
+      const linked = linkRootCauses([unconfirmed, ...check(code).findings], spec, code);
+      expect(linked.find((f) => f.property === "rule:Paid orders got a receipt")).toBeDefined();
+      expect(linked.every((f) => f.causedBy === undefined)).toBe(true);
+    });
   });
 
   describe("code that does less than the spec: liveness counterexamples", () => {
