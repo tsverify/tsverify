@@ -6,7 +6,7 @@ executable source of truth; this page is its human reference. Canonical example:
 
 ## Paths
 
-`impl`, `bindings.clients.*.module` and `bindings.guards` paths are relative to the **project root**: the nearest
+`impl`, `bindings.clients.*.module`, `bindings.guards` and `bindings.storage` paths are relative to the **project root**: the nearest
 directory at or above the behavior file that contains a `tsconfig.json` (overridable with `tsverify check --project`).
 
 ## Top level
@@ -135,10 +135,104 @@ state a satisfying state is reachable (AG EF — weaker than LTL with fairness).
 
 | Key | Notes |
 |---|---|
-| `persistence` | `assign` \| `prisma` \| `drizzle` \| `memory`; omitted → auto-detected. `memory`: in-process objects with no client, where atomic means no `await`/`yield` between the state check and the write |
+| `storage` | how the entity is stored: a preset, or the app's own storage functions (see below); omitted → auto-detected |
 | `clients` | map name → `{ module, export }` |
 | `guards` | map canonical guard → `path#symbol` or `path#symbol(args)` |
 | `effects` | map effect name → code call path (`client.member.path`); omitted → name is the path |
+
+`persistence: assign | prisma | drizzle | memory` is still accepted as an alias of the preset form, so existing
+specs keep working. It can't be combined with `storage`.
+
+### `bindings.storage`
+
+**Preset form.** One of the built-in storage styles. IR: `Bindings.persistence`.
+
+| Preset | Code shape |
+|---|---|
+| `assign` | repository objects on a bound client (`db.orders.get` / `save`, `db.transaction`) and plain assignment |
+| `prisma` | a Prisma client bound in `clients` |
+| `memory` | in-process objects with no client; atomic means no `await`/`yield` between the state check and the write |
+
+```yaml
+bindings:
+  storage: prisma
+```
+
+**Named-function form.** The app's own functions, which tsverify treats as the storage boundary without looking
+inside them (Prisma, SQL, Redis or an HTTP call are all the same to it). IR: `Bindings.storage`
+(`StorageBinding`).
+
+```yaml
+bindings:
+  storage:
+    key: id                                     # the entity's key field; default `id`
+    read:   src/orders/repo.ts#getOrder         # loads one entity by key
+    save:   src/orders/repo.ts#saveOrder        # persists an entity
+    update: src/orders/repo.ts#setStatusIf      # conditional save: checks the state and saves in one step
+    atomic: src/db.ts#withTransaction           # runs its callback as one indivisible step (declared, not proven)
+```
+
+| Key | Notes |
+|---|---|
+| `key` | the entity's key field (default `id`); generated tests seed `fixtures.entity[key]` |
+| `read` | function(s) that load one entity by key |
+| `save` | function(s) that persist an entity |
+| `update` | conditional save(s): check the stored state and save in one step (`UPDATE … WHERE status = 'paid'`) |
+| `atomic` | function(s) that run a callback as one indivisible step. **Declared, not proven**: tsverify trusts it |
+
+At least one `read`, `save` or `update` is required. Each of the four takes a function, or a list of them. A
+function is written `path/to/file.ts#symbol` (`#repo.get` for a method of an exported object), or in the long form:
+
+```yaml
+update:
+  - src/orders/repo.ts#setStatusIf                       # default roles: [key, from, to]
+  - fn: src/orders/repo.ts#markShipped                   # markShipped(id): from and to are fixed
+    from: [paid]
+    to: shipped
+    returns: count
+read: { fn: src/orders/repo.ts#findOrder, args: [_, key] }   # findOrder(tenant, id)
+save: { fn: src/orders/repo.ts#patchOrder, args: [key, patch] }
+```
+
+| Long-form key | Kinds | Notes |
+|---|---|---|
+| `fn` | all | `path#symbol` |
+| `args` | all | the role of each positional argument (below); default: read `[key]`, save `[entity]`, update `[key, from, to]` without the roles a fixed `from` / `to` replaces, atomic `[callback]` |
+| `returns` | update | what the conditional save returns: `changed` (default: `true`, or `false` when the state check fails), `count` (rows changed: `1` or `0`), `entity` (the updated entity, or `undefined`), `throws` (it throws when the check fails, and returns nothing useful on success) |
+| `from` | update | fixed from-state(s), when no argument has the `from` role; declared states |
+| `to` | update | fixed target state, when no argument has the `to` role; a declared state |
+
+Argument roles:
+
+| Role | The argument is | Allowed on |
+|---|---|---|
+| `key` | the entity's key | read, save, update |
+| `entity` | a whole entity | save |
+| `patch` | some fields of an entity, merged into the stored one | save, update |
+| `from` | the state, or list of states, the conditional save requires | update |
+| `to` | the state the conditional save sets | update |
+| `callback` | the function the atomic function runs | atomic |
+| `_` | anything tsverify should ignore | all |
+
+How the code check and the generated tests see these functions (the code check doesn't recognise them yet):
+
+- a call to one is a storage call site `storage.<symbol>` (`CallSite` with `client: "storage"`)
+- a conditional save is atomic on its own (`AtomicScope.kind: "conditional-update"`); a read and save inside an
+  `atomic` function is atomic **as declared** (`kind: "declared"`)
+- `tsverify test` replaces each named function with an in-memory version (`instrument.storage`) by mocking its
+  module; the module's other exports stay real
+
+Errors (`invalid-spec`, at the offending YAML node):
+
+- `persistence` and `storage` together
+- no `read`, `save` or `update` function
+- a malformed `path#symbol`; an unknown role, kind or long-form key (with a did-you-mean hint)
+- a read without `key`; a save without `entity` or `key` + `patch`, or with both `entity` and `patch`; an
+  update without `key`; an atomic function without `callback`
+- an update without its from-states (a `from` argument or a fixed `from:`) or its target (a `to` argument or a
+  fixed `to:`), or with either given both ways; a fixed state that isn't declared
+- a role used twice in one function (`_` may repeat), or a role the kind doesn't take
+- the same symbol name twice anywhere in the block (calls are identified by name)
 
 ## `fixtures`
 
@@ -171,6 +265,7 @@ All reported as `invalid-spec` with the YAML location:
 - effect names are unique within a transition
 - every guard used in `requires` (transition or actor) has a binding **if** `bindings.guards` is non-empty
   (a spec with no guard bindings at all is allowed — e.g. a design-only spec)
+- `bindings.storage`: see [its errors](#bindingsstorage)
 - `bindings.effects` keys are effects declared on some transition
 - the first segment of each `bindings.effects` call path (`stripe` in `stripe.refunds.create`) is a
   `bindings.clients` key, **if** `bindings.clients` is non-empty
