@@ -31,6 +31,12 @@ interface Snapshot71 {
   }): Snapshot71;
 }
 
+/** The internals of the API's sync channel that `close()` uses (the same in 7.0 and 7.1). */
+interface CompilerChannel {
+  child?: { kill(signal: NodeJS.Signals): boolean };
+  close(): void;
+}
+
 export class CompilerSession {
   private readonly api: TS.API;
   /** 7.1+: the API has `createSnapshot`. */
@@ -91,10 +97,26 @@ export class CompilerSession {
     return this.project(snapshot.getProject(this.configPath));
   }
 
-  /** Ends the compiler process. Safe to call more than once. */
+  /**
+   * Ends the compiler process, without letting it print. Safe to call more than once.
+   *
+   * TypeScript's own `api.close()` closes the pipe and then sends SIGTERM. The compiler shares our
+   * stderr, and when the signal wins the race it prints `context canceled` there (about 1 run in 20
+   * under load, which broke CI). A process ended with SIGKILL prints nothing, so it is killed first
+   * and the channel then releases its handles. The snapshot release requests `api.close()` would
+   * send first are skipped: nothing is left to release in a process that is gone. Falls back to
+   * `api.close()` if a TypeScript release changes these internals.
+   */
   close(): void {
     if (this.closed) return;
     this.closed = true;
-    this.api.close();
+    const channel = (this.api as unknown as { client?: { channel?: CompilerChannel } }).client
+      ?.channel;
+    if (typeof channel?.child?.kill === "function" && typeof channel.close === "function") {
+      channel.child.kill("SIGKILL");
+      channel.close();
+    } else {
+      this.api.close();
+    }
   }
 }

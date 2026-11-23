@@ -3,14 +3,16 @@
  * ends it before `extractAll` returns or throws. Each case uses a temp project of its own, so its
  * process is told apart from any other by its `--cwd`.
  */
-import { execFileSync } from "node:child_process";
+import { type ChildProcess, execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { BehaviorModel } from "@tsverify/ir";
 import { afterAll, describe, expect, it } from "vitest";
+import { CompilerSession } from "../src/compiler";
 import { extractAll, TypeScriptSetupError } from "../src/index";
 import { loadProject } from "../src/project";
+import { typescript } from "../src/typescript";
 import { orderSpec } from "./helpers";
 import { installTypeScript } from "./typescript";
 
@@ -101,5 +103,20 @@ describe.skipIf(process.platform === "win32")("the compiler process", () => {
     const broken = { ...spec(), entity: undefined } as unknown as BehaviorModel;
     expect(() => extractAll([broken], { projectRoot: root })).toThrow(TypeError);
     expect(await survivors(root)).toEqual([]);
+  });
+
+  it("is killed outright, so it cannot print on the stderr it shares with tsverify", async () => {
+    // TypeScript's own close() sends SIGTERM, and the compiler then sometimes prints
+    // "context canceled" on the inherited stderr (seen on CI). SIGKILL leaves it no chance.
+    const root = tempProject(OK);
+    const session = new CompilerSession(typescript, root, join(root, "tsconfig.json"));
+    const child = (session as unknown as { api: { client: { channel: { child: ChildProcess } } } })
+      .api.client.channel.child;
+    const exited = new Promise<NodeJS.Signals | null>((resolve) =>
+      child.once("exit", (_code, signal) => resolve(signal)),
+    );
+    session.open();
+    session.close();
+    expect(await exited).toBe("SIGKILL");
   });
 });
