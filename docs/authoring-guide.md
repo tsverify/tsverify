@@ -707,8 +707,8 @@ How to find them:
   unknown (an `unanalyzable` warning), and outside one atomic function the transition is `non-atomic` as above,
   since a row can change between the read and the bulk update. Make the bulk update conditional
   (`WHERE id IN (…) AND status = 'PENDING'`, bound with `from: [PENDING]`), or update one entity at a time.
-  A lock method of a class (`RunLocker.lock`, called as `this.locker.lock(…)` through an injected field) works as
-  the `atomic` function like any other: bind `src/locking.ts#RunLocker.lock` with the callback's position.
+  A lock method of a class (`OrderLocks.lock`, called as `this.locker.lock(…)` through an injected field) works as
+  the `atomic` function like any other: bind `src/locking.ts#OrderLocks.lock` with the callback's position.
 - **Pass every argument a role names.** The generated tests' fake reads each role's argument. The one exception
   is a `patch`: leaving it out (`updateStatusIf(id, "paid", "refunded")`) counts as `{}`, so nothing is merged.
 - **`atomic` is declared, not proven.** Name a function only if it really serializes the callback against
