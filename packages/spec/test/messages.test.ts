@@ -255,6 +255,13 @@ describe("semantic errors", () => {
       12,
     ],
     [
+      "guard binding with an argument that can't be matched",
+      `${BASE}bindings:\n  guards:\n    owner: 'a.ts#requireRole({ role: "admin" })'\n`,
+      `bindings.guards "owner": malformed binding "a.ts#requireRole({ role: "admin" })"`,
+      17,
+      12,
+    ],
+    [
       "malformed guard binding key",
       `${BASE}bindings:\n  guards:\n    "role(": a.ts#f\n`,
       'bindings.guards: malformed guard "role("',

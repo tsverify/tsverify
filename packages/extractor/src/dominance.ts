@@ -54,6 +54,12 @@ export function cfgOf(fn: FunctionLike): Cfg {
 /** Direct guard matches of a call: the binding keys it satisfies. */
 export type GuardMatcher = (call: TS.CallExpression) => readonly string[];
 
+/** A call of a guard's function whose literal arguments (`args`) are not the binding's. */
+export interface GuardMiss {
+  key: string;
+  args: readonly string[];
+}
+
 export interface GuardSite {
   key: string;
   /** The guard call (or guard-wrapper call) on a path to the write. */
@@ -71,6 +77,8 @@ export interface GuardFacts {
    * enumerate (`MAX_GUARD_SETS`).
    */
   sets?: string[][];
+  /** Calls of a guard's function on some path to the write, with other arguments than its binding's. */
+  misses: (GuardMiss & { call: TS.CallExpression })[];
 }
 
 /** Element-wise string comparison; a prefix sorts first (`[]` before `["owner"]`). */
@@ -93,6 +101,7 @@ export class Dominance {
     private readonly isStop: (call: TS.CallExpression) => boolean,
     private readonly match: GuardMatcher,
     private readonly keys: readonly string[],
+    private readonly miss: (call: TS.CallExpression) => readonly GuardMiss[] = () => [],
   ) {}
 
   /** Keys a call satisfies: direct matches plus wrappers that must call the guard. */
@@ -276,6 +285,7 @@ export class Dominance {
     }
 
     const sites: GuardSite[] = [];
+    const misses: GuardFacts["misses"] = [];
     const visited = new Set<FunctionLike>();
     const collect = (fn: FunctionLike): void => {
       if (visited.has(fn)) return;
@@ -287,17 +297,19 @@ export class Dominance {
       const targets = groups.flatMap((g) => [...cfg.idsOf(g.node)]);
       for (const call of frameCalls(fn)) {
         const keys = this.keysOfCall(call);
-        if (keys.length === 0) continue;
+        const missed = this.miss(call).filter((m) => !keys.includes(m.key));
+        if (keys.length === 0 && missed.length === 0) continue;
         const ids = cfg.idsOf(call);
         if (!ids.some((id) => fromEntry[id] === 1)) continue;
         const after = reachable(cfg, ids);
         if (!targets.some((t) => after[t] === 1)) continue;
         for (const key of keys) sites.push({ key, call });
+        for (const m of missed) misses.push({ ...m, call });
       }
       for (const g of groups) if (g.callee) collect(g.callee);
     };
     collect(root.root);
     const sets = this.guardSets(root, leads);
-    return { dominating, sites, ...(sets ? { sets } : {}) };
+    return { dominating, sites, misses, ...(sets ? { sets } : {}) };
   }
 }

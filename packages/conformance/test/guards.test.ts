@@ -64,6 +64,24 @@ describe("guards", () => {
     expect(findings.map((f) => f.specAt)).toEqual([at(29), at(16)]);
   });
 
+  it("says the guard's function is called, but not with the binding's arguments", () => {
+    const spec = specModel();
+    const writes = patchWrite(cleanWrites(), "ship", (w) => ({ ...w, guards: [] }));
+    const code = buildCodeModel(spec, writes);
+    const ship = code.transitions.find((t) => t.name === "ship");
+    if (!ship?.sites) throw new Error("no ship");
+    const at = { file: "src/admin/orders.ts", line: 9, column: 3 };
+    ship.sites.guardMisses = [{ guard: "role(admin)", at, args: ['["support"]'] }];
+    const [finding] = compare(spec, code);
+    expect(finding).toMatchObject({
+      id: "guard-not-dominating:Order lifecycle:ship:role(admin)",
+      message:
+        'ship: role(admin) (requireRole) is called before the write, but not with "admin": the call passes ["support"] (required by actor admin).',
+      codeAt: at,
+    });
+    expect(finding?.hint).toContain("bind role(admin) to the arguments the code passes");
+  });
+
   it("falls back to the transition when the requires item has no location", () => {
     const spec = patchSpec(specModel(), "checkout", (t) => ({
       ...t,

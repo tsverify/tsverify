@@ -44,11 +44,12 @@ import type { ClientCall, ClientCalls } from "./client-calls";
 import type { Dominance } from "./dominance";
 import { effectCalls, effectNameOf, multiplicityOf } from "./effects";
 import { unanalyzable } from "./findings";
+import { guardArgOf } from "./guard-args";
 import { traceToRoot } from "./invocation";
 import { occurrenceOf } from "./occurrence";
 import type { ProjectContext } from "./project";
 import type * as TS from "./ts-types";
-import { type Narrowed, singleLiteralOf } from "./type-facts";
+import type { Narrowed } from "./type-facts";
 import { referenceText, type WriteNode } from "./writes";
 
 export interface MatchedWrite {
@@ -146,7 +147,7 @@ function implRefOf(ctx: ProjectContext, d: Draft): SymbolRef | undefined {
 }
 
 function isLiteralArg(a: TS.Expression, checker: TS.Checker): boolean {
-  return singleLiteralOf(checker.getTypeAtLocation(a), checker) !== undefined;
+  return guardArgOf(a, checker) !== undefined;
 }
 
 function invocationOf(
@@ -222,6 +223,16 @@ function buildTransition(
     guards.push({ guard: s.key, at, dominates: guardFacts.dominating.has(s.key) });
   }
   guards.sort((a, b) => compareLoc(a.at, b.at) || compareStrings(a.guard, b.guard));
+  const seenMiss = new Set<string>();
+  const guardMisses: NonNullable<CodeSites["guardMisses"]> = [];
+  for (const s of guardFacts.misses) {
+    const at = ctx.loc(s.call);
+    const key = `${s.key}@${at.file}:${at.line}:${at.column}`;
+    if (seenMiss.has(key)) continue;
+    seenMiss.add(key);
+    guardMisses.push({ guard: s.key, at, args: [...s.args] });
+  }
+  guardMisses.sort((a, b) => compareLoc(a.at, b.at) || compareStrings(a.guard, b.guard));
   const guardCalls = [...guardFacts.sites]
     .sort(
       (a, b) => Number(guardFacts.dominating.has(b.key)) - Number(guardFacts.dominating.has(a.key)),
@@ -348,6 +359,7 @@ function buildTransition(
     ...(atomicUnknown !== undefined ? { atomicUnknown } : {}),
     guards,
     ...(guardFacts.sets ? { guardSets: guardFacts.sets } : {}),
+    ...(guardMisses.length > 0 ? { guardMisses } : {}),
     effects,
     ...(invocation ? { invocation } : {}),
     ...(p.storage ? { storage: p.storage } : {}),

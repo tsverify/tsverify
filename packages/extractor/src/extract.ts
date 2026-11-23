@@ -38,9 +38,10 @@ import { assemble, type Draft, type MatchedWrite } from "./assemble";
 import { Callees, frameCalls, frameNaming, frameOf, type Reach, reach } from "./callgraph";
 import type { FunctionLike } from "./cfg";
 import { ClientCalls } from "./client-calls";
-import { Dominance } from "./dominance";
+import { Dominance, type GuardMiss } from "./dominance";
 import { matchesEntity, writtenValue } from "./entity";
 import { brokenLink, sortFindings, unanalyzable, uniqueIds } from "./findings";
+import { guardArgs } from "./guard-args";
 import { loadTypeScript, TypeScriptSetupError } from "./load-typescript";
 import { type LoadedProject, loadProject, ProjectContext } from "./project";
 import {
@@ -60,7 +61,6 @@ import {
   type Narrowed,
   type NarrowHandle,
   type NarrowRequest,
-  singleLiteralOf,
   typeNames,
   withMembershipGuards,
 } from "./type-facts";
@@ -157,21 +157,6 @@ const ADAPTERS: Partial<Record<PersistenceKind, PersistenceAdapter>> = {
   memory: memoryAdapter,
   prisma: prismaAdapter,
 };
-
-function literalArgs(call: TS.CallExpression, checker: TS.Checker): string[] {
-  const out: string[] = [];
-  for (const a of call.arguments) {
-    if (ts.isStringLiteral(a) || ts.isNoSubstitutionTemplateLiteral(a) || ts.isNumericLiteral(a)) {
-      out.push(a.text);
-    } else if (a.kind === ts.SyntaxKind.TrueKeyword) out.push("true");
-    else if (a.kind === ts.SyntaxKind.FalseKeyword) out.push("false");
-    else {
-      const v = singleLiteralOf(checker.getTypeAtLocation(a), checker);
-      if (v !== undefined) out.push(v);
-    }
-  }
-  return out;
-}
 
 function unprobedTypes(write: WriteNode, checker: TS.Checker): Narrowed {
   const fieldType = declaredFieldType(write.ref, write.field, checker);
@@ -425,16 +410,22 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
   );
   const guardSyms = new Set(guards.map((g) => g.sym));
   const calleeSym = (call: TS.CallExpression) => symbolOf(call.expression, checker);
+  const argsMatch = (g: (typeof guards)[number], lits: readonly string[]) =>
+    g.args.length === lits.length && g.args.every((a, i) => a === lits[i]);
   const match = (call: TS.CallExpression): string[] => {
     const sym = calleeSym(call);
     if (!sym || !guardSyms.has(sym)) return [];
-    const lits = literalArgs(call, checker);
+    const lits = guardArgs(call, checker);
+    return guards.filter((g) => g.sym === sym && argsMatch(g, lits)).map((g) => g.key);
+  };
+  // A call of a guard's function whose literal arguments differ from the binding's.
+  const miss = (call: TS.CallExpression): GuardMiss[] => {
+    const sym = calleeSym(call);
+    if (!sym || !guardSyms.has(sym)) return [];
+    const lits = guardArgs(call, checker);
     return guards
-      .filter(
-        (g) =>
-          g.sym === sym && g.args.length === lits.length && g.args.every((a, i) => a === lits[i]),
-      )
-      .map((g) => g.key);
+      .filter((g) => g.sym === sym && !argsMatch(g, lits))
+      .map((g) => ({ key: g.key, args: lits }));
   };
   const isStop = (call: TS.CallExpression): boolean => {
     if (calls.classify(call)) return true;
@@ -446,6 +437,7 @@ function extractSpec(spec: BehaviorModel, env: Env): ExtractResult {
     isStop,
     match,
     guards.map((g) => g.key),
+    miss,
   );
 
   const reachMemo = new Map<FunctionLike, Reach>();

@@ -333,6 +333,49 @@ describe("guard argument mismatch", () => {
   it("a constant with a literal type matches", () => {
     expect(guardKeys(transitionOf(result, "admin_const"))).toEqual(["role(admin)"]);
   });
+
+  it("records the call with other arguments, for a 'called, but not with' message", () => {
+    expect(transitionOf(result, "support").sites?.guardMisses).toEqual([
+      { guard: "role(admin)", at: expect.objectContaining({ line: 9 }), args: ["support"] },
+    ]);
+  });
+});
+
+describe("guard with a list argument", () => {
+  const bindings = libBindings();
+  bindings.guards["role(owner, admin)"] = {
+    file: "src/roles.ts",
+    symbol: "requireRoles",
+    args: ['["owner", "admin"]'],
+    raw: "src/roles.ts#requireRoles(['owner', 'admin'])",
+  };
+  const result = extractFixture(
+    "guard-arg-mismatch",
+    orderSpec(
+      [
+        { name: "staff", impl: "src/roles.ts#shipAsStaff", to: "shipped" },
+        { name: "staff_const", impl: "src/roles.ts#shipAsStaffConst", to: "shipped" },
+        { name: "owner_only", impl: "src/roles.ts#shipAsOwnerOnly", to: "shipped" },
+      ],
+      bindings,
+    ),
+  );
+
+  it("matches an array literal among other arguments, whatever its quotes", () => {
+    expect(guardKeys(transitionOf(result, "staff"))).toEqual(["role(owner, admin)"]);
+  });
+
+  it("matches a const array literal", () => {
+    expect(guardKeys(transitionOf(result, "staff_const"))).toEqual(["role(owner, admin)"]);
+  });
+
+  it("another list is a call with other arguments, not a match", () => {
+    const t = transitionOf(result, "owner_only");
+    expect(guardKeys(t)).toEqual([]);
+    expect(t.sites?.guardMisses).toEqual([
+      { guard: "role(owner, admin)", at: expect.anything(), args: ['["owner"]'] },
+    ]);
+  });
 });
 
 describe("effect mapping", () => {

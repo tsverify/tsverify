@@ -198,7 +198,7 @@ function union(a: Allowed, b: Allowed): Allowed {
   return a && b ? new Set([...a, ...b]) : undefined;
 }
 
-function stripExpr(e: TS.Expression): TS.Expression {
+export function stripExpr(e: TS.Expression): TS.Expression {
   let cur = e;
   while (
     ts.isParenthesizedExpression(cur) ||
@@ -225,7 +225,10 @@ function refText(e: TS.Expression): string | undefined {
 }
 
 /** The `const` initializer an identifier stands for (through imports), if it has one. */
-function constInitializer(id: TS.Identifier, checker: TS.Checker): TS.Expression | undefined {
+export function constInitializer(
+  id: TS.Identifier,
+  checker: TS.Checker,
+): TS.Expression | undefined {
   let sym = checker.getSymbolAtLocation(id);
   if (sym && sym.flags & ts.SymbolFlags.Alias) sym = checker.getAliasedSymbol(sym);
   const decl = valueDeclarationOf(sym);

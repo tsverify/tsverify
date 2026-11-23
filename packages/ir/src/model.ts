@@ -148,6 +148,13 @@ export interface CodeSites {
    * transition's own `requires` plus all of some listed actor's `requires`.
    */
   guardSets?: string[][];
+  /**
+   * Calls of a bound guard's function on some path to the write whose literal arguments are not
+   * the binding's (`requireRole(actor, "member")` for `role(admin)`): `args` are the ones the
+   * call passes, as canonical text (`parseGuardArgs`). Lets conformance say "called, but not
+   * with …" instead of "never called".
+   */
+  guardMisses?: { guard: string; at: SourceLocation; args: string[] }[];
   /** Effect calls attributed to this transition. `effect` is the spec effect name, or the gate when unmapped. */
   effects: (CallSite & { effect: string })[];
   invocation?: InvocationShape;
